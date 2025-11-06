@@ -23,7 +23,14 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Sync database and start server
-db.sequelize.sync() // Removed `force: true` to make data persistent
+// Allow an opt-in ALTER sync to apply non-destructive schema changes when
+// needed. This is disabled by default to avoid accidental schema mutations.
+const syncOptions = process.env.DB_ALTER_ON_START === 'true' ? { alter: true } : {};
+if (syncOptions.alter) {
+  console.warn('DB_ALTER_ON_START=true -> running sequelize.sync({ alter: true }) to apply schema changes (use with caution)');
+}
+
+db.sequelize.sync(syncOptions) // Removed `force: true` to make data persistent
   .then(() => {
     console.log('Database synced.');
     // Seeding logic has been removed. The database is now persistent.
