@@ -1,10 +1,13 @@
 
 
 
+
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import ServiceCard from '../components/ServiceCard';
-import type { Review, Service, User, Promotion } from '../../types';
+// FIX: Added missing Appointment type import.
+import type { Review, Service, User, Promotion, Appointment } from '../../types';
 import { StarIcon, HeartIcon, ClockIcon } from '../../shared/icons';
 import * as apiService from '../services/apiService';
 
@@ -12,9 +15,11 @@ interface ServiceDetailPageProps {
     allServices: Service[];
     currentUser: User | null;
     allPromotions: Promotion[];
+    setAllReviews: React.Dispatch<React.SetStateAction<Review[]>>;
+    setAllAppointments: React.Dispatch<React.SetStateAction<Appointment[]>>;
 }
 
-const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, currentUser, allPromotions }) => {
+const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, currentUser, allPromotions, setAllReviews, setAllAppointments }) => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     
@@ -184,7 +189,16 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
 
             const createdReview = await apiService.createReview(reviewPayload);
 
+            // Update local and global state
             setServiceReviews(prev => [createdReview, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+            setAllReviews(prev => [createdReview, ...prev]);
+
+            if (appointmentToReview) {
+                setAllAppointments(prev => prev.map(app => 
+                    app.id === appointmentToReview.id ? { ...app, reviewRating: createdReview.rating } : app
+                ));
+            }
+
             setIsReviewFormVisible(false);
             setNewRating(0);
             setNewComment('');
