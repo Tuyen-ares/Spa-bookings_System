@@ -18,6 +18,8 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+// Trust proxy to get correct client IP
+app.set('trust proxy', true);
 
 // Serve static files from the public directory
 app.use(express.static(path.join(__dirname, '../public')));
@@ -42,12 +44,13 @@ db.sequelize.sync(syncOptions) // Removed `force: true` to make data persistent
     const serviceRoutes = require('./routes/services');
     const appointmentRoutes = require('./routes/appointments');
     const promotionRoutes = require('./routes/promotions');
-    const voucherRoutes = require('./routes/vouchers');
     const walletRoutes = require('./routes/wallets');
     const staffRoutes = require('./routes/staff');
     const paymentRoutes = require('./routes/payments');
     const reviewRoutes = require('./routes/reviews');
-    const missionRoutes = require('./routes/missions');
+    const chatbotRoutes = require('./routes/chatbot');
+    const treatmentCourseRoutes = require('./routes/treatmentCourses');
+    const roomRoutes = require('./routes/rooms');
     
     // Use unprotected auth routes first
     app.use('/api/auth', authRoutes);
@@ -57,12 +60,13 @@ db.sequelize.sync(syncOptions) // Removed `force: true` to make data persistent
     app.use('/api/services', serviceRoutes);
     app.use('/api/appointments', appointmentRoutes);
     app.use('/api/promotions', promotionRoutes);
-    app.use('/api/vouchers', voucherRoutes);
     app.use('/api/wallets', walletRoutes);
     app.use('/api/staff', staffRoutes);
     app.use('/api/payments', paymentRoutes);
     app.use('/api/reviews', reviewRoutes);
-    app.use('/api/missions', missionRoutes);
+    app.use('/api/treatment-courses', treatmentCourseRoutes);
+    app.use('/api/rooms', roomRoutes);
+    app.use('/api/chatbot', chatbotRoutes);
 
 
     // Simple root route

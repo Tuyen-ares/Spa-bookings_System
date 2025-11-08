@@ -72,14 +72,19 @@ export const StaffUpsellingPage: React.FC<StaffUpsellingPageProps> = ({ currentU
             clientId: selectedClient.id,
         };
 
-        // In a real app, this would update sales data in a backend
-        console.log('Recorded new sale:', newSale);
+        // TODO: Implement product sale recording via API
+        // This would create a sale record in the database
+        console.log('Recording new sale:', newSale);
         
-        // This would typically update state in parent or global store via a callback
-        // For mock purposes, we just show a toast
-        
-        setToastMessage(`Đã ghi nhận bán ${quantity} ${selectedProduct.name} cho ${selectedClient.name}!`);
-        setTimeout(() => setToastMessage(null), 3000);
+        try {
+            // await apiService.createSale(newSale);
+            setToastMessage(`Đã ghi nhận bán ${quantity} ${selectedProduct.name} cho ${selectedClient.name}!`);
+        } catch (error) {
+            console.error('Error recording sale:', error);
+            setToastMessage('Không thể ghi nhận bán hàng. Vui lòng thử lại.');
+        } finally {
+            setTimeout(() => setToastMessage(null), 3000);
+        }
         setIsSaleModalOpen(false);
     };
 

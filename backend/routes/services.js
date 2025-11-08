@@ -100,6 +100,7 @@ router.post('/', async (req, res) => {
             isNew: true,
             imageUrl: newServiceData.imageUrl || `https://picsum.photos/seed/${uuidv4()}/400/300`,
             ...newServiceData,
+            category: categoryInstance.name, // Store category name for display
             categoryId: categoryInstance.id, // Use the found/created category ID
         });
 
@@ -130,6 +131,7 @@ router.put('/:id', async (req, res) => {
             const [categoryInstance] = await db.ServiceCategory.findOrCreate({
                 where: { name: category }
             });
+            updatedServiceData.category = categoryInstance.name; // Store category name for display
             updatedServiceData.categoryId = categoryInstance.id;
         }
 

@@ -83,7 +83,16 @@ export const ServicesListPage: React.FC<ServicesListPageProps> = ({ allServices 
             try {
                 setIsLoading(true);
                 setError(null);
-                setServices(allServices.filter(s => s.isActive));
+                
+                // If allServices is provided and has data, use it
+                // Otherwise, fetch directly from API
+                if (allServices && allServices.length > 0) {
+                    setServices(allServices.filter(s => s.isActive !== false));
+                } else {
+                    // Fetch services directly from API if allServices is empty or not provided
+                    const fetchedServices = await apiService.getServices();
+                    setServices(fetchedServices.filter(s => s.isActive !== false));
+                }
 
                 const categoryNames = await apiService.getServiceCategories();
                 setCategories(['Tất cả', ...categoryNames]); 
@@ -97,12 +106,7 @@ export const ServicesListPage: React.FC<ServicesListPageProps> = ({ allServices 
             }
         };
 
-        if (allServices && allServices.length > 0) {
-            fetchInitialData();
-        } else if (!allServices) {
-            setIsLoading(false);
-        }
-        
+        fetchInitialData();
     }, [allServices]);
 
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);

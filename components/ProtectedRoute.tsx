@@ -21,15 +21,21 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ user, children, adminOn
     return <Navigate to={loginPath} replace />;
   }
 
-  if (adminOnly && user.role !== 'Admin') {
-    // If not an admin, redirect to home page
+  // Normalize role to handle case-insensitive comparison
+  const userRole = (user.role || '').toString().toLowerCase();
+
+  if (adminOnly && userRole !== 'admin') {
+    // If not an admin, redirect based on role
+    if (userRole === 'staff') {
+      return <Navigate to="/staff" replace />;
+    }
     return <Navigate to="/" replace />;
   }
   
-  if (staffOnly && !['Admin', 'Staff'].includes(user.role)) {
-      return <Navigate to="/" replace />;
+  if (staffOnly && !['admin', 'staff'].includes(userRole)) {
+    // If not staff or admin, redirect to home
+    return <Navigate to="/" replace />;
   }
-
 
   return children;
 };

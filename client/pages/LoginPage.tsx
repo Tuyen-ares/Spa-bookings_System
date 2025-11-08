@@ -41,23 +41,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     const handleGoogleLogin = async () => {
         setError('');
         setSuccessMessage('');
-        try {
-            const allUsers = await apiService.getUsers();
-            const mockGoogleUser = allUsers.find(u => u.name === 'Lưu Hữu Nam' && u.role === 'Client');
-
-            if (mockGoogleUser) {
-                const mockLoginResponse = {
-                    user: mockGoogleUser,
-                    token: `mock-google-token-for-${mockGoogleUser.id}`
-                };
-                onLogin(mockLoginResponse);
-                 // Navigation is now handled by the useEffect in App.tsx
-            } else {
-                setError('Không tìm thấy tài khoản Google mẫu. Vui lòng thử đăng nhập thường.');
-            }
-        } catch (err: any) {
-             setError(err.message || 'Đăng nhập bằng Google thất bại.');
-        }
+        // TODO: Implement real Google OAuth login
+        // For now, show error message that Google login is not yet implemented
+        setError('Đăng nhập bằng Google chưa được hỗ trợ. Vui lòng sử dụng email và mật khẩu để đăng nhập.');
     }
 
     return (

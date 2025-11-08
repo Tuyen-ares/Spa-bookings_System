@@ -21,27 +21,33 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
     },
     price: {
-      type: DataTypes.FLOAT,
+      type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
     },
     discountPrice: {
-      type: DataTypes.FLOAT,
+      type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
     },
     duration: {
       type: DataTypes.INTEGER, // in minutes
       allowNull: false,
     },
+    category: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'Tên danh mục (để hiển thị)',
+    },
     categoryId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'service_categories',
         key: 'id'
-      }
+      },
+      onDelete: 'SET NULL',
     },
     imageUrl: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(500),
       allowNull: true,
     },
     rating: {

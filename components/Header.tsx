@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
-import type { User } from '../../types';
-import { LogoIcon, ChevronDownIcon, MenuIcon, CloseIcon } from '../../shared/icons';
+import type { User } from '../types';
+import { LogoIcon, ChevronDownIcon, MenuIcon, CloseIcon } from '../shared/icons';
 
 interface HeaderProps {
     currentUser: User | null;

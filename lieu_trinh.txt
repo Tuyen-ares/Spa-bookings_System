@@ -1,0 +1,49 @@
+🎯 Prompt mô tả chức năng "Liệu trình" (phiên bản chuẩn)
+🧩 1. Giao diện hiển thị
+
+Thêm mục “Liệu trình” trên thanh sidebar (nằm kế bên mục “Dịch vụ”).
+
+Giao diện “Liệu trình” bên khách hàng hiển thị tương tự “Dịch vụ”, bao gồm:
+
+Tên liệu trình
+
+Số buổi / tuần
+
+Thời gian dự kiến của mỗi buổi
+
+Mô tả và trạng thái (đang tham gia / đã hoàn thành / tạm dừng)
+
+🧑‍💼 2. Chức năng bên Admin
+
+Admin có thể CRUD liệu trình (Create, Read, Update, Delete):
+
+Thêm liệu trình mới
+
+Chỉnh sửa số buổi / tuần, thời lượng từng buổi
+
+Cập nhật trạng thái từng buổi (hoàn thành / chưa hoàn thành)
+
+Xem lịch sử liệu trình của từng khách hàng
+
+🗓️ 3. Logic liệu trình và tự động gửi thông báo
+
+Mỗi liệu trình có nhiều buổi, lặp lại theo tuần (ví dụ: thứ 3, thứ 6).
+
+Khi admin đánh dấu hoàn thành buổi X, hệ thống sẽ:
+
+Tự động tính ngày buổi kế tiếp (dựa trên thứ trong tuần đã đăng ký).
+
+Lên lịch gửi thông báo tự động trước 2 ngày.
+
+💬 4. Hệ thống tin nhắn tự động (trong web)
+
+Thêm icon “tin nhắn” (mess) kế bên icon tài khoản của khách hàng (ở góc trên giao diện người dùng).
+
+Tin nhắn này hiển thị các thông báo tự động từ admin.
+
+Nội dung tin nhắn:
+
+Chào <tên khách hàng>, bạn có lịch hẹn vào ngày <ngày hẹn> cho buổi liệu trình <tên liệu trình>.
+
+
+Tin nhắn này được gửi tự động trước 2 ngày mỗi buổi.

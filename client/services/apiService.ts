@@ -6,7 +6,7 @@ import type {
     Sale, InternalNotification, InternalNews,
     TreatmentCourse, Review, Payment, Mission, Prize, ServiceCategory, StaffTask, PaymentMethod,
     // FIX: Imported missing types to resolve compilation errors.
-    TreatmentSession, UserStatus
+    TreatmentSession, UserStatus, Room
 } from '../../types';
 
 const API_BASE_URL = 'http://localhost:3001/api'; // Point to the backend server
@@ -24,7 +24,9 @@ const getAuthHeaders = () => {
 const handleResponse = async (response: Response) => {
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: response.statusText }));
-        throw new Error(errorData.message || 'An unknown error occurred');
+        const errorMessage = errorData.message || errorData.error || 'An unknown error occurred';
+        console.error('API Error:', errorMessage, errorData);
+        throw new Error(errorMessage);
     }
     if (response.status === 204) { // No Content
         return;
@@ -42,11 +44,20 @@ export const login = async (credentials: Pick<User, 'email' | 'password'>): Prom
     return handleResponse(response);
 };
 
-export const register = async (userData: Pick<User, 'name' | 'email' | 'password'>): Promise<{ user: User, token: string }> => {
+export const register = async (userData: Pick<User, 'name' | 'email' | 'password' | 'phone' | 'gender' | 'birthday'>): Promise<{ user: User, token: string }> => {
     const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userData),
+    });
+    return handleResponse(response);
+};
+
+export const changePassword = async (userId: string, currentPassword: string, newPassword: string): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, currentPassword, newPassword }),
     });
     return handleResponse(response);
 };
@@ -64,13 +75,14 @@ export const getReviews = async (filters?: { serviceId?: string; userId?: string
     return fetch(`${API_BASE_URL}/reviews?${params.toString()}`).then(handleResponse);
 };
 export const getPromotions = async (): Promise<Promotion[]> => fetch(`${API_BASE_URL}/promotions`).then(handleResponse);
-export const getRedeemableVouchers = async (): Promise<RedeemableVoucher[]> => fetch(`${API_BASE_URL}/vouchers`).then(handleResponse);
-export const getTiers = async (): Promise<Tier[]> => fetch(`${API_BASE_URL}/vouchers/tiers`).then(handleResponse);
+// Note: Vouchers, Missions, and RedeemedRewards functionality removed
+export const getRedeemableVouchers = async (): Promise<RedeemableVoucher[]> => Promise.resolve([]);
+export const getTiers = async (): Promise<Tier[]> => Promise.resolve([]);
 export const getUserWallet = async (userId: string): Promise<Wallet> => fetch(`${API_BASE_URL}/wallets/${userId}`).then(handleResponse);
-export const getUserPointsHistory = async (userId: string): Promise<PointsHistory[]> => fetch(`${API_BASE_URL}/wallets/${userId}/points-history`).then(handleResponse);
+export const getUserPointsHistory = async (userId: string): Promise<Array<{date: string; pointsChange: number; type: string; source: string; description: string}>> => fetch(`${API_BASE_URL}/wallets/${userId}/points-history`).then(handleResponse);
 export const getLuckyWheelPrizes = async (): Promise<Prize[]> => fetch(`${API_BASE_URL}/wallets/lucky-wheel-prizes`).then(handleResponse);
-export const getRedeemedRewards = async (): Promise<RedeemedReward[]> => fetch(`${API_BASE_URL}/vouchers/redeemed`).then(handleResponse);
-export const getUserMissions = async (userId: string): Promise<Mission[]> => fetch(`${API_BASE_URL}/missions/user/${userId}`).then(handleResponse);
+export const getRedeemedRewards = async (): Promise<RedeemedReward[]> => Promise.resolve([]);
+export const getUserMissions = async (userId: string): Promise<Mission[]> => Promise.resolve([]);
 export const getPayments = async (): Promise<Payment[]> => fetch(`${API_BASE_URL}/payments`).then(handleResponse);
 export const getStaffAvailability = async (staffId: string): Promise<StaffDailyAvailability[]> => fetch(`${API_BASE_URL}/staff/availability/${staffId}`).then(handleResponse);
 export const getStaffShifts = async (staffId: string): Promise<StaffShift[]> => fetch(`${API_BASE_URL}/staff/shifts/${staffId}`).then(handleResponse);
@@ -115,7 +127,7 @@ export const deleteRedeemableVoucher = (id: string) => remove(`${API_BASE_URL}/v
 
 export const createRedeemedReward = (data: Partial<RedeemedReward>) => create<RedeemedReward>(`${API_BASE_URL}/vouchers/redeemed`, data);
 export const updateUserWallet = (userId: string, data: Partial<Wallet>) => update<Wallet>(`${API_BASE_URL}/wallets/${userId}`, data);
-export const createPointsHistoryEntry = (userId: string, data: Partial<PointsHistory>) => create<PointsHistory>(`${API_BASE_URL}/wallets/${userId}/points-history`, data);
+export const createPointsHistoryEntry = (userId: string, data: {date?: string; pointsChange: number; type?: string; source?: string; description: string}) => create(`${API_BASE_URL}/wallets/${userId}/points-history`, data);
 
 export const updateStaffAvailability = (staffId: string, date: string, timeSlots: StaffDailyAvailability['timeSlots']) => update<StaffDailyAvailability>(`${API_BASE_URL}/staff/availability/${staffId}/${date}`, { timeSlots });
 export const deleteStaffAvailability = (staffId: string, date: string) => remove(`${API_BASE_URL}/staff/availability/${staffId}/${date}`);
@@ -141,19 +153,28 @@ export const createStaffTask = (data: Partial<StaffTask>) => create<StaffTask>(`
 export const updateStaffTask = (id: string, data: Partial<StaffTask>) => update<StaffTask>(`${API_BASE_URL}/staff/tasks/${id}`, data);
 export const deleteStaffTask = (id: string) => remove(`${API_BASE_URL}/staff/tasks/${id}`);
 
-export const processPayment = (appointmentId: string, method: PaymentMethod, finalAmount: number) => {
+export const processPayment = async (appointmentId: string, method: PaymentMethod, finalAmount: number): Promise<{ paymentUrl?: string; paymentId?: string; success?: boolean; payment?: Payment }> => {
     // This is a specific action, so we define it separately
-    return fetch(`${API_BASE_URL}/payments/process`, {
+    const response = await fetch(`${API_BASE_URL}/payments/process`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ appointmentId, method, amount: finalAmount })
-    }).then(handleResponse);
+    });
+    return handleResponse(response);
 };
 
 export const updatePayment = (id: string, data: Partial<Payment>) => update<Payment>(`${API_BASE_URL}/payments/${id}`, data);
 
-// Stubs for functions not fully implemented in this refactor
-export const getTreatmentCourses = async (): Promise<TreatmentCourse[]> => { console.warn("getTreatmentCourses not implemented in backend"); return []; };
+export const getTreatmentCourses = async (templateOnly: boolean = false): Promise<TreatmentCourse[]> => {
+  const url = templateOnly 
+    ? `${API_BASE_URL}/treatment-courses?template=true`
+    : `${API_BASE_URL}/treatment-courses`;
+  return fetch(url).then(handleResponse);
+};
+export const getTreatmentCourseById = async (id: string): Promise<TreatmentCourse> => fetch(`${API_BASE_URL}/treatment-courses/${id}`).then(handleResponse);
+export const createTreatmentCourse = (data: Partial<TreatmentCourse>) => create<TreatmentCourse>(`${API_BASE_URL}/treatment-courses`, data);
+export const updateTreatmentCourse = (id: string, data: Partial<TreatmentCourse>) => update<TreatmentCourse>(`${API_BASE_URL}/treatment-courses/${id}`, data);
+export const deleteTreatmentCourse = (id: string) => remove(`${API_BASE_URL}/treatment-courses/${id}`);
 export const updateTier = async (level: number, tierData: Partial<Tier>): Promise<Tier> => update(`${API_BASE_URL}/vouchers/tiers/${level}`, tierData);
 export const updateMission = (id: string, data: Partial<Mission>) => update<Mission>(`${API_BASE_URL}/missions/${id}`, data);
 // Add other function stubs as needed...
@@ -162,3 +183,10 @@ export const completePayment = (id: string): Promise<Payment> => update(`${API_B
 export const updateTreatmentSession = (courseId: string, sessionIndex: number, data: Partial<TreatmentSession>): Promise<TreatmentCourse> => { throw new Error("Not implemented"); };
 export const approveAppointment = (id: string): Promise<Appointment> => updateAppointment(id, { status: 'upcoming' });
 export const rejectAppointment = (id: string): Promise<Appointment> => updateAppointment(id, { status: 'cancelled' });
+
+// --- ROOMS ---
+export const getRooms = async (): Promise<Room[]> => fetch(`${API_BASE_URL}/rooms`).then(handleResponse);
+export const getRoomById = async (id: string): Promise<Room> => fetch(`${API_BASE_URL}/rooms/${id}`).then(handleResponse);
+export const createRoom = (data: Partial<Room>) => create<Room>(`${API_BASE_URL}/rooms`, data);
+export const updateRoom = (id: string, data: Partial<Room>) => update<Room>(`${API_BASE_URL}/rooms/${id}`, data);
+export const deleteRoom = (id: string) => remove(`${API_BASE_URL}/rooms/${id}`);

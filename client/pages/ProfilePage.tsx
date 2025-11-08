@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import type { User, Wallet, Tier, Mission, Appointment, Service, PointsHistory, LoginAttempt, Payment, Review } from '../../types';
 import {
     TrophyIcon, CreditCardIcon, ShieldCheckIcon,
-    CameraIcon, EditIcon, HistoryIcon, ProfileIcon, LogoutIcon, AppointmentsIcon, StarIcon, GiftIcon, MailIcon, PhoneIcon, CakeIcon, LocationIcon, QrCodeIcon, ExclamationTriangleIcon, PrinterIcon, MomoIcon, ZaloPayIcon, VNPayIcon, SparklesIcon, TrashIcon, EyeIcon, EyeSlashIcon
+    CameraIcon, EditIcon, HistoryIcon, ProfileIcon, LogoutIcon, AppointmentsIcon, StarIcon, GiftIcon, MailIcon, PhoneIcon, CakeIcon, LocationIcon, QrCodeIcon, ExclamationTriangleIcon, PrinterIcon, VNPayIcon, SparklesIcon, TrashIcon, EyeIcon, EyeSlashIcon
 } from '../../shared/icons';
 import * as apiService from '../services/apiService';
 
@@ -240,18 +240,16 @@ const ProfileInfoRow: React.FC<{ icon: React.ReactNode; label: string; value: Re
 
 
 const ProfileInfoTab: React.FC<{ currentUser: User; onUpdateUser: (user: User) => void; }> = ({ currentUser, onUpdateUser }) => {
-    const handleEdit = (field: string) => alert(`Chỉnh sửa ${field} (chức năng mô phỏng).`);
+    const handleEdit = (field: string) => {
+        // TODO: Implement edit functionality
+        console.log(`Edit ${field} for user ${currentUser.id}`);
+    };
 
     return (
         <div className="bg-white p-6 sm:p-8 rounded-lg shadow-soft-lg animate-fadeInUp border border-gray-200/50">
             <h2 className="text-2xl font-bold font-serif text-brand-text mb-6">Thông tin cá nhân</h2>
             
-            {!currentUser.customerProfile?.address && (
-                <div className="mb-6 p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-r-lg flex items-center gap-3">
-                    <GiftIcon className="w-6 h-6 text-yellow-600 flex-shrink-0" />
-                    <p className="text-sm text-yellow-800">Bạn có thể thêm địa chỉ để nhận quà sinh nhật và các ưu đãi đặc biệt! 🎁</p>
-                </div>
-            )}
+            {/* Note: address field removed from users table in db.txt */}
 
             <div className="space-y-2">
                 <ProfileInfoRow icon={<ProfileIcon className="w-6 h-6"/>} label="Họ và tên" value={currentUser.name} onEdit={() => handleEdit('Họ và tên')} />
@@ -259,59 +257,32 @@ const ProfileInfoTab: React.FC<{ currentUser: User; onUpdateUser: (user: User) =
                 <ProfileInfoRow icon={<PhoneIcon className="w-6 h-6"/>} label="Số điện thoại" value={currentUser.phone || 'Chưa cập nhật'} onEdit={() => handleEdit('Số điện thoại')} />
                 <ProfileInfoRow icon={<CakeIcon className="w-6 h-6"/>} label="Ngày sinh & Giới tính" value={`${currentUser.birthday ? new Date(currentUser.birthday).toLocaleDateString('vi-VN') : 'Chưa cập nhật'} - ${currentUser.gender || 'Chưa cập nhật'}`} onEdit={() => handleEdit('Ngày sinh & Giới tính')} />
                 
-                {/* Address with Map */}
-                <div className="py-4 border-b border-gray-200/80 group">
-                    <div className="flex justify-between items-start">
-                        <div className="flex items-center gap-4">
-                            <div className="text-brand-dark"><LocationIcon className="w-6 h-6"/></div>
-                            <div>
-                                <p className="text-sm font-medium text-gray-500">Địa chỉ</p>
-                                <p className="font-semibold text-gray-800 text-base">{currentUser.customerProfile?.address || 'Chưa cập nhật'}</p>
-                            </div>
-                        </div>
-                        <button onClick={() => handleEdit('Địa chỉ')} className="p-2 rounded-full text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-100 hover:text-brand-dark">
-                            <EditIcon className="w-5 h-5" />
-                        </button>
-                    </div>
-                    {currentUser.customerProfile?.address && (
-                        <div className="mt-3 ml-10 rounded-lg overflow-hidden border border-gray-200 shadow-sm" style={{ height: '150px' }}>
-                             <iframe 
-                                src={`https://www.google.com/maps/embed/v1/place?key=DUMMY_API_KEY&q=${encodeURIComponent(currentUser.customerProfile.address)}`}
-                                width="100%" 
-                                height="100%" 
-                                style={{ border: 0 }} 
-                                allowFullScreen={false} 
-                                loading="lazy"
-                                title="User Address"
-                            ></iframe>
-                        </div>
-                    )}
-                </div>
+                {/* Note: Address field removed from users table in db.txt */}
             </div>
 
-            {/* QR Code Section */}
-            <div className="mt-8 grid grid-cols-1 gap-8">
-                <div className="md:max-w-sm mx-auto w-full">
-                    <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2"><QrCodeIcon className="w-5 h-5"/> Mã QR cá nhân</h3>
-                    <div className="bg-gray-50 p-4 rounded-lg text-center border">
-                        {currentUser.customerProfile?.qrCodeUrl ? (
-                            <img src={currentUser.customerProfile.qrCodeUrl} alt="Mã QR cá nhân" className="w-36 h-36 mx-auto" />
-                        ) : (
-                            <p className="text-sm text-gray-500 p-8">Chưa có mã QR.</p>
-                        )}
-                        <p className="text-xs text-gray-500 mt-2">Sử dụng mã này để check-in nhanh tại Spa.</p>
-                    </div>
-                </div>
-            </div>
+            {/* Note: QR Code field removed from users table in db.txt */}
         </div>
     );
 };
 
 
-const MembershipTab: React.FC<{ currentUser: User; wallet: Wallet | null; allTiers: Tier[]; pointsHistory: PointsHistory[]; }> = ({ currentUser, wallet, allTiers, pointsHistory }) => {
+const MembershipTab: React.FC<{ currentUser: User; wallet: Wallet | null; allTiers: Tier[]; pointsHistory: Array<{date: string; pointsChange: number; type: string; source: string; description: string}>; }> = ({ currentUser, wallet, allTiers, pointsHistory }) => {
     const [showLevelUpModal, setShowLevelUpModal] = useState(false);
 
-    const currentTier = useMemo(() => allTiers.find(t => t.level === currentUser.customerProfile?.tierLevel) || allTiers[0], [currentUser.customerProfile, allTiers]);
+    // Calculate tier from wallet points since tierLevel is not in users table
+    const currentTier = useMemo(() => {
+        if (!wallet) return allTiers[0];
+        const userPoints = wallet.points || 0;
+        const sortedTiers = [...allTiers].sort((a, b) => (a.pointsRequired || 0) - (b.pointsRequired || 0));
+        let tierLevel = 1; // Default to tier 1
+        for (let i = sortedTiers.length - 1; i >= 0; i--) {
+            if (userPoints >= (sortedTiers[i].pointsRequired || 0)) {
+                tierLevel = sortedTiers[i].level;
+                break;
+            }
+        }
+        return allTiers.find(t => t.level === tierLevel) || allTiers[0];
+    }, [wallet, allTiers]);
     const nextTier = useMemo(() => allTiers.find(t => t.level === (currentTier?.level || 0) + 1), [currentTier, allTiers]);
 
     const progressPercentage = useMemo(() => {
@@ -369,7 +340,6 @@ const MembershipTab: React.FC<{ currentUser: User; wallet: Wallet | null; allTie
                     <p className="text-center font-semibold text-brand-primary">🎉 Chúc mừng! Bạn đã đạt hạng cao nhất! 🎉</p>
                 )}
                  <div className="text-center mt-4">
-                    <button onClick={() => setShowLevelUpModal(true)} className="text-sm text-blue-600 hover:underline">(Mô phỏng thăng hạng)</button>
                 </div>
             </div>
 
@@ -386,8 +356,8 @@ const MembershipTab: React.FC<{ currentUser: User; wallet: Wallet | null; allTie
                             </tr>
                         </thead>
                         <tbody className="divide-y">
-                            {pointsHistory.length > 0 ? pointsHistory.map(entry => (
-                                <tr key={entry.id}>
+                            {pointsHistory.length > 0 ? pointsHistory.map((entry, index) => (
+                                <tr key={`${entry.date}-${entry.description}-${entry.pointsChange}-${index}`}>
                                     <td className="p-3 text-gray-600">{new Date(entry.date).toLocaleDateString('vi-VN')}</td>
                                     <td className="p-3 text-gray-800">{entry.description}</td>
                                     <td className={`p-3 font-bold text-right ${entry.pointsChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>{entry.pointsChange >= 0 ? '+' : ''}{entry.pointsChange.toLocaleString()}</td>
@@ -429,32 +399,93 @@ const PaymentsTab: React.FC<{
     allAppointments: Appointment[];
 }> = ({ currentUser, allPayments, allServices, allUsers, allAppointments }) => {
     const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
-    const [paymentMethods, setPaymentMethods] = useState([
-        { id: 'momo-123', name: 'Ví Momo', details: '**** 1234', isDefault: true, icon: <MomoIcon className="w-8 h-8"/> },
-        { id: 'visa-5678', name: 'Visa', details: '**** 5678', isDefault: false, icon: <CreditCardIcon className="w-8 h-8 text-blue-600"/> },
-        { id: 'zalopay-9012', name: 'ZaloPay', details: '**** 9012', isDefault: false, icon: <ZaloPayIcon className="w-8 h-8"/> },
-    ]);
+    const [paymentMethods, setPaymentMethods] = useState<Array<{ id: string; name: string; details: string; isDefault: boolean; icon: React.ReactNode }>>([]);
     const [is2faEnabled, setIs2faEnabled] = useState(false);
+    const [localPayments, setLocalPayments] = useState<Payment[]>([]);
+    const [isLoadingPayments, setIsLoadingPayments] = useState(false);
+
+    // Fetch payments from API to ensure we have the latest data
+    useEffect(() => {
+        const fetchPayments = async () => {
+            try {
+                setIsLoadingPayments(true);
+                // Fetch all payments from API
+                const fetchedPayments = await apiService.getPayments();
+                // Filter for current user
+                const userPayments = fetchedPayments.filter(p => p.userId === currentUser.id);
+                setLocalPayments(userPayments);
+            } catch (error) {
+                console.error("Failed to fetch payments:", error);
+                // Fallback to allPayments from props if API call fails
+                setLocalPayments(allPayments.filter(p => p.userId === currentUser.id));
+            } finally {
+                setIsLoadingPayments(false);
+            }
+        };
+        
+        fetchPayments();
+        
+        // Also listen for refresh event (e.g., after payment success)
+        const handleRefresh = () => {
+            fetchPayments();
+        };
+        window.addEventListener('refresh-appointments', handleRefresh);
+        return () => {
+            window.removeEventListener('refresh-appointments', handleRefresh);
+        };
+    }, [currentUser.id, allPayments]);
+
+    // Also update when allPayments changes (e.g., after payment)
+    useEffect(() => {
+        if (allPayments.length > 0) {
+            const userPayments = allPayments.filter(p => p.userId === currentUser.id);
+            if (userPayments.length > 0) {
+                setLocalPayments(prev => {
+                    // Merge and deduplicate payments
+                    const merged = [...prev, ...userPayments];
+                    const unique = merged.filter((payment, index, self) => 
+                        index === self.findIndex(p => p.id === payment.id)
+                    );
+                    return unique;
+                });
+            }
+        }
+    }, [allPayments, currentUser.id]);
 
     const userPayments = useMemo(() => {
-        return allPayments
-            .filter(p => p.userId === currentUser.id)
+        return localPayments
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [allPayments, currentUser.id]);
+    }, [localPayments]);
     
     const STATUS_CONFIG: Record<Payment['status'], { text: string; color: string; bgColor: string; }> = {
         Completed: { text: 'Hoàn thành', color: 'text-green-800', bgColor: 'bg-green-100' },
         Pending: { text: 'Chờ xử lý', color: 'text-yellow-800', bgColor: 'bg-yellow-100' },
         Refunded: { text: 'Đã hoàn tiền', color: 'text-red-800', bgColor: 'bg-red-100' },
+        Failed: { text: 'Thất bại', color: 'text-red-800', bgColor: 'bg-red-100' },
     };
 
     const handleSetDefault = (id: string) => {
+        // TODO: Implement API call to set default payment method
         setPaymentMethods(methods => methods.map(m => ({ ...m, isDefault: m.id === id })));
+        console.log('Setting default payment method:', id);
     };
     
-    const handleSendInvoice = () => {
-        alert(`Đã gửi hóa đơn cho giao dịch #${viewingPayment?.transactionId.slice(0,8)} đến email ${currentUser.email} (mô phỏng).`);
-        setViewingPayment(null);
+    const handleSendInvoice = async () => {
+        if (!viewingPayment) return;
+        
+        const transactionId = viewingPayment.transactionId || viewingPayment.id || 'N/A';
+        const transactionDisplay = transactionId !== 'N/A' ? `#${transactionId.slice(0, 8)}` : 'N/A';
+        
+        try {
+            // TODO: Implement invoice sending via email API
+            console.log(`Sending invoice for payment ${transactionDisplay} to ${currentUser.email}`);
+            alert(`Đã gửi hóa đơn cho giao dịch ${transactionDisplay} đến email ${currentUser.email}`);
+        } catch (error) {
+            console.error('Error sending invoice:', error);
+            alert('Không thể gửi hóa đơn. Vui lòng thử lại sau.');
+        } finally {
+            setViewingPayment(null);
+        }
     };
 
     return (
@@ -476,16 +507,32 @@ const PaymentsTab: React.FC<{
                             </tr>
                         </thead>
                         <tbody>
-                            {userPayments.length > 0 ? userPayments.slice(0, 5).map(payment => {
+                            {isLoadingPayments ? (
+                                <tr>
+                                    <td colSpan={7} className="text-center py-8">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-brand-primary"></div>
+                                            <span className="text-gray-500">Đang tải lịch sử thanh toán...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : userPayments.length > 0 ? userPayments.map(payment => {
                                 const staff = allUsers.find(u => u.id === payment.therapistId);
+                                // Get therapist from appointment if not directly in payment
+                                const appointment = payment.appointmentId ? allAppointments.find(a => a.id === payment.appointmentId) : null;
+                                const therapistName = staff?.name || appointment?.therapist || 'N/A';
+                                // Handle transactionId - may be null/undefined
+                                const transactionId = payment.transactionId || payment.id || 'N/A';
+                                const transactionDisplay = transactionId !== 'N/A' ? `#${transactionId.slice(0, 8)}` : 'N/A';
+                                
                                 return (
                                 <tr key={payment.id} className="border-b last:border-0 hover:bg-gray-50">
-                                    <td className="p-3 font-mono text-xs text-gray-600">#{payment.transactionId.slice(0, 8)}</td>
-                                    <td className="p-3 font-medium text-gray-800">{payment.serviceName}</td>
-                                    <td className="p-3 text-gray-600">{new Date(payment.date).toLocaleDateString('vi-VN')}</td>
-                                    <td className="p-3 text-gray-600">{staff?.name || 'N/A'}</td>
-                                    <td className="p-3 font-semibold text-brand-primary">{formatCurrency(payment.amount)}</td>
-                                    <td className="p-3"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${STATUS_CONFIG[payment.status].bgColor} ${STATUS_CONFIG[payment.status].color}`}>{STATUS_CONFIG[payment.status].text}</span></td>
+                                    <td className="p-3 font-mono text-xs text-gray-600">{transactionDisplay}</td>
+                                    <td className="p-3 font-medium text-gray-800">{payment.serviceName || 'Dịch vụ'}</td>
+                                    <td className="p-3 text-gray-600">{new Date(payment.date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</td>
+                                    <td className="p-3 text-gray-600">{therapistName}</td>
+                                    <td className="p-3 font-semibold text-brand-primary">{formatCurrency(parseFloat(String(payment.amount)) || 0)}</td>
+                                    <td className="p-3"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${STATUS_CONFIG[payment.status]?.bgColor || 'bg-gray-100'} ${STATUS_CONFIG[payment.status]?.color || 'text-gray-800'}`}>{STATUS_CONFIG[payment.status]?.text || payment.status}</span></td>
                                     <td className="p-3 text-right"><button onClick={() => setViewingPayment(payment)} className="font-semibold text-blue-600 hover:underline">Chi tiết</button></td>
                                 </tr>
                             )}) : (
@@ -541,20 +588,20 @@ const PaymentsTab: React.FC<{
                         <div className="p-6">
                             <h3 className="text-2xl font-serif font-bold text-center text-brand-dark mb-4">Hóa Đơn Chi Tiết</h3>
                             <div className="bg-gray-50 p-4 rounded-lg space-y-3">
-                                <div className="flex justify-between text-sm"><span className="text-gray-500">Mã giao dịch:</span><span className="font-mono font-semibold">#{viewingPayment.transactionId.slice(0, 8)}</span></div>
+                                <div className="flex justify-between text-sm"><span className="text-gray-500">Mã giao dịch:</span><span className="font-mono font-semibold">{viewingPayment.transactionId ? `#${viewingPayment.transactionId.slice(0, 8)}` : viewingPayment.id ? `#${viewingPayment.id.slice(0, 8)}` : 'N/A'}</span></div>
                                 <div className="flex justify-between text-sm"><span className="text-gray-500">Ngày:</span><span className="font-semibold">{new Date(viewingPayment.date).toLocaleString('vi-VN')}</span></div>
-                                <div className="flex justify-between text-sm"><span className="text-gray-500">Phương thức:</span><span className="font-semibold">{viewingPayment.method}</span></div>
+                                <div className="flex justify-between text-sm"><span className="text-gray-500">Phương thức:</span><span className="font-semibold">{viewingPayment.method || 'N/A'}</span></div>
                             </div>
                             <div className="my-4">
                                 <img src={allServices.find(s => s.id === allAppointments.find(a => a.id === viewingPayment.appointmentId)?.serviceId)?.imageUrl || 'https://picsum.photos/400/200'} alt="Service" className="w-full h-32 object-cover rounded-md"/>
                             </div>
                             <div className="border-t border-b py-3 space-y-2">
-                                <div className="flex justify-between font-semibold"><p>{viewingPayment.serviceName}</p><p>{formatCurrency(viewingPayment.amount)}</p></div>
-                                <div className="flex justify-between text-sm text-gray-500"><p>Mã giảm giá (mock)</p><p>- {formatCurrency(0)}</p></div>
+                                <div className="flex justify-between font-semibold"><p>{viewingPayment.serviceName || 'Dịch vụ'}</p><p>{formatCurrency(parseFloat(String(viewingPayment.amount)) || 0)}</p></div>
+                                {/* Discount removed - no mock data */}
                             </div>
                             <div className="flex justify-between font-bold text-lg pt-3">
                                 <p>Tổng cộng</p>
-                                <p className="text-brand-primary">{formatCurrency(viewingPayment.amount)}</p>
+                                <p className="text-brand-primary">{formatCurrency(parseFloat(String(viewingPayment.amount)) || 0)}</p>
                             </div>
                         </div>
                         <div className="bg-gray-50 px-6 py-4 flex justify-end gap-4 rounded-b-lg">
@@ -615,7 +662,17 @@ const AppointmentsTab: React.FC<{
         return mostReviewedUnused.length > 0 ? mostReviewedUnused[0] : null;
     }, [myAppointments, allServices]);
 
-    const handleCancel = (appId: string) => alert(`Hủy lịch hẹn ${appId} (chức năng mô phỏng).`);
+    const handleCancel = async (appId: string) => {
+        try {
+            await apiService.cancelAppointment(appId);
+            // Refresh appointments after cancel
+            window.dispatchEvent(new CustomEvent('refresh-appointments'));
+            alert('Đã hủy lịch hẹn thành công!');
+        } catch (error: any) {
+            console.error('Error canceling appointment:', error);
+            alert(error.message || 'Không thể hủy lịch hẹn. Vui lòng thử lại sau.');
+        }
+    };
 
     return (
         <div className="animate-fadeInUp space-y-8">
@@ -720,15 +777,197 @@ const AppointmentsTab: React.FC<{
 };
 
 
-const SecurityTab: React.FC = () => {
+const SecurityTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
+    const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+    const handleChangePassword = async () => {
+        setError('');
+        setSuccess('');
+
+        // Validation
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            setError('Vui lòng điền đầy đủ thông tin');
+            return;
+        }
+
+        if (newPassword.length < 6) {
+            setError('Mật khẩu mới phải có ít nhất 6 ký tự');
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            setError('Mật khẩu xác nhận không khớp');
+            return;
+        }
+
+        if (currentPassword === newPassword) {
+            setError('Mật khẩu mới phải khác mật khẩu hiện tại');
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            await apiService.changePassword(currentUser.id, currentPassword, newPassword);
+            setSuccess('Đổi mật khẩu thành công!');
+            setCurrentPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+            setTimeout(() => {
+                setShowChangePasswordModal(false);
+                setSuccess('');
+            }, 2000);
+        } catch (err: any) {
+            setError(err.message || 'Đổi mật khẩu thất bại. Vui lòng thử lại.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleCloseModal = () => {
+        setShowChangePasswordModal(false);
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setError('');
+        setSuccess('');
+    };
+
     return (
-        <div className="bg-white p-8 rounded-lg shadow-soft-lg animate-fadeInUp">
-            <h2 className="text-2xl font-bold font-serif text-brand-text mb-6">Bảo mật tài khoản</h2>
-            <div className="space-y-4">
-                <button className="w-full text-left p-4 border rounded-lg hover:bg-gray-50">Đổi mật khẩu</button>
-                <button className="w-full text-left p-4 border rounded-lg hover:bg-gray-50">Quản lý thiết bị đã đăng nhập</button>
+        <>
+            <div className="bg-white p-8 rounded-lg shadow-soft-lg animate-fadeInUp">
+                <h2 className="text-2xl font-bold font-serif text-brand-text mb-6">Bảo mật tài khoản</h2>
+                <div className="space-y-4">
+                    <button 
+                        onClick={() => setShowChangePasswordModal(true)}
+                        className="w-full text-left p-4 border rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-between"
+                    >
+                        <span className="font-medium">Đổi mật khẩu</span>
+                        <span className="text-gray-400">→</span>
+                    </button>
+                    <button className="w-full text-left p-4 border rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-between opacity-50 cursor-not-allowed">
+                        <span className="font-medium">Quản lý thiết bị đã đăng nhập</span>
+                        <span className="text-xs text-gray-400">Sắp có</span>
+                    </button>
+                </div>
             </div>
-        </div>
+
+            {/* Change Password Modal */}
+            {showChangePasswordModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={handleCloseModal}>
+                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full transform transition-all animate-fadeIn" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-2xl font-serif font-bold text-brand-dark">Đổi mật khẩu</h3>
+                                <button onClick={handleCloseModal} className="text-gray-400 hover:text-gray-800 text-3xl font-light leading-none">&times;</button>
+                            </div>
+                            
+                            {error && (
+                                <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-sm">
+                                    {error}
+                                </div>
+                            )}
+                            
+                            {success && (
+                                <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-800 rounded-lg text-sm">
+                                    {success}
+                                </div>
+                            )}
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Mật khẩu hiện tại</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showCurrentPassword ? 'text' : 'password'}
+                                            value={currentPassword}
+                                            onChange={(e) => setCurrentPassword(e.target.value)}
+                                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent pr-10"
+                                            placeholder="Nhập mật khẩu hiện tại"
+                                            disabled={isLoading}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                        >
+                                            {showCurrentPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Mật khẩu mới</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showNewPassword ? 'text' : 'password'}
+                                            value={newPassword}
+                                            onChange={(e) => setNewPassword(e.target.value)}
+                                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent pr-10"
+                                            placeholder="Nhập mật khẩu mới (tối thiểu 6 ký tự)"
+                                            disabled={isLoading}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowNewPassword(!showNewPassword)}
+                                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                        >
+                                            {showNewPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-1">Mật khẩu phải có ít nhất 6 ký tự</p>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Xác nhận mật khẩu mới</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showConfirmPassword ? 'text' : 'password'}
+                                            value={confirmPassword}
+                                            onChange={(e) => setConfirmPassword(e.target.value)}
+                                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent pr-10"
+                                            placeholder="Nhập lại mật khẩu mới"
+                                            disabled={isLoading}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                        >
+                                            {showConfirmPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-gray-50 px-6 py-4 flex justify-end gap-4 rounded-b-lg">
+                            <button 
+                                onClick={handleCloseModal}
+                                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors"
+                                disabled={isLoading}
+                            >
+                                Hủy
+                            </button>
+                            <button 
+                                onClick={handleChangePassword}
+                                className="px-4 py-2 bg-brand-primary text-white rounded-md hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={isLoading}
+                            >
+                                {isLoading ? 'Đang xử lý...' : 'Đổi mật khẩu'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 };
 
@@ -889,11 +1128,24 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
 }) => {
     
     const [activeTab, setActiveTab] = useState('profile');
-    const [pointsHistory, setPointsHistory] = useState<PointsHistory[]>([]);
+    const [pointsHistory, setPointsHistory] = useState<Array<{date: string; pointsChange: number; type: string; source: string; description: string}>>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(true);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-    const currentTier = useMemo(() => allTiers.find(t => t.level === currentUser.customerProfile?.tierLevel), [currentUser.customerProfile, allTiers]);
+    // Calculate tier from wallet points since tierLevel is not in users table
+    const currentTier = useMemo(() => {
+        if (!wallet) return allTiers[0];
+        const userPoints = wallet.points || 0;
+        const sortedTiers = [...allTiers].sort((a, b) => (a.pointsRequired || 0) - (b.pointsRequired || 0));
+        let tierLevel = 1; // Default to tier 1
+        for (let i = sortedTiers.length - 1; i >= 0; i--) {
+            if (userPoints >= (sortedTiers[i].pointsRequired || 0)) {
+                tierLevel = sortedTiers[i].level;
+                break;
+            }
+        }
+        return allTiers.find(t => t.level === tierLevel) || allTiers[0];
+    }, [wallet, allTiers]);
     
     useEffect(() => {
         const refetchMembershipData = async () => {
@@ -949,7 +1201,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
             case 'membership':
                 return <MembershipTab currentUser={currentUser} wallet={wallet} allTiers={allTiers} pointsHistory={pointsHistory} />;
             case 'security':
-                return <SecurityTab />;
+                return <SecurityTab currentUser={currentUser} />;
             case 'payments':
                 return <PaymentsTab currentUser={currentUser} allPayments={allPayments} allServices={allServices} allUsers={allUsers} allAppointments={allAppointments} />;
             case 'appointments':

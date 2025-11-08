@@ -22,7 +22,7 @@ router.get('/:userId', async (req, res) => {
             if (!user) {
                 return res.status(404).json({ message: 'User not found, cannot create wallet.' });
             }
-            wallet = await db.Wallet.create({ userId: user.id, balance: 0, points: 0, spinsLeft: 3 });
+            wallet = await db.Wallet.create({ userId: user.id, balance: 0, points: 0, totalEarned: 0, totalSpent: 0 });
             res.status(201).json(wallet);
         } else {
             res.json(wallet);
@@ -46,14 +46,8 @@ router.put('/:userId', async (req, res) => {
 
         await wallet.update(updatedWalletData);
 
-        // Optionally, update user's tier if points/spending (balance) affect it
-        let user = await db.User.findByPk(userId);
-        if (user) {
-            // Recalculate totalSpending (assuming it's derived from payments)
-            user.totalSpending = await db.calculateUserTotalSpending(userId); 
-            const updatedUserData = await db.checkAndUpgradeTier(user, wallet); // Pass the Sequelize instance
-            await user.update(updatedUserData);
-        }
+        // Note: Tier upgrade functionality disabled - Tier table removed
+        // Tier upgrade can be implemented manually if needed
 
         res.json(wallet);
     } catch (error) {
@@ -62,35 +56,48 @@ router.put('/:userId', async (req, res) => {
     }
 });
 
-// GET /api/wallets/:userId/points-history - Get user's points history
+// GET /api/wallets/:userId/points-history - Get user's points history from wallet
 router.get('/:userId/points-history', async (req, res) => {
     const { userId } = req.params;
     try {
-        const userPointsHistory = await db.PointsHistory.findAll({ where: { userId } });
-        res.json(userPointsHistory);
+        const wallet = await db.Wallet.findByPk(userId);
+        if (!wallet) {
+            return res.status(404).json({ message: 'Wallet not found' });
+        }
+        const pointsHistory = wallet.pointsHistory || [];
+        res.json(pointsHistory);
     } catch (error) {
         console.error('Error fetching points history:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
 });
 
-// POST /api/wallets/:userId/points-history - Add an entry to points history
+// POST /api/wallets/:userId/points-history - Add an entry to points history in wallet
 router.post('/:userId/points-history', async (req, res) => {
     const { userId } = req.params;
-    const { description, pointsChange } = req.body;
+    const { date, pointsChange, type, source, description } = req.body;
 
     if (!description || pointsChange === undefined) {
         return res.status(400).json({ message: 'Missing description or pointsChange for history entry' });
     }
 
     try {
-        const newEntry = await db.PointsHistory.create({
-            id: uuidv4(),
-            userId,
-            date: new Date().toISOString(),
-            description,
+        const wallet = await db.Wallet.findByPk(userId);
+        if (!wallet) {
+            return res.status(404).json({ message: 'Wallet not found' });
+        }
+
+        const pointsHistory = wallet.pointsHistory || [];
+        const newEntry = {
+            date: date || new Date().toISOString().split('T')[0],
             pointsChange,
-        });
+            type: type || (pointsChange > 0 ? 'earned' : 'spent'),
+            source: source || 'manual',
+            description
+        };
+        pointsHistory.push(newEntry);
+
+        await wallet.update({ pointsHistory });
         res.status(201).json(newEntry);
     } catch (error) {
         console.error('Error creating points history entry:', error);

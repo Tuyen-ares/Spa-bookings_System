@@ -1,0 +1,32 @@
+# Cursor Rules for Anh Tho Spa Project
+
+## Project Overview
+This is a full-stack spa booking management system built with React (TypeScript) frontend and Node.js/Express backend.
+
+## Code Standards
+- Always write code in English
+- Use TypeScript for frontend code
+- Use JavaScript for backend code
+- Follow React best practices
+- Use functional components with hooks
+- Follow RESTful API conventions
+
+## File Structure
+- `/client` - Client-facing pages and components
+- `/admin` - Admin dashboard pages and components
+- `/staff` - Staff portal pages and components
+- `/backend` - Express.js API server
+- `/components` - Shared components
+- `/services` - Shared services
+
+## Database
+- MySQL database using Sequelize ORM
+- Database schema defined in `db.txt`
+- Models in `/backend/models`
+
+## Important Notes
+- Always maintain type safety with TypeScript
+- Use proper error handling
+- Follow existing code patterns
+- Test API endpoints before committing
+

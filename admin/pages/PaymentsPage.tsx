@@ -5,11 +5,12 @@ import * as apiService from '../../client/services/apiService'; // Import API se
 
 const PAYMENTS_PER_PAGE = 10;
 const PAYMENT_METHODS: PaymentMethod[] = ['Cash', 'Card', 'Momo', 'VNPay', 'ZaloPay'];
-const PAYMENT_STATUSES: PaymentStatus[] = ['Completed', 'Pending', 'Refunded'];
+const PAYMENT_STATUSES: PaymentStatus[] = ['Completed', 'Pending', 'Refunded', 'Failed'];
 const STATUS_CONFIG: Record<PaymentStatus, { text: string; color: string; bgColor: string; }> = {
     Completed: { text: 'Hoàn thành', color: 'text-green-800', bgColor: 'bg-green-100' },
     Pending: { text: 'Chờ xử lý', color: 'text-yellow-800', bgColor: 'bg-yellow-100' },
     Refunded: { text: 'Đã hoàn tiền', color: 'text-red-800', bgColor: 'bg-red-100' },
+    Failed: { text: 'Thất bại', color: 'text-red-800', bgColor: 'bg-red-100' },
 };
 const METHOD_TEXT: Record<PaymentMethod, string> = {
     Cash: 'Tiền mặt', Card: 'Thẻ', Momo: 'Momo', VNPay: 'VNPay', ZaloPay: 'ZaloPay'
@@ -60,7 +61,7 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
     const [filterStatus, setFilterStatus] = useState<PaymentStatus | 'All'>('All');
     const [filterDateRange, setFilterDateRange] = useState({ start: '', end: '' });
     const [currentPage, setCurrentPage] = useState(1);
-    
+
     useEffect(() => {
         const fetchPaymentData = async () => {
             try {
@@ -107,8 +108,8 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
                 const paymentDate = new Date(p.date);
                 const startDate = filterDateRange.start ? new Date(filterDateRange.start) : null;
                 const endDate = filterDateRange.end ? new Date(filterDateRange.end) : null;
-                if(startDate) startDate.setHours(0,0,0,0);
-                if(endDate) endDate.setHours(23,59,59,999);
+                if (startDate) startDate.setHours(0, 0, 0, 0);
+                if (endDate) endDate.setHours(23, 59, 59, 999);
                 return (!startDate || paymentDate >= startDate) && (!endDate || paymentDate <= endDate);
             });
     }, [payments, searchTerm, filterMethod, filterStatus, filterDateRange, allUsers]); // FIX: Use allUsers prop
@@ -134,7 +135,7 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
             }
         }
     };
-    
+
     const handlePrint = (paymentId: string) => {
         alert(`Đang chuẩn bị in hóa đơn cho giao dịch #${paymentId.slice(0, 8)}... (Mock chức năng in)`);
     };
@@ -161,9 +162,9 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
                         {PAYMENT_STATUSES.map(s => <option key={s} value={s}>{STATUS_CONFIG[s].text}</option>)}
                     </select>
                     <div className="flex items-center gap-2">
-                        <input type="date" value={filterDateRange.start} onChange={e => setFilterDateRange(p => ({...p, start: e.target.value}))} className="w-full p-2 border rounded-md text-sm"/>
+                        <input type="date" value={filterDateRange.start} onChange={e => setFilterDateRange(p => ({ ...p, start: e.target.value }))} className="w-full p-2 border rounded-md text-sm" />
                         <span className="text-gray-500">-</span>
-                        <input type="date" value={filterDateRange.end} onChange={e => setFilterDateRange(p => ({...p, end: e.target.value}))} className="w-full p-2 border rounded-md text-sm"/>
+                        <input type="date" value={filterDateRange.end} onChange={e => setFilterDateRange(p => ({ ...p, end: e.target.value }))} className="w-full p-2 border rounded-md text-sm" />
                     </div>
                 </div>
             </div>
@@ -185,22 +186,23 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
                                 {paginatedPayments.map(payment => {
                                     const user = allUsers.find(u => u.id === payment.userId); // FIX: Use allUsers prop
                                     return (
-                                    <tr key={payment.id} className="border-b hover:bg-gray-50">
-                                        <td className="p-4 font-mono text-xs">{payment.transactionId}</td>
-                                        <td className="p-4">
-                                            {user ? (<div className="flex items-center gap-3"><img src={user.profilePictureUrl} alt={user.name} className="w-8 h-8 rounded-full" /><div><p className="font-semibold text-gray-800 text-sm">{user.name}</p></div></div>) : "Không rõ"}
-                                        </td>
-                                        <td className="p-4 text-sm">{payment.serviceName}</td>
-                                        <td className="p-4 text-sm font-semibold text-brand-primary">{formatPrice(payment.amount)}</td>
-                                        <td className="p-4 text-sm">{METHOD_TEXT[payment.method]}</td>
-                                        <td className="p-4"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${STATUS_CONFIG[payment.status].bgColor} ${STATUS_CONFIG[payment.status].color}`}>{STATUS_CONFIG[payment.status].text}</span></td>
-                                        <td className="p-4 text-sm">{new Date(payment.date).toLocaleDateString('vi-VN')}</td>
-                                        <td className="p-4"><div className="flex items-center gap-1">
-                                            {payment.status === 'Completed' && <button onClick={() => handleRefund(payment.id)} className="p-2 text-gray-500 hover:text-orange-600" title="Hoàn tiền"><ArrowUturnLeftIcon className="w-5 h-5" /></button>}
-                                            <button onClick={() => handlePrint(payment.id)} className="p-2 text-gray-500 hover:text-blue-600" title="In hóa đơn"><PrinterIcon className="w-5 h-5" /></button>
-                                        </div></td>
-                                    </tr>
-                                )})}
+                                        <tr key={payment.id} className="border-b hover:bg-gray-50">
+                                            <td className="p-4 font-mono text-xs">{payment.transactionId}</td>
+                                            <td className="p-4">
+                                                {user ? (<div className="flex items-center gap-3"><img src={user.profilePictureUrl} alt={user.name} className="w-8 h-8 rounded-full" /><div><p className="font-semibold text-gray-800 text-sm">{user.name}</p></div></div>) : "Không rõ"}
+                                            </td>
+                                            <td className="p-4 text-sm">{payment.serviceName}</td>
+                                            <td className="p-4 text-sm font-semibold text-brand-primary">{formatPrice(payment.amount)}</td>
+                                            <td className="p-4 text-sm">{METHOD_TEXT[payment.method]}</td>
+                                            <td className="p-4"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${STATUS_CONFIG[payment.status].bgColor} ${STATUS_CONFIG[payment.status].color}`}>{STATUS_CONFIG[payment.status].text}</span></td>
+                                            <td className="p-4 text-sm">{new Date(payment.date).toLocaleDateString('vi-VN')}</td>
+                                            <td className="p-4"><div className="flex items-center gap-1">
+                                                {payment.status === 'Completed' && <button onClick={() => handleRefund(payment.id)} className="p-2 text-gray-500 hover:text-orange-600" title="Hoàn tiền"><ArrowUturnLeftIcon className="w-5 h-5" /></button>}
+                                                <button onClick={() => handlePrint(payment.id)} className="p-2 text-gray-500 hover:text-blue-600" title="In hóa đơn"><PrinterIcon className="w-5 h-5" /></button>
+                                            </div></td>
+                                        </tr>
+                                    )
+                                })}
                             </tbody>
                         </table>
                     </div>

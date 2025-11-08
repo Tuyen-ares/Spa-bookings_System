@@ -42,7 +42,7 @@ const TimekeepingCard: React.FC = () => {
 
     return (
         <div className="bg-white p-6 rounded-lg shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"><ClockIcon className="w-5 h-5 text-brand-primary"/> Chấm công hôm nay</h3>
+            <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"><ClockIcon className="w-5 h-5 text-brand-primary" /> Chấm công hôm nay</h3>
             <div className="text-center">
                 {status === 'out' && (
                     <>
@@ -94,15 +94,15 @@ const StaffDashboardPage: React.FC<StaffDashboardPageProps> = ({ currentUser, al
 
     const stats = useMemo(() => {
         const staffAppointments = allAppointments.filter(app => app.therapistId === currentUser.id && app.status === 'completed');
-        
+
         const sessionsThisWeek = staffAppointments.filter(app => {
             const appDate = new Date(app.date);
             const now = new Date();
             const firstDayOfWeek = new Date(now.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1))); // Monday
-            firstDayOfWeek.setHours(0,0,0,0);
+            firstDayOfWeek.setHours(0, 0, 0, 0);
             const lastDayOfWeek = new Date(firstDayOfWeek);
             lastDayOfWeek.setDate(lastDayOfWeek.getDate() + 6);
-            lastDayOfWeek.setHours(23,59,59,999);
+            lastDayOfWeek.setHours(23, 59, 59, 999);
             return appDate >= firstDayOfWeek && appDate <= lastDayOfWeek;
         }).length;
 
@@ -117,7 +117,8 @@ const StaffDashboardPage: React.FC<StaffDashboardPageProps> = ({ currentUser, al
             return sum + (service?.price || 0);
         }, 0);
 
-        const commission = totalRevenue * (currentUser.staffProfile?.commissionRate || 0);
+        // Note: commissionRate not in db.txt
+        const commission = 0;
 
         const ratedAppointments = staffAppointments.filter(app => typeof app.reviewRating === 'number');
         const totalRating = ratedAppointments.reduce((sum, app) => sum + app.reviewRating!, 0);
@@ -125,8 +126,8 @@ const StaffDashboardPage: React.FC<StaffDashboardPageProps> = ({ currentUser, al
         const reviewCount = ratedAppointments.length;
 
         return { sessionsThisWeek, sessionsThisMonth, totalRevenue, commission, averageRating, reviewCount };
-    }, [currentUser.id, currentUser.staffProfile, allAppointments, allServices]);
-    
+    }, [currentUser.id, allAppointments, allServices]);
+
     const kpiStats = useMemo(() => {
         const now = new Date();
         const currentMonth = now.getMonth();
@@ -146,7 +147,7 @@ const StaffDashboardPage: React.FC<StaffDashboardPageProps> = ({ currentUser, al
         }, 0);
 
         const currentMonthSessions = myCompletedAppointmentsThisMonth.length;
-        
+
         const mySalesThisMonth = allSales.filter(sale => {
             const saleDate = new Date(sale.date);
             return sale.staffId === currentUser.id &&
@@ -172,13 +173,16 @@ const StaffDashboardPage: React.FC<StaffDashboardPageProps> = ({ currentUser, al
             { id: 'Thành thạo', name: 'Thành thạo', minAppointments: 50, minRating: 4, commissionBoost: 0.05, color: '#EF4444', badgeImageUrl: 'https://picsum.photos/seed/staff-tier-proficient/50/50' },
             { id: 'Chuyên gia', name: 'Chuyên gia', minAppointments: 150, minRating: 4.7, commissionBoost: 0.1, color: '#10B981', badgeImageUrl: 'https://picsum.photos/seed/staff-tier-expert/50/50' },
         ];
-        return tiers.find(tier => tier.id === currentUser.staffProfile?.staffTierId);
-    }, [currentUser.staffProfile]);
+        // Note: staffTierId removed from users table in db.txt
+        // Default to 'Mới' tier for all staff
+        return tiers.find(tier => tier.id === 'Mới') || tiers[0];
+    }, []);
 
     return (
         <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-6">Chào mừng, {currentUser.name}!</h1>
-            <p className="text-gray-600 mb-8">Bạn đang ở vai trò <span className="font-semibold text-brand-primary">{currentUser.staffProfile?.staffRole}</span>.</p>
+            {/* Note: staffRole removed from users table in db.txt */}
+            <p className="text-gray-600 mb-8">Bạn đang ở vai trò <span className="font-semibold text-brand-primary">Nhân viên</span>.</p>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                 {/* Personal Info Card */}
@@ -188,7 +192,7 @@ const StaffDashboardPage: React.FC<StaffDashboardPageProps> = ({ currentUser, al
                         <p className="text-lg font-bold text-gray-800">{currentUser.name}</p>
                         <p className="text-sm text-gray-500">{currentUser.email}</p>
                         {staffTier && (
-                            <p className="text-sm mt-1 font-semibold" style={{color: staffTier.color}}>{staffTier.name}</p>
+                            <p className="text-sm mt-1 font-semibold" style={{ color: staffTier.color }}>{staffTier.name}</p>
                         )}
                     </div>
                 </div>
@@ -198,7 +202,7 @@ const StaffDashboardPage: React.FC<StaffDashboardPageProps> = ({ currentUser, al
 
                 {/* Notifications */}
                 <div className="bg-white p-6 rounded-lg shadow-sm">
-                    <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"><BellIcon className="w-5 h-5 text-red-500"/> Thông báo mới</h3>
+                    <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"><BellIcon className="w-5 h-5 text-red-500" /> Thông báo mới</h3>
                     {newNotifications.length > 0 ? (
                         <ul className="space-y-3">
                             {newNotifications.map(notif => (
@@ -214,42 +218,11 @@ const StaffDashboardPage: React.FC<StaffDashboardPageProps> = ({ currentUser, al
                 </div>
             </div>
 
-            {currentUser.staffProfile?.kpiGoals && (
-                <div className="bg-white p-6 rounded-lg shadow-sm mb-8">
-                    <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                        <TrophyIcon className="w-5 h-5 text-yellow-500"/> Mục tiêu & KPI Tháng này
-                    </h3>
-                    <div className="space-y-4">
-                        {currentUser.staffProfile.kpiGoals.monthlyRevenue !== undefined && (
-                            <KpiProgress 
-                                label="Doanh thu cá nhân"
-                                value={kpiStats.currentMonthRevenue}
-                                goal={currentUser.staffProfile.kpiGoals.monthlyRevenue}
-                                format={formatCurrency}
-                            />
-                        )}
-                        {currentUser.staffProfile.kpiGoals.monthlySessions !== undefined && (
-                            <KpiProgress 
-                                label="Số buổi phục vụ"
-                                value={kpiStats.currentMonthSessions}
-                                goal={currentUser.staffProfile.kpiGoals.monthlySessions}
-                                format={(val) => `${val} buổi`}
-                            />
-                        )}
-                        {currentUser.staffProfile.kpiGoals.monthlySales !== undefined && (
-                            <KpiProgress 
-                                label="Doanh số bán sản phẩm"
-                                value={kpiStats.currentMonthSales}
-                                goal={currentUser.staffProfile.kpiGoals.monthlySales}
-                                format={formatCurrency}
-                            />
-                        )}
-                    </div>
-                </div>
-            )}
+            {/* Note: kpiGoals removed from users table in db.txt */}
+            {/* KPI Goals section removed as kpiGoals field is not available in database */}
 
             <div className="bg-white p-6 rounded-lg shadow-sm">
-                <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"><CalendarIcon className="w-5 h-5 text-blue-500"/> Lịch hẹn hôm nay ({new Date().toLocaleDateString('vi-VN')})</h3>
+                <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"><CalendarIcon className="w-5 h-5 text-blue-500" /> Lịch hẹn hôm nay ({new Date().toLocaleDateString('vi-VN')})</h3>
                 {todayAppointments.length > 0 ? (
                     <div className="space-y-4">
                         {todayAppointments.map(app => {
@@ -260,7 +233,6 @@ const StaffDashboardPage: React.FC<StaffDashboardPageProps> = ({ currentUser, al
                                     <div>
                                         <p className="font-bold text-gray-800">{app.time} - {service?.name}</p>
                                         <p className="text-sm text-gray-600">Khách hàng: {client?.name}</p>
-                                        {app.room && <p className="text-xs text-gray-500">Phòng: {app.room}</p>}
                                     </div>
                                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${app.status === 'upcoming' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                                         {app.status === 'upcoming' ? 'Đã xác nhận' : 'Chờ khách'}

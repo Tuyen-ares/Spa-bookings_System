@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 // FIX: Replaced missing icons with available ones to resolve import errors.
 import {
     CogIcon,
@@ -9,36 +9,50 @@ import {
     NewspaperIcon,
 } from '../../shared/icons';
 
-// Dummy state for settings
-const initialSettings = {
-    // General
-    spaName: 'Anh Thơ Spa',
-    address: '123 Beauty St, Hà Nội, Việt Nam',
-    phone: '098-765-4321',
-    vat: 10,
-    logoUrl: 'https://picsum.photos/seed/logo/200/50',
-    faviconUrl: 'https://picsum.photos/seed/favicon/32/32',
-    bannerUrl: 'https://picsum.photos/seed/banner/1200/400',
+// Settings will be fetched from database via API
+interface Settings {
+    spaName: string;
+    address: string;
+    phone: string;
+    vat: number;
+    logoUrl: string;
+    faviconUrl: string;
+    bannerUrl: string;
+    primaryColor: string;
+    theme: string;
+    smtpServer: string;
+    smtpPort: number;
+    smtpUser: string;
+    smtpPass: string;
+    paymentGatewayApiKey: string;
+    paymentGatewaySecret: string;
+    enableChatbot: boolean;
+    enableLoyalty: boolean;
+    enablePromotions: boolean;
+    supportedLanguages: string[];
+    defaultLanguage: string;
+}
 
-    // Appearance
+const defaultSettings: Settings = {
+    spaName: '',
+    address: '',
+    phone: '',
+    vat: 10,
+    logoUrl: '',
+    faviconUrl: '',
+    bannerUrl: '',
     primaryColor: '#C7A17A',
     theme: 'auto',
-
-    // Integrations
-    smtpServer: 'smtp.example.com',
+    smtpServer: '',
     smtpPort: 587,
-    smtpUser: 'user@example.com',
-    smtpPass: 'password123',
-    paymentGatewayApiKey: 'pk_test_xxxxxxxxxx',
-    paymentGatewaySecret: 'sk_test_xxxxxxxxxx',
-
-    // Modules
+    smtpUser: '',
+    smtpPass: '',
+    paymentGatewayApiKey: '',
+    paymentGatewaySecret: '',
     enableChatbot: true,
     enableLoyalty: true,
     enablePromotions: true,
-
-    // Language
-    supportedLanguages: ['vn', 'en'],
+    supportedLanguages: ['vn'],
     defaultLanguage: 'vn',
 };
 
@@ -61,8 +75,27 @@ const ToggleSwitch: React.FC<{
 // Main Component
 const SettingsPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState('general');
-    const [settings, setSettings] = useState(initialSettings);
+    const [settings, setSettings] = useState<Settings>(defaultSettings);
     const [toast, setToast] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Fetch settings from database
+    useEffect(() => {
+        const fetchSettings = async () => {
+            try {
+                setIsLoading(true);
+                // TODO: Create API endpoint to fetch settings from database
+                // For now, use default settings
+                setSettings(defaultSettings);
+            } catch (error) {
+                console.error("Failed to fetch settings:", error);
+                setSettings(defaultSettings);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchSettings();
+    }, []);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -73,22 +106,30 @@ const SettingsPage: React.FC = () => {
             setSettings(prev => ({ ...prev, [name]: value }));
         }
     };
-    
+
     const handleLanguageToggle = (langCode: string) => {
         setSettings(prev => {
             const currentLangs = prev.supportedLanguages;
-            if(currentLangs.includes(langCode)) {
-                return {...prev, supportedLanguages: currentLangs.filter(l => l !== langCode)};
+            if (currentLangs.includes(langCode)) {
+                return { ...prev, supportedLanguages: currentLangs.filter(l => l !== langCode) };
             } else {
-                return {...prev, supportedLanguages: [...currentLangs, langCode]};
+                return { ...prev, supportedLanguages: [...currentLangs, langCode] };
             }
         });
     }
 
-    const handleSave = () => {
-        console.log("Saving settings:", settings);
-        setToast({ visible: true, message: "Cài đặt đã được lưu thành công!" });
-        setTimeout(() => setToast({ visible: false, message: '' }), 3000);
+    const handleSave = async () => {
+        try {
+            // TODO: Create API endpoint to save settings to database
+            // await apiService.saveSettings(settings);
+            console.log("Saving settings:", settings);
+            setToast({ visible: true, message: "Cài đặt đã được lưu thành công!" });
+            setTimeout(() => setToast({ visible: false, message: '' }), 3000);
+        } catch (error) {
+            console.error("Failed to save settings:", error);
+            setToast({ visible: true, message: "Lỗi khi lưu cài đặt. Vui lòng thử lại." });
+            setTimeout(() => setToast({ visible: false, message: '' }), 3000);
+        }
     };
 
     const tabs = [
@@ -117,10 +158,10 @@ const SettingsPage: React.FC = () => {
                 );
             case 'appearance':
                 return (
-                     <div className="space-y-6">
+                    <div className="space-y-6">
                         <div><label className="block text-sm font-medium text-gray-700">Logo URL</label><input type="text" name="logoUrl" value={settings.logoUrl} onChange={handleInputChange} className="mt-1 w-full p-2 border rounded" /></div>
                         <div><label className="block text-sm font-medium text-gray-700">Favicon URL</label><input type="text" name="faviconUrl" value={settings.faviconUrl} onChange={handleInputChange} className="mt-1 w-full p-2 border rounded" /></div>
-                         <div><label className="block text-sm font-medium text-gray-700">Banner URL</label><input type="text" name="bannerUrl" value={settings.bannerUrl} onChange={handleInputChange} className="mt-1 w-full p-2 border rounded" /></div>
+                        <div><label className="block text-sm font-medium text-gray-700">Banner URL</label><input type="text" name="bannerUrl" value={settings.bannerUrl} onChange={handleInputChange} className="mt-1 w-full p-2 border rounded" /></div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Màu chủ đạo</label>
                             <div className="flex items-center gap-2 mt-1">
@@ -139,8 +180,8 @@ const SettingsPage: React.FC = () => {
                     </div>
                 );
             case 'integrations':
-                 return (
-                     <div className="space-y-8">
+                return (
+                    <div className="space-y-8">
                         <div>
                             <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">Cấu hình SMTP (Gửi Email)</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -152,7 +193,7 @@ const SettingsPage: React.FC = () => {
                         </div>
                         <div>
                             <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">Cổng thanh toán</h3>
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div><label className="block text-sm font-medium text-gray-700">API Key</label><input type="text" name="paymentGatewayApiKey" value={settings.paymentGatewayApiKey} onChange={handleInputChange} className="mt-1 w-full p-2 border rounded" /></div>
                                 <div><label className="block text-sm font-medium text-gray-700">Secret Key</label><input type="password" name="paymentGatewaySecret" value={settings.paymentGatewaySecret} onChange={handleInputChange} className="mt-1 w-full p-2 border rounded" /></div>
                             </div>
@@ -160,15 +201,15 @@ const SettingsPage: React.FC = () => {
                     </div>
                 );
             case 'modules':
-                 return (
+                return (
                     <div className="space-y-4">
                         <ToggleSwitch name="enableChatbot" checked={settings.enableChatbot} onChange={handleInputChange} label="Bật/Tắt Chatbot AI" />
                         <ToggleSwitch name="enableLoyalty" checked={settings.enableLoyalty} onChange={handleInputChange} label="Bật/Tắt Hệ thống Loyalty (Điểm & Hạng)" />
                         <ToggleSwitch name="enablePromotions" checked={settings.enablePromotions} onChange={handleInputChange} label="Bật/Tắt Module Khuyến mãi" />
                     </div>
-                 );
+                );
             case 'language':
-                 return (
+                return (
                     <div className="space-y-6">
                         <div>
                             <h3 className="text-sm font-medium text-gray-700 mb-2">Ngôn ngữ được hỗ trợ</h3>
@@ -180,7 +221,7 @@ const SettingsPage: React.FC = () => {
                             </div>
                         </div>
                         <div>
-                             <label className="block text-sm font-medium text-gray-700">Ngôn ngữ mặc định</label>
+                            <label className="block text-sm font-medium text-gray-700">Ngôn ngữ mặc định</label>
                             <select name="defaultLanguage" value={settings.defaultLanguage} onChange={handleInputChange} className="mt-1 w-full p-2 border rounded">
                                 {settings.supportedLanguages.map(lang => (
                                     <option key={lang} value={lang}>{lang.toUpperCase()}</option>
@@ -201,7 +242,7 @@ const SettingsPage: React.FC = () => {
                 </div>
             )}
             <h1 className="text-3xl font-bold text-gray-800 mb-6">Cài đặt & Cá nhân hóa Hệ thống</h1>
-            
+
             <div className="flex flex-col lg:flex-row gap-8">
                 {/* Tab Navigation */}
                 <aside className="lg:w-1/4">
@@ -211,11 +252,10 @@ const SettingsPage: React.FC = () => {
                                 <button
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id)}
-                                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-md text-left font-semibold transition-colors ${
-                                        activeTab === tab.id
+                                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-md text-left font-semibold transition-colors ${activeTab === tab.id
                                             ? 'bg-brand-primary text-white shadow-sm'
                                             : 'text-gray-600 hover:bg-gray-100'
-                                    }`}
+                                        }`}
                                 >
                                     {tab.icon} {tab.label}
                                 </button>
@@ -227,12 +267,21 @@ const SettingsPage: React.FC = () => {
                 {/* Tab Content */}
                 <main className="flex-1">
                     <div className="bg-white p-8 rounded-lg shadow-md">
-                        {renderContent()}
-                        <div className="mt-8 border-t pt-6 text-right">
-                             <button onClick={handleSave} className="bg-brand-primary text-white font-bold py-2 px-6 rounded-lg hover:bg-brand-dark transition-colors">
-                                Lưu Thay Đổi
-                            </button>
-                        </div>
+                        {isLoading ? (
+                            <div className="text-center py-12">
+                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto mb-4"></div>
+                                <p className="text-gray-500">Đang tải cài đặt...</p>
+                            </div>
+                        ) : (
+                            <>
+                                {renderContent()}
+                                <div className="mt-8 border-t pt-6 text-right">
+                                    <button onClick={handleSave} className="bg-brand-primary text-white font-bold py-2 px-6 rounded-lg hover:bg-brand-dark transition-colors">
+                                        Lưu Thay Đổi
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </main>
             </div>

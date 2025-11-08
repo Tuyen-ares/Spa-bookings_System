@@ -15,6 +15,9 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onRegister }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [phone, setPhone] = useState('');
+    const [gender, setGender] = useState('');
+    const [birthday, setBirthday] = useState('');
     const [error, setError] = useState('');
     const [isPasswordVisible, setIsPasswordVisible] = useState(false);
     const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
@@ -28,8 +31,36 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onRegister }) => {
             return;
         }
 
+        // Validate phone number (Vietnamese format)
+        if (phone && !/^[0-9]{10,11}$/.test(phone.replace(/\s/g, ''))) {
+            setError('Số điện thoại không hợp lệ. Vui lòng nhập 10-11 chữ số.');
+            return;
+        }
+
+        // Validate birthday
+        if (birthday) {
+            const birthDate = new Date(birthday);
+            const today = new Date();
+            if (birthDate > today) {
+                setError('Ngày sinh không thể là ngày trong tương lai.');
+                return;
+            }
+            const age = today.getFullYear() - birthDate.getFullYear();
+            if (age < 13 || age > 120) {
+                setError('Ngày sinh không hợp lệ. Bạn phải từ 13 tuổi trở lên.');
+                return;
+            }
+        }
+
         try {
-            const newUser: Pick<User, 'name' | 'email' | 'password'> = { name, email, password };
+            const newUser: Pick<User, 'name' | 'email' | 'password' | 'phone' | 'gender' | 'birthday'> = { 
+                name, 
+                email, 
+                password,
+                phone: phone.trim() || undefined,
+                gender: gender || undefined,
+                birthday: birthday || undefined
+            };
             const registeredUserResponse = await apiService.register(newUser);
             
             onRegister(registeredUserResponse);
@@ -66,6 +97,47 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onRegister }) => {
                             required
                             className="mt-1 block w-full p-3 border border-gray-300 rounded-md shadow-sm transition-all duration-300 focus:border-transparent focus:ring-2 focus:ring-brand-primary"
                         />
+                    </div>
+                    <div>
+                        <label htmlFor="phone-register" className="block text-sm font-medium text-brand-text">Số điện thoại</label>
+                        <input
+                            id="phone-register"
+                            type="tel"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            placeholder="0123456789"
+                            required
+                            className="mt-1 block w-full p-3 border border-gray-300 rounded-md shadow-sm transition-all duration-300 focus:border-transparent focus:ring-2 focus:ring-brand-primary"
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label htmlFor="gender-register" className="block text-sm font-medium text-brand-text">Giới tính</label>
+                            <select
+                                id="gender-register"
+                                value={gender}
+                                onChange={(e) => setGender(e.target.value)}
+                                required
+                                className="mt-1 block w-full p-3 border border-gray-300 rounded-md shadow-sm transition-all duration-300 focus:border-transparent focus:ring-2 focus:ring-brand-primary"
+                            >
+                                <option value="">Chọn giới tính</option>
+                                <option value="Nam">Nam</option>
+                                <option value="Nữ">Nữ</option>
+                                <option value="Khác">Khác</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label htmlFor="birthday-register" className="block text-sm font-medium text-brand-text">Ngày sinh</label>
+                            <input
+                                id="birthday-register"
+                                type="date"
+                                value={birthday}
+                                onChange={(e) => setBirthday(e.target.value)}
+                                required
+                                max={new Date().toISOString().split('T')[0]}
+                                className="mt-1 block w-full p-3 border border-gray-300 rounded-md shadow-sm transition-all duration-300 focus:border-transparent focus:ring-2 focus:ring-brand-primary"
+                            />
+                        </div>
                     </div>
                     <div>
                         <label htmlFor="password-register" className="block text-sm font-medium text-brand-text">Mật khẩu</label>

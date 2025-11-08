@@ -36,7 +36,8 @@ const StaffPersonalReportsPage: React.FC<StaffPersonalReportsPageProps> = ({ cur
                 const service = allServices.find(s => s.id === app.serviceId);
                 return sum + (service?.price || 0);
             }, 0);
-            const commission = revenue * (currentUser.staffProfile?.commissionRate || 0);
+            // Note: commissionRate not in db.txt
+            const commission = 0;
 
             return { month: monthName, sessions, revenue, commission };
         });
@@ -47,7 +48,8 @@ const StaffPersonalReportsPage: React.FC<StaffPersonalReportsPageProps> = ({ cur
             const service = allServices.find(s => s.id === app.serviceId);
             return sum + (service?.price || 0);
         }, 0);
-        const totalCommissionOverall = totalRevenueOverall * (currentUser.staffProfile?.commissionRate || 0);
+        // Note: commissionRate not in db.txt
+        const totalCommissionOverall = 0;
 
         const ratedAppointments = staffAppointments.filter(app => typeof app.reviewRating === 'number');
         const totalRating = ratedAppointments.reduce((sum, app) => sum + app.reviewRating!, 0);
@@ -70,8 +72,10 @@ const StaffPersonalReportsPage: React.FC<StaffPersonalReportsPageProps> = ({ cur
             { id: 'Thành thạo', name: 'Thành thạo', minAppointments: 50, minRating: 4, commissionBoost: 0.05, color: '#EF4444', badgeImageUrl: 'https://picsum.photos/seed/staff-tier-proficient/50/50' },
             { id: 'Chuyên gia', name: 'Chuyên gia', minAppointments: 150, minRating: 4.7, commissionBoost: 0.1, color: '#10B981', badgeImageUrl: 'https://picsum.photos/seed/staff-tier-expert/50/50' },
         ];
-        return tiers.find(tier => tier.id === currentUser.staffProfile?.staffTierId);
-    }, [currentUser.staffProfile]);
+        // Note: staffTierId removed from users table in db.txt
+        // Default to 'Mới' tier for all staff
+        return tiers.find(tier => tier.id === 'Mới') || tiers[0];
+    }, []);
 
     return (
         <div>

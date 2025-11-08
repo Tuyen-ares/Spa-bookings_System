@@ -66,6 +66,7 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
     const [promotions, setPromotions] = useState<Promotion[]>([]);
     const [redeemableVouchers, setRedeemableVouchers] = useState<RedeemableVoucher[]>([]);
     const [redeemedRewards, setRedeemedRewards] = useState<RedeemedReward[]>([]); // For reports tab
+    const [wallets, setWallets] = useState<Record<string, { points: number }>>({});
 
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -102,6 +103,21 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
                 setRedeemableVouchers(fetchedRedeemableVouchers);
                 const fetchedRedeemedRewards = await apiService.getRedeemedRewards();
                 setRedeemedRewards(fetchedRedeemedRewards);
+
+                // Fetch wallets to calculate tier levels
+                const clientUsers = allUsers.filter(u => u.role === 'Client');
+                const walletsData: Record<string, { points: number }> = {};
+                await Promise.all(
+                    clientUsers.map(async (user) => {
+                        try {
+                            const wallet = await apiService.getUserWallet(user.id);
+                            walletsData[user.id] = { points: wallet.points || 0 };
+                        } catch (e) {
+                            walletsData[user.id] = { points: 0 };
+                        }
+                    })
+                );
+                setWallets(walletsData);
 
             } catch (err: any) {
                 console.error("Error fetching promotions data:", err);
@@ -255,14 +271,24 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
         })).sort((a,b) => b.count - a.count);
 
         const totalRedeemedVouchers = redeemedRewards.length;
-        const totalRedeemedValue = redeemedRewards.reduce((sum, r) => sum + (redeemableVouchers.find(v => r.rewardDescription.includes(v.description))?.value || 0), 0); // Crude mock linking
+        // TODO: Calculate total redeemed value from actual redemption records when redemption table is added
+        const totalRedeemedValue = 0;
 
         const redeemedByTier: Record<string, number> = {};
         allReviews.forEach(rr => { // FIX: Use allReviews for customer feedback analysis
             const user = allUsers.find(u => u.id === rr.userId);
             if (user) {
-                // FIX: Access tierLevel from customerProfile to match User type.
-                const tierName = allTiers.find(t => t.level === user.customerProfile?.tierLevel)?.name || 'Khách hàng';
+                // Calculate tier level from wallet points since tierLevel is not in users table
+                const userPoints = wallets[user.id]?.points || 0;
+                const sortedTiers = [...allTiers].sort((a, b) => (a.pointsRequired || 0) - (b.pointsRequired || 0));
+                let userTier = 1; // Default to tier 1
+                for (let i = sortedTiers.length - 1; i >= 0; i--) {
+                    if (userPoints >= (sortedTiers[i].pointsRequired || 0)) {
+                        userTier = sortedTiers[i].level;
+                        break;
+                    }
+                }
+                const tierName = allTiers.find(t => t.level === userTier)?.name || 'Khách hàng';
                 redeemedByTier[tierName] = (redeemedByTier[tierName] || 0) + 1;
             }
         });
@@ -280,7 +306,7 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
             totalRedeemedValue,
             redeemedByTier: redeemedByTierArray,
         };
-    }, [promotions, redeemedRewards, redeemableVouchers, allUsers, allTiers, isLoading, error, allServices, allAppointments, allReviews]); // FIX: Added props to dependency array
+    }, [promotions, redeemedRewards, redeemableVouchers, allUsers, allTiers, isLoading, error, allServices, allAppointments, allReviews, wallets]); // FIX: Added wallets to dependency array
 
     const getRemainingTime = (expiryDate: string) => {
         const now = new Date();

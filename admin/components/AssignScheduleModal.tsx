@@ -24,7 +24,6 @@ const AssignScheduleModal: React.FC<AssignScheduleModalProps> = ({ context, onCl
 
     const [shiftType, setShiftType] = useState<StaffShift['shiftType']>(shift?.shiftType || 'morning');
     const [shiftHours, setShiftHours] = useState(shift?.shiftHours || SHIFT_TIMES.morning);
-    const [room, setRoom] = useState(shift?.room || '');
     const [notes, setNotes] = useState(shift?.notes || '');
     const [error, setError] = useState('');
 
@@ -33,7 +32,7 @@ const AssignScheduleModal: React.FC<AssignScheduleModalProps> = ({ context, onCl
             setShiftHours(SHIFT_TIMES[shiftType as keyof typeof SHIFT_TIMES]);
         }
     }, [shiftType]);
-    
+
     const conflictingAppointments = useMemo(() => {
         if (shiftType === 'leave') {
             return allAppointments.filter(a => a.therapistId === staff.id && a.date === date && a.status !== 'cancelled');
@@ -58,21 +57,20 @@ const AssignScheduleModal: React.FC<AssignScheduleModalProps> = ({ context, onCl
             shiftType: shiftType,
             status: 'approved', // Admin directly approves
             shiftHours: shiftHours,
-            room: room,
             notes: notes,
         };
 
         onSave(finalShift);
         onClose();
     };
-    
+
     const handleDelete = () => {
         if (shift?.id) {
             onDelete(shift.id);
             onClose();
         }
     };
-    
+
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
             <div className="bg-white rounded-lg shadow-xl max-w-lg w-full" onClick={e => e.stopPropagation()}>
@@ -96,25 +94,21 @@ const AssignScheduleModal: React.FC<AssignScheduleModalProps> = ({ context, onCl
                                     <option value="leave">Nghỉ phép</option>
                                 </select>
                             </div>
-                            
+
                             {shiftType !== 'leave' && (
                                 <div className="grid grid-cols-2 gap-4">
-                                     <div>
+                                    <div>
                                         <label htmlFor="startTime" className="block text-sm font-medium text-gray-700">Giờ bắt đầu</label>
-                                        <input type="time" id="startTime" value={shiftHours.start} onChange={e => setShiftHours(p => ({...p, start: e.target.value}))} className="mt-1 w-full p-2 border rounded" readOnly={shiftType !== 'custom'} required/>
-                                     </div>
-                                      <div>
+                                        <input type="time" id="startTime" value={shiftHours.start} onChange={e => setShiftHours(p => ({ ...p, start: e.target.value }))} className="mt-1 w-full p-2 border rounded" readOnly={shiftType !== 'custom'} required />
+                                    </div>
+                                    <div>
                                         <label htmlFor="endTime" className="block text-sm font-medium text-gray-700">Giờ kết thúc</label>
-                                        <input type="time" id="endTime" value={shiftHours.end} onChange={e => setShiftHours(p => ({...p, end: e.target.value}))} className="mt-1 w-full p-2 border rounded" readOnly={shiftType !== 'custom'} required/>
-                                     </div>
+                                        <input type="time" id="endTime" value={shiftHours.end} onChange={e => setShiftHours(p => ({ ...p, end: e.target.value }))} className="mt-1 w-full p-2 border rounded" readOnly={shiftType !== 'custom'} required />
+                                    </div>
                                 </div>
                             )}
 
-                             <div>
-                                <label htmlFor="room" className="block text-sm font-medium text-gray-700">Khu vực làm việc (Phòng)</label>
-                                <input type="text" id="room" value={room} onChange={e => setRoom(e.target.value)} className="mt-1 w-full p-2 border rounded" placeholder="VD: Phòng Massage 2, Khu Nail..."/>
-                            </div>
-                             <div>
+                            <div>
                                 <label htmlFor="notes" className="block text-sm font-medium text-gray-700">Ghi chú (tùy chọn)</label>
                                 <textarea id="notes" name="notes" value={notes} onChange={e => setNotes(e.target.value)} className="mt-1 w-full p-2 border rounded" rows={2} />
                             </div>

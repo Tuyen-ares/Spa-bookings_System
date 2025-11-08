@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import type { User } from '../../types';
-import { LogoIcon, ChevronDownIcon, MenuIcon, CloseIcon } from '../../shared/icons';
+import { LogoIcon, ChevronDownIcon, MenuIcon, CloseIcon, ChatBubbleLeftRightIcon } from '../../shared/icons';
 
 interface HeaderProps {
     currentUser: User | null;
@@ -43,6 +43,7 @@ const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     const baseLinks = [
       { path: '/', name: 'Trang chủ' },
       { path: '/services', name: 'Dịch vụ' },
+      { path: '/treatment-courses', name: 'Liệu trình' },
       { path: '/promotions', name: 'Ưu đãi' },
       { path: '/qa', name: 'Q&A' },
       { path: '/contact', name: 'Liên hệ' },

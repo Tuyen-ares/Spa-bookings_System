@@ -98,6 +98,33 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, isLoading }) => {
     const [recentReviews, setRecentReviews] = useState<Review[]>([]);
     const [isLoadingReviews, setIsLoadingReviews] = useState(true);
+    const [localServices, setLocalServices] = useState<Service[]>([]);
+    const [isLoadingServices, setIsLoadingServices] = useState(false);
+
+    // Fetch services directly if allServices is empty
+    useEffect(() => {
+        const fetchServices = async () => {
+            // If allServices is provided and has data, use it
+            if (allServices && allServices.length > 0) {
+                setLocalServices(allServices);
+                return;
+            }
+            
+            // Otherwise, fetch directly from API
+            try {
+                setIsLoadingServices(true);
+                const fetchedServices = await apiService.getServices();
+                setLocalServices(fetchedServices);
+            } catch (error) {
+                console.error("Failed to fetch services in HomePage:", error);
+                setLocalServices([]);
+            } finally {
+                setIsLoadingServices(false);
+            }
+        };
+
+        fetchServices();
+    }, [allServices]);
 
     useEffect(() => {
         const fetchReviews = async () => {
@@ -115,27 +142,71 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
         fetchReviews();
     }, []);
 
+    // Use localServices if available, otherwise fallback to allServices
+    // Priority: localServices > allServices
+    const servicesToUse = useMemo(() => {
+        if (localServices.length > 0) {
+            return localServices;
+        }
+        if (allServices && allServices.length > 0) {
+            return allServices;
+        }
+        return [];
+    }, [localServices, allServices]);
 
     const featuredServices = useMemo(() => {
-        return allServices
-            .filter(s => s.isActive && s.isHot)
-            .sort((a, b) => b.rating - a.rating)
+        if (!servicesToUse || servicesToUse.length === 0) {
+            return [];
+        }
+        // Helper function to safely convert value to boolean (handles boolean, number, string, undefined)
+        // Note: Database may return numbers (0/1) or strings even though TypeScript types say boolean
+        const toBoolean = (value: any, defaultValue: boolean = false): boolean => {
+            if (value === undefined || value === null) return defaultValue;
+            if (typeof value === 'boolean') return value;
+            if (typeof value === 'number') return value !== 0;
+            if (typeof value === 'string') {
+                const lower = value.toLowerCase();
+                return lower === 'true' || lower === '1' || lower === 'yes';
+            }
+            return defaultValue;
+        };
+        
+        return servicesToUse
+            .filter(s => {
+                // Check isActive (default to true if undefined)
+                const isActive = toBoolean(s.isActive, true);
+                // Check isHot (handle boolean, number, or string from database)
+                const isHot = toBoolean(s.isHot, false);
+                return isActive && isHot;
+            })
+            .sort((a, b) => {
+                // Handle both string and number ratings
+                const ratingA = typeof a.rating === 'string' ? parseFloat(a.rating) : (a.rating || 0);
+                const ratingB = typeof b.rating === 'string' ? parseFloat(b.rating) : (b.rating || 0);
+                return ratingB - ratingA;
+            })
             .slice(0, 8);
-    }, [allServices]);
+    }, [servicesToUse]);
     
     const comboServices = useMemo(() => {
-        return allServices.filter(s => 
-            s.isActive && (s.name.toLowerCase().includes('gói') || s.name.toLowerCase().includes('combo') || s.category === 'Spa Package')
+        if (!servicesToUse || servicesToUse.length === 0) {
+            return [];
+        }
+        return servicesToUse.filter(s => 
+            (s.isActive !== false) && (s.name.toLowerCase().includes('gói') || s.name.toLowerCase().includes('combo') || s.category === 'Spa Package')
         ).slice(0, 8);
-    }, [allServices]);
+    }, [servicesToUse]);
     
     const comboDeals = useMemo(() => {
-        return allServices.filter(s =>
-            s.isActive &&
+        if (!servicesToUse || servicesToUse.length === 0) {
+            return [];
+        }
+        return servicesToUse.filter(s =>
+            (s.isActive !== false) &&
             (s.name.toLowerCase().includes('gói') || s.name.toLowerCase().includes('combo') || s.category === 'Spa Package') &&
             s.discountPrice
         ).slice(0, 8);
-    }, [allServices]);
+    }, [servicesToUse]);
 
     const featuredPromotions = useMemo(() => {
         return allPromotions.filter(promo => {
@@ -255,13 +326,18 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                         <h2 className="text-4xl sm:text-5xl font-serif font-bold text-brand-text">Dịch Vụ Nổi Bật</h2>
                         <p className="mt-4 text-lg text-brand-text/70 max-w-2xl mx-auto">Những liệu trình được khách hàng yêu thích và tin dùng nhất tại Anh Thơ Spa.</p>
                     </div>
-                    {isLoading ? (
+                    {(isLoading || isLoadingServices) ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                             {[...Array(3)].map((_, index) => <ServiceCardSkeleton key={index} />)}
                         </div>
                     ) : featuredServices.length === 0 ? (
                         <div className="text-center py-10 bg-white rounded-lg shadow-soft-lg">
                             <p className="text-lg text-gray-500">Không có dịch vụ nổi bật nào để hiển thị.</p>
+                            {servicesToUse.length > 0 && (
+                                <p className="text-sm text-gray-400 mt-2">
+                                    Tìm thấy {servicesToUse.length} dịch vụ nhưng không có dịch vụ nào được đánh dấu là "nổi bật".
+                                </p>
+                            )}
                         </div>
                     ) : (
                         <>

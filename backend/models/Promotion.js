@@ -22,11 +22,11 @@ module.exports = (sequelize, DataTypes) => {
       unique: true,
     },
     expiryDate: {
-      type: DataTypes.STRING, // ISO string
+      type: DataTypes.DATEONLY,
       allowNull: false,
     },
     imageUrl: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(500),
       allowNull: true,
     },
     discountType: {
@@ -34,7 +34,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
     },
     discountValue: {
-      type: DataTypes.FLOAT,
+      type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
     },
     termsAndConditions: {
@@ -43,7 +43,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     targetAudience: {
       type: DataTypes.ENUM(
-        'All', 'New Clients', 'Birthday', 'VIP',
+        'All', 'New Clients', 'Birthday', 'Group', 'VIP',
         'Tier Level 1', 'Tier Level 2', 'Tier Level 3', 'Tier Level 4',
         'Tier Level 5', 'Tier Level 6', 'Tier Level 7', 'Tier Level 8'
       ),
@@ -53,17 +53,43 @@ module.exports = (sequelize, DataTypes) => {
     applicableServiceIds: { // Store string[] as JSON
       type: DataTypes.JSON,
       allowNull: true,
-      defaultValue: [],
     },
     minOrderValue: {
-      type: DataTypes.FLOAT,
+      type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
-      defaultValue: 0,
+      defaultValue: 0.00,
     },
     usageCount: {
       type: DataTypes.INTEGER,
       allowNull: true,
       defaultValue: 0,
+    },
+    usageLimit: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'NULL = không giới hạn',
+    },
+    pointsRequired: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0,
+      comment: 'Điểm cần để đổi (0 = không cần, >0 = voucher đổi điểm)',
+    },
+    isVoucher: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false,
+      comment: '1 = voucher đổi điểm, 0 = khuyến mãi thông thường',
+    },
+    stock: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Số lượng voucher còn lại (NULL = không giới hạn)',
+    },
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: true,
     },
   }, {
     tableName: 'promotions',

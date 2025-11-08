@@ -10,8 +10,16 @@ module.exports = (sequelize, DataTypes) => {
     },
     transactionId: {
       type: DataTypes.STRING,
-      allowNull: false,
-      unique: true,
+      allowNull: true,
+    },
+    bookingId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      references: {
+        model: 'appointments',
+        key: 'id',
+      },
+      onDelete: 'SET NULL',
     },
     userId: {
       type: DataTypes.STRING,
@@ -22,7 +30,7 @@ module.exports = (sequelize, DataTypes) => {
       },
       onDelete: 'CASCADE',
     },
-    appointmentId: { // Optional: A payment might be for a product directly
+    appointmentId: { // Optional: Link to appointment
       type: DataTypes.STRING,
       allowNull: true,
       references: {
@@ -36,15 +44,15 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
     },
     amount: {
-      type: DataTypes.FLOAT,
+      type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
     },
     method: {
       type: DataTypes.ENUM('Cash', 'Card', 'Momo', 'VNPay', 'ZaloPay'),
-      allowNull: false,
+      allowNull: true,
     },
     status: {
-      type: DataTypes.ENUM('Completed', 'Pending', 'Refunded'),
+      type: DataTypes.ENUM('Completed', 'Pending', 'Refunded', 'Failed'),
       allowNull: false,
       defaultValue: 'Pending',
     },
@@ -57,15 +65,6 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       references: {
         model: 'users',
-        key: 'id',
-      },
-      onDelete: 'SET NULL',
-    },
-    productId: { // If payment is for a product sale
-      type: DataTypes.STRING,
-      allowNull: true,
-      references: {
-        model: 'products',
         key: 'id',
       },
       onDelete: 'SET NULL',

@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FacebookIcon, InstagramIcon, TikTokIcon } from '../../shared/icons';
+import { FacebookIcon, InstagramIcon, TikTokIcon } from '../shared/icons';
 
 const Footer: React.FC = () => {
   return (

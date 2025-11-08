@@ -1,13 +1,14 @@
 import React, { useMemo } from 'react';
-import type { User, Appointment } from '../../types';
+import type { User, Appointment, Review } from '../../types';
 import { TrophyIcon } from '../../shared/icons';
 
 interface EmployeeOfMonthProps {
     allUsers: User[];
     allAppointments: Appointment[];
+    allReviews?: Review[];
 }
 
-const EmployeeOfMonth: React.FC<EmployeeOfMonthProps> = ({ allUsers, allAppointments }) => {
+const EmployeeOfMonth: React.FC<EmployeeOfMonthProps> = ({ allUsers, allAppointments, allReviews = [] }) => {
     const employeeOfMonth = useMemo(() => {
         if (!allAppointments || allAppointments.length === 0 || !allUsers || allUsers.length === 0) {
             return null;

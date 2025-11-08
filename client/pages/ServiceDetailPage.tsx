@@ -131,7 +131,9 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
 
     const suitableTherapists = useMemo(() => {
         if (!service || allUsers.length === 0) return [];
-        const technicians = allUsers.filter(u => u.role === 'Staff' && u.staffProfile?.staffRole === 'Technician' && u.staffProfile?.specialty?.some(s => service.category.includes(s)));
+        // Note: specialty field removed from users table in db.txt
+        // Show all Staff as technicians since we can't filter by specialty anymore
+        const technicians = allUsers.filter(u => u.role === 'Staff');
         return technicians.slice(0, 3).map(t => t.name);
     }, [service, allUsers]);
     
@@ -146,9 +148,11 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
         return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
     };
 
-    const toggleFavorite = () => {
+    const toggleFavorite = async () => {
+        // TODO: Implement favorite service functionality
+        // This would require a favorites table in the database
         setIsFavorite(!isFavorite);
-        alert(`Dịch vụ đã được ${isFavorite ? 'gỡ khỏi' : 'thêm vào'} yêu thích (chức năng mock).`);
+        console.log(`Service ${service?.id} ${isFavorite ? 'removed from' : 'added to'} favorites for user ${currentUser?.id}`);
     }
 
     const handleConsultationClick = () => {

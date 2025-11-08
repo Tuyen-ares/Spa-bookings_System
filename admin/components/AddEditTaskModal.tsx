@@ -4,17 +4,19 @@ import type { StaffTask, User } from '../../types';
 interface AddEditTaskModalProps {
     task: StaffTask | null;
     staffMembers: User[];
+    currentUser: User; // Admin/Manager đang đăng nhập (để lấy assignedById)
     onClose: () => void;
     onSave: (taskData: Partial<StaffTask>) => void;
 }
 
-const AddEditTaskModal: React.FC<AddEditTaskModalProps> = ({ task, staffMembers, onClose, onSave }) => {
+const AddEditTaskModal: React.FC<AddEditTaskModalProps> = ({ task, staffMembers, currentUser, onClose, onSave }) => {
     const [formData, setFormData] = useState<Partial<StaffTask>>({
         title: '',
         description: '',
         assignedToId: '',
+        assignedById: currentUser.id, // Set từ currentUser
         dueDate: new Date().toISOString().split('T')[0],
-        priority: 'medium',
+        status: 'pending', // Mặc định là 'pending'
     });
     const [error, setError] = useState('');
 
@@ -22,10 +24,21 @@ const AddEditTaskModal: React.FC<AddEditTaskModalProps> = ({ task, staffMembers,
         if (task) {
             setFormData({
                 ...task,
-                dueDate: task.dueDate.split('T')[0] // Format for date input
+                dueDate: task.dueDate.split('T')[0], // Format for date input
+                assignedById: task.assignedById || currentUser.id, // Giữ assignedById hiện tại hoặc dùng currentUser
+            });
+        } else {
+            // Reset form khi tạo mới
+            setFormData({
+                title: '',
+                description: '',
+                assignedToId: '',
+                assignedById: currentUser.id,
+                dueDate: new Date().toISOString().split('T')[0],
+                status: 'pending',
             });
         }
-    }, [task]);
+    }, [task, currentUser.id]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -34,11 +47,17 @@ const AddEditTaskModal: React.FC<AddEditTaskModalProps> = ({ task, staffMembers,
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        // Validate required fields
         if (!formData.title || !formData.assignedToId || !formData.dueDate) {
             setError('Vui lòng điền đầy đủ các trường bắt buộc.');
             return;
         }
-        onSave(formData);
+        // Đảm bảo assignedById được set (nếu chưa có thì dùng currentUser.id)
+        const taskData = {
+            ...formData,
+            assignedById: formData.assignedById || currentUser.id,
+        };
+        onSave(taskData);
     };
 
     return (
@@ -72,14 +91,17 @@ const AddEditTaskModal: React.FC<AddEditTaskModalProps> = ({ task, staffMembers,
                                     <input type="date" name="dueDate" value={formData.dueDate || ''} onChange={handleChange} min={new Date().toISOString().split('T')[0]} className="mt-1 w-full p-2 border rounded" required />
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">Độ ưu tiên</label>
-                                <select name="priority" value={formData.priority || 'medium'} onChange={handleChange} className="mt-1 w-full p-2 border rounded bg-white">
-                                    <option value="low">Thấp</option>
-                                    <option value="medium">Trung bình</option>
-                                    <option value="high">Cao</option>
-                                </select>
-                            </div>
+                            {task && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Trạng thái</label>
+                                    <select name="status" value={formData.status || 'pending'} onChange={handleChange} className="mt-1 w-full p-2 border rounded bg-white">
+                                        <option value="pending">Chờ xử lý</option>
+                                        <option value="in-progress">Đang thực hiện</option>
+                                        <option value="completed">Hoàn thành</option>
+                                        <option value="overdue">Quá hạn</option>
+                                    </select>
+                                </div>
+                            )}
                         </div>
                     </div>
                     <div className="bg-gray-50 px-6 py-4 flex justify-end gap-4 rounded-b-lg">

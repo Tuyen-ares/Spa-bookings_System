@@ -5,6 +5,7 @@ const router = express.Router();
 const db = require('../config/database'); // Sequelize models
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
+const bcrypt = require('bcryptjs');
 
 // --- Helper Functions ---
 const updateUserAndWalletAfterAppointment = async (userId, appointment) => { /* ... (same as before) ... */ };
@@ -29,8 +30,7 @@ const findBestTherapist = async (serviceId, userId, date, time) => {
         },
         include: [{ 
             model: db.User, 
-            where: { role: 'Staff', status: 'Active' },
-            include: [{ model: db.Staff, as: 'staffProfile' }]
+            where: { role: 'Staff', status: 'Active' }
         }]
     });
 
@@ -59,13 +59,11 @@ const findBestTherapist = async (serviceId, userId, date, time) => {
     })).map(app => app.therapistId);
     
     eligibleTechnicians = eligibleTechnicians.filter(tech => {
-        // staffProfile holds specialty (array) and staffRole
-        const staffProfile = tech.staffProfile || {};
-        const specialties = Array.isArray(staffProfile.specialty) ? staffProfile.specialty : [];
-        const hasSpecialty = specialties.length > 0 && serviceCategory && specialties.some(s => String(s).toLowerCase().includes(String(serviceCategory).toLowerCase()));
-        const isTechnician = staffProfile.staffRole === 'Technician';
+        // Note: Staff table removed - specialty and staffRole info not available
+        // For now, accept all staff with role 'Staff' and status 'Active'
+        const isStaff = tech.role === 'Staff' && tech.status === 'Active';
         const isAlreadyBooked = bookedTherapistIds.includes(tech.id);
-        return isTechnician && hasSpecialty && !isAlreadyBooked;
+        return isStaff && !isAlreadyBooked;
     });
 
     if (eligibleTechnicians.length === 0) {
@@ -96,10 +94,7 @@ const findBestTherapist = async (serviceId, userId, date, time) => {
         });
         score += Math.max(0, 50 - (dailyWorkload * 10)); // Higher score for less work
 
-    // Score 3: Staff Tier (Low weight) - read from staffProfile.staffTierId
-    const staffTier = tech.staffProfile && tech.staffProfile.staffTierId ? tech.staffProfile.staffTierId : null;
-    if (staffTier === 'Chuyên gia') score += 20;
-    else if (staffTier === 'Thành thạo') score += 10;
+    // Note: StaffTier table removed - tier scoring disabled
         
         scoredTechnicians.push({ tech, score });
     }
@@ -120,8 +115,56 @@ const findBestTherapist = async (serviceId, userId, date, time) => {
 // GET /api/appointments
 router.get('/', async (req, res) => {
     try {
-        const appointments = await db.Appointment.findAll({ include: ['Client', 'Therapist', 'Service'] });
-        res.json(appointments);
+        const appointments = await db.Appointment.findAll({
+            include: [
+                {
+                    model: db.User,
+                    as: 'Client',
+                    attributes: ['id', 'name', 'email', 'phone']
+                },
+                {
+                    model: db.User,
+                    as: 'Therapist',
+                    attributes: ['id', 'name', 'email']
+                },
+                {
+                    model: db.Service,
+                    attributes: ['id', 'name', 'description']
+                }
+            ],
+            order: [['date', 'DESC'], ['time', 'ASC']]
+        });
+
+        // Map appointments to ensure userName is included
+        const mappedAppointments = appointments.map(apt => {
+            const appointmentData = apt.toJSON();
+            // Ensure userName is populated from Client association or from appointment field
+            if (!appointmentData.userName && appointmentData.Client && appointmentData.Client.name) {
+                appointmentData.userName = appointmentData.Client.name;
+            }
+            // Ensure Client association is preserved
+            if (appointmentData.Client) {
+                appointmentData.Client = {
+                    id: appointmentData.Client.id,
+                    name: appointmentData.Client.name,
+                    email: appointmentData.Client.email,
+                    phone: appointmentData.Client.phone
+                };
+            }
+            return appointmentData;
+        });
+
+        console.log('Appointments API - Fetched', mappedAppointments.length, 'appointments');
+        if (mappedAppointments.length > 0) {
+            console.log('Sample appointment:', {
+                id: mappedAppointments[0].id,
+                userName: mappedAppointments[0].userName,
+                hasClient: !!mappedAppointments[0].Client,
+                status: mappedAppointments[0].status
+            });
+        }
+
+        res.json(mappedAppointments);
     } catch (error) {
         console.error('Error fetching appointments:', error);
         res.status(500).json({ message: 'Internal server error' });
@@ -143,20 +186,69 @@ router.get('/user/:userId', async (req, res) => {
 // POST /api/appointments
 router.post('/', async (req, res) => {
     const newAppointmentData = req.body;
-    if (!newAppointmentData.serviceId || !newAppointmentData.userId || !newAppointmentData.date || !newAppointmentData.time) {
+    if (!newAppointmentData.serviceId || !newAppointmentData.date || !newAppointmentData.time) {
         return res.status(400).json({ message: 'Missing required appointment data' });
     }
 
     try {
+        let finalUserId = newAppointmentData.userId;
+        let finalUserName = newAppointmentData.userName;
+
+        // If userId is empty or not provided, create a new user
+        if (!finalUserId || finalUserId === '') {
+            if (!newAppointmentData.userName || !newAppointmentData.phone) {
+                return res.status(400).json({ message: 'Missing customer information: name and phone are required' });
+            }
+
+            // Check if user with this phone already exists
+            const existingUser = await db.User.findOne({
+                where: { phone: newAppointmentData.phone, role: 'Client' }
+            });
+
+            if (existingUser) {
+                finalUserId = existingUser.id;
+                finalUserName = existingUser.name;
+            } else {
+                // Create new user
+                // Generate a random password and hash it
+                const tempPassword = `temp-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+                const hashedPassword = await bcrypt.hash(tempPassword, 10);
+                
+                const newUser = await db.User.create({
+                    id: `user-${uuidv4()}`,
+                    name: newAppointmentData.userName,
+                    phone: newAppointmentData.phone,
+                    email: newAppointmentData.email || `client-${Date.now()}@temp.com`,
+                    password: hashedPassword, // Hashed temporary password, user should change it
+                    role: 'Client',
+                    status: 'Active',
+                });
+
+                // Create wallet for new user
+                await db.Wallet.create({
+                    id: `wallet-${uuidv4()}`,
+                    userId: newUser.id,
+                    points: 0,
+                    totalSpent: 0,
+                    tierLevel: 1,
+                    pointsHistory: [],
+                });
+
+                finalUserId = newUser.id;
+                finalUserName = newUser.name;
+                console.log(`Created new user: ${finalUserId} for appointment`);
+            }
+        }
+
         let finalTherapistId = newAppointmentData.therapistId;
         let finalTherapistName = newAppointmentData.therapist;
 
-        // Smart assignment logic
+        // Smart assignment logic (only if therapist not specified)
         if (!newAppointmentData.therapistId || newAppointmentData.therapistId === 'any') {
             console.log("Attempting smart assignment...");
             const bestTherapist = await findBestTherapist(
                 newAppointmentData.serviceId,
-                newAppointmentData.userId,
+                finalUserId,
                 newAppointmentData.date,
                 newAppointmentData.time
             );
@@ -170,19 +262,74 @@ router.post('/', async (req, res) => {
                 finalTherapistId = null; 
                 finalTherapistName = 'Sẽ được phân công';
             }
+        } else {
+            // Get therapist name if ID is provided
+            const therapist = await db.User.findByPk(newAppointmentData.therapistId);
+            if (therapist) {
+                finalTherapistName = therapist.name;
+            }
         }
         
         const service = await db.Service.findByPk(newAppointmentData.serviceId);
         if (!service) return res.status(404).json({ message: 'Service not found' });
 
+        // Get user name for userName field (if not already set)
+        if (!finalUserName) {
+            const user = await db.User.findByPk(finalUserId);
+            finalUserName = user ? user.name : newAppointmentData.userName;
+        }
+
+        // Use provided status or default to 'pending' (admin-added appointments use 'upcoming')
+        const appointmentStatus = newAppointmentData.status || 'pending';
+
         const createdAppointment = await db.Appointment.create({
             id: `apt-${uuidv4()}`,
             serviceName: service.name,
-            status: 'pending',
-            ...newAppointmentData,
+            status: appointmentStatus,
+            userId: finalUserId,
+            userName: finalUserName,
+            date: newAppointmentData.date,
+            time: newAppointmentData.time,
+            serviceId: newAppointmentData.serviceId,
             therapistId: finalTherapistId,
             therapist: finalTherapistName,
+            notesForTherapist: newAppointmentData.notesForTherapist || null,
+            treatmentCourseId: newAppointmentData.treatmentCourseId || null,
         });
+
+        // If this appointment is for a treatment course, create a treatment course instance
+        if (newAppointmentData.treatmentCourseId) {
+            try {
+                // Get the template treatment course
+                const templateCourse = await db.TreatmentCourse.findByPk(newAppointmentData.treatmentCourseId);
+                if (templateCourse) {
+                    // Create a new treatment course instance for this client
+                    const treatmentCourseInstance = await db.TreatmentCourse.create({
+                        id: `tc-${uuidv4()}`,
+                        serviceId: templateCourse.serviceId,
+                        serviceName: templateCourse.serviceName,
+                        clientId: newAppointmentData.userId,
+                        totalSessions: templateCourse.totalSessions,
+                        sessionsPerWeek: templateCourse.sessionsPerWeek,
+                        weekDays: templateCourse.weekDays,
+                        sessionDuration: templateCourse.sessionDuration,
+                        sessionTime: templateCourse.sessionTime,
+                        description: templateCourse.description,
+                        status: 'active',
+                        initialAppointmentId: createdAppointment.id,
+                        expiryDate: templateCourse.expiryDate,
+                        imageUrl: templateCourse.imageUrl,
+                        sessions: templateCourse.sessions || [],
+                        nextAppointmentDate: newAppointmentData.date,
+                    });
+                    console.log(`Treatment course instance created: ${treatmentCourseInstance.id} for user ${newAppointmentData.userId}`);
+                }
+            } catch (tcError) {
+                console.error('Error creating treatment course instance:', tcError);
+                // Don't fail the appointment creation if treatment course creation fails
+                // The appointment is already created, so we just log the error
+            }
+        }
 
         res.status(201).json(createdAppointment);
     } catch (error) {

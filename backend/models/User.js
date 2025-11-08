@@ -58,7 +58,6 @@ module.exports = (sequelize, DataTypes) => {
     loginHistory: {
       type: DataTypes.JSON,
       allowNull: true,
-      defaultValue: [],
     },
   }, {
     tableName: 'users',

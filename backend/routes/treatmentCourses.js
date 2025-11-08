@@ -5,9 +5,21 @@ const db = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
 
 // GET /api/treatment-courses - list all treatment courses
+// Query params: ?template=true to get only template courses (clientId is null)
 router.get('/', async (req, res) => {
   try {
-    const courses = await db.TreatmentCourse.findAll();
+    const { template } = req.query;
+    let whereClause = {};
+    
+    // If template=true, only return courses with clientId = null (template courses)
+    if (template === 'true') {
+      whereClause.clientId = null;
+    }
+    
+    const courses = await db.TreatmentCourse.findAll({
+      where: whereClause,
+      order: [['serviceName', 'ASC']]
+    });
     res.json(courses);
   } catch (error) {
     console.error('Error fetching treatment courses:', error);

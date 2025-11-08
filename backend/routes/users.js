@@ -6,11 +6,7 @@ const db = require('../config/database'); // Sequelize models
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs'); // Import bcrypt for hashing
 
-const includeProfiles = [
-    { model: db.Customer, as: 'customerProfile', include: [{ model: db.Tier, as: 'Tier' }] },
-    // StaffProfile uses an aliased association to StaffTier, so include must specify the alias
-    { model: db.Staff, as: 'staffProfile', include: [{ model: db.StaffTier, as: 'StaffTier' }] }
-];
+// Note: Customer and Staff tables removed - all user info in users table
 
 const formatUserOutput = (user) => {
     if (!user) return null;
@@ -22,7 +18,7 @@ const formatUserOutput = (user) => {
 // GET /api/users - Get all users
 router.get('/', async (req, res) => {
     try {
-        const users = await db.User.findAll({ include: includeProfiles });
+        const users = await db.User.findAll();
         res.json(users.map(formatUserOutput));
     } catch (error) {
         console.error('Error fetching users:', error);
@@ -34,7 +30,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
     const { id } = req.params;
     try {
-        const user = await db.User.findByPk(id, { include: includeProfiles });
+        const user = await db.User.findByPk(id);
         if (user) {
             res.json(formatUserOutput(user));
         } else {
@@ -46,10 +42,10 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// PUT /api/users/:id - Update user and their profile
+// PUT /api/users/:id - Update user
 router.put('/:id', async (req, res) => {
     const { id } = req.params;
-    const { customerProfile, staffProfile, ...userData } = req.body;
+    const userData = req.body;
     const t = await db.sequelize.transaction();
 
     try {
@@ -69,20 +65,10 @@ router.put('/:id', async (req, res) => {
         // Update main user record
         await user.update(userData, { transaction: t });
 
-        // Update associated profiles if they exist
-        if (customerProfile) {
-            const customer = await user.getCustomerProfile({ transaction: t });
-            if (customer) await customer.update(customerProfile, { transaction: t });
-        }
-        if (staffProfile) {
-            const staff = await user.getStaffProfile({ transaction: t });
-            if (staff) await staff.update(staffProfile, { transaction: t });
-        }
-
         await t.commit();
         
-        // Refetch the updated user with all associations
-        const updatedUser = await db.User.findByPk(id, { include: includeProfiles });
+        // Refetch the updated user
+        const updatedUser = await db.User.findByPk(id);
 
         res.json(formatUserOutput(updatedUser));
 
@@ -95,7 +81,7 @@ router.put('/:id', async (req, res) => {
 
 // POST /api/users - Add a new user (Admin only)
 router.post('/', async (req, res) => {
-    const { customerProfile, staffProfile, ...userData } = req.body;
+    const userData = req.body;
     if (!userData.email || !userData.name || !userData.password) {
         return res.status(400).json({ message: 'Missing required user data' });
     }
@@ -118,20 +104,19 @@ router.post('/', async (req, res) => {
             joinDate: new Date().toISOString().split('T')[0],
             lastLogin: new Date().toISOString(),
         }, { transaction: t });
-
-        if (createdUser.role === 'Client' && customerProfile) {
-            await db.Customer.create({ userId: createdUser.id, ...customerProfile }, { transaction: t });
-        }
-        if ((createdUser.role === 'Staff' || createdUser.role === 'Admin') && staffProfile) {
-            await db.Staff.create({ userId: createdUser.id, ...staffProfile }, { transaction: t });
-        }
         
         // Initialize wallet for the new user
-        await db.Wallet.create({ userId: createdUser.id, balance: 0, points: 0, spinsLeft: 3 }, { transaction: t });
+        await db.Wallet.create({ 
+            userId: createdUser.id, 
+            balance: 0, 
+            points: 0, 
+            totalEarned: 0, 
+            totalSpent: 0
+        }, { transaction: t });
 
         await t.commit();
 
-        const finalUser = await db.User.findByPk(createdUser.id, { include: includeProfiles });
+        const finalUser = await db.User.findByPk(createdUser.id);
 
         res.status(201).json(formatUserOutput(finalUser));
 
@@ -151,7 +136,7 @@ router.delete('/:id', async (req, res) => {
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
-        await user.destroy(); // This will also cascade delete associated Wallet, PointsHistory, etc.
+        await user.destroy(); // This will also cascade delete associated Wallet, etc.
         res.status(204).send();
     } catch (error) {
         console.error('Error deleting user:', error);

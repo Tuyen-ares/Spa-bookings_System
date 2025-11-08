@@ -12,11 +12,7 @@ router.post('/login', async (req, res) => {
 
     try {
         const user = await db.User.findOne({ 
-            where: { email },
-            include: [
-                { model: db.Customer, as: 'customerProfile', include: [{ model: db.Tier, as: 'Tier' }] },
-                { model: db.Staff, as: 'staffProfile', include: [{model: db.StaffTier, as: 'StaffTier'}] }
-            ]
+            where: { email }
         });
 
         if (user && (await bcrypt.compare(password, user.password))) {
@@ -48,7 +44,7 @@ router.post('/login', async (req, res) => {
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
-    const { name, email, password } = req.body;
+    const { name, email, password, phone, gender, birthday } = req.body;
     const t = await db.sequelize.transaction(); // Start a transaction
 
     try {
@@ -63,6 +59,27 @@ router.post('/register', async (req, res) => {
             return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin và mật khẩu phải có ít nhất 6 ký tự.' });
         }
 
+        // Validate phone number if provided
+        if (phone && !/^[0-9]{10,11}$/.test(phone.replace(/\s/g, ''))) {
+            await t.rollback();
+            return res.status(400).json({ message: 'Số điện thoại không hợp lệ. Vui lòng nhập 10-11 chữ số.' });
+        }
+
+        // Validate birthday if provided
+        if (birthday) {
+            const birthDate = new Date(birthday);
+            const today = new Date();
+            if (birthDate > today) {
+                await t.rollback();
+                return res.status(400).json({ message: 'Ngày sinh không thể là ngày trong tương lai.' });
+            }
+            const age = today.getFullYear() - birthDate.getFullYear();
+            if (age < 13 || age > 120) {
+                await t.rollback();
+                return res.status(400).json({ message: 'Ngày sinh không hợp lệ. Bạn phải từ 13 tuổi trở lên.' });
+            }
+        }
+
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
         const userId = `user-client-${uuidv4()}`;
@@ -72,22 +89,14 @@ router.post('/register', async (req, res) => {
             name,
             email,
             password: hashedPassword,
-            phone: '',
+            phone: phone ? phone.trim() : null,
             profilePictureUrl: `https://picsum.photos/seed/${userId}/200`,
             joinDate: new Date().toISOString().split('T')[0],
-            birthday: '1990-01-01',
+            birthday: birthday || null,
+            gender: gender || null,
             role: 'Client',
             status: 'Active',
             lastLogin: new Date().toISOString(),
-        }, { transaction: t });
-
-        // Initialize customer profile for the new user
-        await db.Customer.create({
-            userId: newUser.id,
-            tierLevel: 1,
-            selfCareIndex: 50,
-            totalSpending: 0,
-            lastTierUpgradeDate: new Date().toISOString(),
         }, { transaction: t });
 
         // Initialize wallet for the new user
@@ -95,18 +104,15 @@ router.post('/register', async (req, res) => {
             userId: newUser.id,
             balance: 0,
             points: 0,
-            spinsLeft: 3
+            totalEarned: 0,
+            totalSpent: 0
         }, { transaction: t });
 
         // Commit the transaction
         await t.commit();
 
-        // Fetch the complete user object with profile to return
-        const finalUser = await db.User.findByPk(newUser.id, {
-            include: [
-                { model: db.Customer, as: 'customerProfile', include: [{ model: db.Tier, as: 'Tier' }] }
-            ]
-        });
+        // Fetch the complete user object to return
+        const finalUser = await db.User.findByPk(newUser.id);
 
         // Create token for newly registered user
         const token = jwt.sign(
@@ -125,6 +131,52 @@ router.post('/register', async (req, res) => {
         await t.rollback();
         console.error('Error during registration:', error);
         res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// POST /api/auth/change-password - Change password for logged-in user
+router.post('/change-password', async (req, res) => {
+    const { userId, currentPassword, newPassword } = req.body;
+
+    try {
+        if (!userId || !currentPassword || !newPassword) {
+            return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin' });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 6 ký tự' });
+        }
+
+        // Find user
+        const user = await db.User.findByPk(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'Người dùng không tồn tại' });
+        }
+
+        // Verify current password
+        const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+        if (!isPasswordValid) {
+            return res.status(401).json({ message: 'Mật khẩu hiện tại không đúng' });
+        }
+
+        // Check if new password is different from current password
+        const isSamePassword = await bcrypt.compare(newPassword, user.password);
+        if (isSamePassword) {
+            return res.status(400).json({ message: 'Mật khẩu mới phải khác mật khẩu hiện tại' });
+        }
+
+        // Hash new password
+        const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update password
+        await user.update({ password: hashedNewPassword });
+
+        console.log(`Password changed for user: ${user.email}`);
+        res.json({ message: 'Đổi mật khẩu thành công' });
+
+    } catch (error) {
+        console.error('Error changing password:', error);
+        res.status(500).json({ message: 'Lỗi server. Vui lòng thử lại sau' });
     }
 });
 

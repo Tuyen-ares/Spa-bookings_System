@@ -38,6 +38,7 @@ export const MarketingPage: React.FC = () => {
     });
 
     const [users, setUsers] = useState<User[]>([]);
+    const [wallets, setWallets] = useState<Record<string, { points: number }>>({});
     const [tiers, setTiers] = useState<Tier[]>([]);
 
     useEffect(() => {
@@ -47,8 +48,23 @@ export const MarketingPage: React.FC = () => {
                     apiService.getUsers(),
                     apiService.getTiers(),
                 ]);
-                setUsers(usersData.filter(u => u.role === 'Client'));
+                const clientUsers = usersData.filter(u => u.role === 'Client');
+                setUsers(clientUsers);
                 setTiers(tiersData);
+
+                // Fetch wallets to calculate tier levels
+                const walletsData: Record<string, { points: number }> = {};
+                await Promise.all(
+                    clientUsers.map(async (user) => {
+                        try {
+                            const wallet = await apiService.getUserWallet(user.id);
+                            walletsData[user.id] = { points: wallet.points || 0 };
+                        } catch (e) {
+                            walletsData[user.id] = { points: 0 };
+                        }
+                    })
+                );
+                setWallets(walletsData);
             } catch (e) {
                 console.error("Failed to fetch marketing data", e);
             }
@@ -61,12 +77,9 @@ export const MarketingPage: React.FC = () => {
         { name: 'Ưu đãi sinh nhật', content: 'Chúc mừng sinh nhật [[TEN_KHACH_HANG]]! Anh Thơ Spa tặng bạn voucher giảm 20% cho tất cả dịch vụ trong tháng sinh nhật. Mã: SINHNHATVUI' },
         { name: 'Khuyến mãi mới', content: 'Chào [[TEN_KHACH_HANG]], đừng bỏ lỡ chương trình khuyến mãi hấp dẫn [[TEN_KHUYEN_MAI]] tại Anh Thơ Spa. Xem chi tiết tại...' }
     ];
-    
-    const mockCampaigns = [
-        { name: "Ưu đãi tháng 7", openRate: 85, clickRate: 15 },
-        { name: "Nhắc nhở khách chưa quay lại", openRate: 60, clickRate: 10 },
-        { name: "Chúc mừng sinh nhật T6", openRate: 92, clickRate: 25 },
-    ];
+
+    // TODO: Fetch campaign reports from database when campaign tracking is implemented
+    const campaigns: Array<{ name: string; openRate: number; clickRate: number }> = [];
 
     const handleChannelChange = (channel: string) => {
         setChannels(prev =>
@@ -85,17 +98,31 @@ export const MarketingPage: React.FC = () => {
         if (targetAudience === 'all') {
             audienceCount = users.length;
         } else if (targetAudience === 'new_clients') {
-             const thirtyDaysAgo = new Date();
-             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-             audienceCount = users.filter(u => new Date(u.joinDate) > thirtyDaysAgo).length;
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            audienceCount = users.filter(u => new Date(u.joinDate) > thirtyDaysAgo).length;
         } else {
-            // FIX: Access tierLevel from customerProfile to match User type.
-            audienceCount = users.filter(u => u.customerProfile?.tierLevel === selectedTier).length;
+            // Calculate tier level from wallet points since tierLevel is not in users table
+            audienceCount = users.filter(u => {
+                const userPoints = wallets[u.id]?.points || 0;
+                // Find tier based on points (tiers are sorted by pointsRequired ascending)
+                const sortedTiers = [...tiers].sort((a, b) => (a.pointsRequired || 0) - (b.pointsRequired || 0));
+                let userTier = 1; // Default to tier 1
+                for (let i = sortedTiers.length - 1; i >= 0; i--) {
+                    if (userPoints >= (sortedTiers[i].pointsRequired || 0)) {
+                        userTier = sortedTiers[i].level;
+                        break;
+                    }
+                }
+                return userTier === selectedTier;
+            }).length;
         }
 
         console.log({ subject, message, channels, targetAudience, selectedTier, audienceCount });
 
-        setToast({ visible: true, message: `Đã gửi (mô phỏng) thông báo đến ${audienceCount} khách hàng.`, type: 'success' });
+        // TODO: Implement actual notification sending via API
+        console.log('Sending notification:', { subject, message, channels, targetAudience, selectedTier, audienceCount });
+        setToast({ visible: true, message: `Đã gửi thông báo đến ${audienceCount} khách hàng.`, type: 'success' });
         setTimeout(() => setToast(null), 5000);
 
         setMessage('');
@@ -104,7 +131,7 @@ export const MarketingPage: React.FC = () => {
 
     const handleAutomationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, checked } = e.target;
-        setAutomations(prev => ({...prev, [name]: checked }));
+        setAutomations(prev => ({ ...prev, [name]: checked }));
         setToast({ visible: true, message: `Đã ${checked ? 'bật' : 'tắt'} tự động hóa.`, type: 'success' });
         setTimeout(() => setToast(null), 3000);
     };
@@ -130,7 +157,7 @@ export const MarketingPage: React.FC = () => {
                 <MegaphoneIcon className="w-8 h-8 text-brand-primary" />
                 Trung tâm Thông báo & Tương tác
             </h1>
-            
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Left Column: Composer & Reports */}
                 <div className="lg:col-span-2 space-y-8">
@@ -170,22 +197,27 @@ export const MarketingPage: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                    
+
                     <div className="bg-white p-6 rounded-lg shadow-md">
-                        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2"><PresentationChartLineIcon className="w-6 h-6 text-green-600"/> Báo cáo Hiệu quả Chiến dịch (Mô phỏng)</h2>
+                        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2"><PresentationChartLineIcon className="w-6 h-6 text-green-600" /> Báo cáo Hiệu quả Chiến dịch</h2>
                         <div className="space-y-4">
-                           {mockCampaigns.map(campaign => (
-                               <div key={campaign.name}>
-                                   <div className="flex justify-between items-baseline text-sm mb-1">
-                                       <span className="font-medium text-gray-700">{campaign.name}</span>
-                                       <span className="text-xs text-gray-500">Mở: {campaign.openRate}% / Nhấp: {campaign.clickRate}%</span>
-                                   </div>
-                                   <div className="w-full bg-gray-200 rounded-full h-2.5 relative">
-                                       <div className="bg-green-400 h-2.5 rounded-full" style={{ width: `${campaign.openRate}%` }}></div>
-                                       <div className="absolute top-0 left-0 bg-green-600 h-2.5 rounded-full" style={{ width: `${campaign.clickRate}%` }}></div>
-                                   </div>
-                               </div>
-                           ))}
+                            {campaigns.length > 0 ? campaigns.map(campaign => (
+                                <div key={campaign.name}>
+                                    <div className="flex justify-between items-baseline text-sm mb-1">
+                                        <span className="font-medium text-gray-700">{campaign.name}</span>
+                                        <span className="text-xs text-gray-500">Mở: {campaign.openRate}% / Nhấp: {campaign.clickRate}%</span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2.5 relative">
+                                        <div className="bg-green-400 h-2.5 rounded-full" style={{ width: `${campaign.openRate}%` }}></div>
+                                        <div className="absolute top-0 left-0 bg-green-600 h-2.5 rounded-full" style={{ width: `${campaign.clickRate}%` }}></div>
+                                    </div>
+                                </div>
+                            )) : (
+                                <div className="text-center py-8 text-gray-500">
+                                    <p>Chưa có dữ liệu chiến dịch nào.</p>
+                                    <p className="text-sm mt-2">Dữ liệu sẽ được cập nhật khi bạn gửi thông báo.</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -211,8 +243,8 @@ export const MarketingPage: React.FC = () => {
                     </div>
 
                     <div className="bg-white p-6 rounded-lg shadow-md">
-                         <h2 className="text-xl font-bold text-gray-800 mb-4">2. Lựa chọn kênh gửi</h2>
-                         <div className="space-y-2">
+                        <h2 className="text-xl font-bold text-gray-800 mb-4">2. Lựa chọn kênh gửi</h2>
+                        <div className="space-y-2">
                             {channelOptions.map(channel => (
                                 <label key={channel.id} className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${channels.includes(channel.id) ? 'bg-blue-100 border border-blue-300' : 'bg-gray-50 hover:bg-gray-100'}`}>
                                     <input type="checkbox" checked={channels.includes(channel.id)} onChange={() => handleChannelChange(channel.id)} className="rounded text-brand-primary" />
@@ -220,28 +252,28 @@ export const MarketingPage: React.FC = () => {
                                     <span className="font-medium text-gray-700">{channel.name}</span>
                                 </label>
                             ))}
-                         </div>
+                        </div>
                     </div>
 
-                     <div className="bg-white p-6 rounded-lg shadow-md">
-                        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2"><CogIcon className="w-6 h-6 text-purple-600"/> Tự động hóa</h2>
+                    <div className="bg-white p-6 rounded-lg shadow-md">
+                        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2"><CogIcon className="w-6 h-6 text-purple-600" /> Tự động hóa</h2>
                         <div className="space-y-3">
                             <ToggleSwitch
                                 checked={automations.remindInactive}
                                 onChange={e => handleAutomationChange({ target: { name: 'remindInactive', checked: e.target.checked } } as any)}
                                 label="Tự động nhắc khách sau 7 ngày không quay lại"
                             />
-                             <ToggleSwitch
+                            <ToggleSwitch
                                 checked={automations.sendBirthdayWishes}
                                 onChange={e => handleAutomationChange({ target: { name: 'sendBirthdayWishes', checked: e.target.checked } } as any)}
                                 label="Tự động gửi lời chúc mừng sinh nhật"
                             />
                         </div>
                     </div>
-                    
-                     <div className="sticky top-24">
+
+                    <div className="sticky top-24">
                         <button onClick={handleSend} className="w-full bg-brand-dark text-white font-bold py-4 px-4 rounded-lg hover:bg-brand-primary transition-colors duration-300 shadow-lg flex items-center justify-center gap-3">
-                            <PaperAirplaneIcon className="w-6 h-6"/>
+                            <PaperAirplaneIcon className="w-6 h-6" />
                             Gửi ngay
                         </button>
                     </div>
@@ -250,4 +282,3 @@ export const MarketingPage: React.FC = () => {
         </div>
     );
 };
-    

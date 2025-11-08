@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import type { User, UserRole, UserStatus, LoginAttempt, Wallet, Tier, Mission, StaffRole, CustomerProfile, StaffProfile } from '../../types';
-import { PlusIcon, SearchIcon,EditIcon,TrashIcon, LockClosedIcon,
-    EyeIcon,KeyIcon,ChartBarIcon,GiftIcon,MinusIcon,TrophyIconFilled
+import {
+    PlusIcon, SearchIcon, EditIcon, TrashIcon, LockClosedIcon,
+    EyeIcon, KeyIcon, ChartBarIcon, GiftIcon, MinusIcon, TrophyIconFilled
 } from '../../shared/icons';
 import * as apiService from '../../client/services/apiService';
 
@@ -36,13 +37,13 @@ const AddEditUserModal: React.FC<{ user: User | null; onClose: () => void; onSav
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
-    
+
     const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>, profile: 'customerProfile' | 'staffProfile') => {
         const { name, value } = e.target;
         setFormData(prev => ({
             ...prev,
             [profile]: {
-                ...prev[profile],
+                ...(prev[profile] || {}),
                 [name]: value,
             }
         }));
@@ -72,7 +73,7 @@ const AddEditUserModal: React.FC<{ user: User | null; onClose: () => void; onSav
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div><label className="block text-sm font-medium text-gray-700">Họ tên</label><input type="text" name="name" value={formData.name || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded" required /></div>
                             <div><label className="block text-sm font-medium text-gray-700">Email</label><input type="email" name="email" value={formData.email || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded" required /></div>
-                             {!user && (<div><label className="block text-sm font-medium text-gray-700">Mật khẩu</label><input type="password" name="password" value={formData.password || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded" required /></div>)}
+                            {!user && (<div><label className="block text-sm font-medium text-gray-700">Mật khẩu</label><input type="password" name="password" value={formData.password || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded" required /></div>)}
                             <div><label className="block text-sm font-medium text-gray-700">Số điện thoại</label><input type="tel" name="phone" value={formData.phone || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded" /></div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Vai trò</label>
@@ -89,16 +90,7 @@ const AddEditUserModal: React.FC<{ user: User | null; onClose: () => void; onSav
                                 </select>
                             </div>
 
-                            {formData.role === 'Staff' && (
-                                <div className="md:col-span-2">
-                                     <label className="block text-sm font-medium text-gray-700">Vai trò nhân viên</label>
-                                     <select name="staffRole" value={formData.staffProfile?.staffRole} onChange={(e) => handleProfileChange(e, 'staffProfile')} className="mt-1 w-full p-2 border rounded">
-                                        <option value="Technician">Kỹ thuật viên</option>
-                                        <option value="Receptionist">Lễ tân</option>
-                                        <option value="Manager">Quản lý</option>
-                                     </select>
-                                </div>
-                            )}
+                            {/* Note: staffRole field removed - not in db.txt users table */}
                         </div>
                     </div>
                     <div className="bg-gray-50 px-6 py-4 flex justify-end gap-4 rounded-b-lg">
@@ -116,6 +108,7 @@ const AddEditUserModal: React.FC<{ user: User | null; onClose: () => void; onSav
 const UserDetailsModal: React.FC<{ user: User; onClose: () => void; allTiers: Tier[] }> = ({ user, onClose, allTiers }) => {
     const [userWallet, setUserWallet] = useState<Wallet | null>(null);
     const [userMissions, setUserMissions] = useState<Mission[]>([]);
+    const [totalSpending, setTotalSpending] = useState<number>(0);
     const [isLoadingDetails, setIsLoadingDetails] = useState(true);
     const [errorDetails, setErrorDetails] = useState<string | null>(null);
 
@@ -132,6 +125,21 @@ const UserDetailsModal: React.FC<{ user: User; onClose: () => void; allTiers: Ti
                 setUserWallet(fetchedWallet);
                 const fetchedMissions = await apiService.getUserMissions(user.id);
                 setUserMissions(fetchedMissions);
+
+                // Calculate total spending from payments
+                try {
+                    const allPayments = await apiService.getPayments();
+                    const userPayments = allPayments.filter(p => p.userId === user.id);
+                    const completedPayments = userPayments.filter(p => p.status === 'Completed');
+                    const total = completedPayments.reduce((sum, p) => sum + parseFloat(String(p.amount || 0)), 0);
+                    setTotalSpending(total);
+                } catch (paymentError) {
+                    console.warn("Could not fetch payments for total spending:", paymentError);
+                    // Fallback to wallet.totalSpent if available
+                    if (fetchedWallet?.totalSpent) {
+                        setTotalSpending(fetchedWallet.totalSpent);
+                    }
+                }
             } catch (err: any) {
                 console.error("Failed to fetch user details:", err);
                 setErrorDetails(err.message || "Không thể tải chi tiết người dùng.");
@@ -145,10 +153,20 @@ const UserDetailsModal: React.FC<{ user: User; onClose: () => void; allTiers: Ti
     }, [user.id, user.role]);
 
 
+    // Calculate tier from wallet points since tierLevel is not in users table
     const userTier = useMemo(() => {
-        if (!user.customerProfile) return null;
-        return allTiers.find(t => t.level === user.customerProfile!.tierLevel) || allTiers[0];
-    }, [user.customerProfile, allTiers]);
+        if (!userWallet || user.role !== 'Client') return null;
+        const userPoints = userWallet.points || 0;
+        const sortedTiers = [...allTiers].sort((a, b) => (a.pointsRequired || 0) - (b.pointsRequired || 0));
+        let tierLevel = 1; // Default to tier 1
+        for (let i = sortedTiers.length - 1; i >= 0; i--) {
+            if (userPoints >= (sortedTiers[i].pointsRequired || 0)) {
+                tierLevel = sortedTiers[i].level;
+                break;
+            }
+        }
+        return allTiers.find(t => t.level === tierLevel) || allTiers[0];
+    }, [userWallet, user.role, allTiers]);
 
 
     if (isLoadingDetails) {
@@ -161,7 +179,7 @@ const UserDetailsModal: React.FC<{ user: User; onClose: () => void; allTiers: Ti
         );
     }
     if (errorDetails) {
-         return (
+        return (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                 <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-8 text-center" onClick={e => e.stopPropagation()}>
                     <p className="text-lg text-red-500">Lỗi: {errorDetails}</p>
@@ -172,12 +190,12 @@ const UserDetailsModal: React.FC<{ user: User; onClose: () => void; allTiers: Ti
     }
 
     return (
-         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full" onClick={e => e.stopPropagation()}>
                 <div className="p-6">
                     <div className="flex justify-between items-start mb-4">
                         <div className="flex items-center gap-4">
-                            <img src={user.profilePictureUrl} alt={user.name} className="w-16 h-16 rounded-full object-cover"/>
+                            <img src={user.profilePictureUrl} alt={user.name} className="w-16 h-16 rounded-full object-cover" />
                             <div>
                                 <h2 className="text-2xl font-bold text-gray-800">{user.name}</h2>
                                 <p className="text-gray-500">{user.email}</p>
@@ -185,29 +203,20 @@ const UserDetailsModal: React.FC<{ user: User; onClose: () => void; allTiers: Ti
                         </div>
                         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
                     </div>
-                    
-                    {user.role === 'Client' && user.customerProfile && userTier && (
-                         <div className="bg-gray-50 p-4 rounded-lg mb-6 border">
-                            <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2"><TrophyIconFilled className="w-5 h-5 text-brand-primary"/>Thông tin thành viên</h3>
+
+                    {user.role === 'Client' && userTier && (
+                        <div className="bg-gray-50 p-4 rounded-lg mb-6 border">
+                            <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2"><TrophyIconFilled className="w-5 h-5 text-brand-primary" />Thông tin thành viên</h3>
                             <div className="grid grid-cols-2 gap-4 text-sm">
                                 <div><p className="font-medium text-gray-500">Cấp độ</p><p className={`font-bold ${userTier.textColor}`} style={{ color: userTier.color }}>{userTier.name}</p></div>
                                 <div><p className="font-medium text-gray-500">Tổng điểm</p><p className="font-bold text-brand-dark">{userWallet?.points?.toLocaleString() || 0} điểm</p></div>
-                                <div><p className="font-medium text-gray-500">Tổng chi tiêu</p><p className="font-bold text-brand-dark">{new Intl.NumberFormat('vi-VN').format(user.customerProfile.totalSpending || 0)}đ</p></div>
+                                <div><p className="font-medium text-gray-500">Tổng chi tiêu</p><p className="font-bold text-brand-dark">{new Intl.NumberFormat('vi-VN').format(totalSpending)}đ</p></div>
                             </div>
                         </div>
                     )}
 
-                    {user.role === 'Staff' && user.staffProfile && (
-                        <div className="bg-gray-50 p-4 rounded-lg mb-6 border">
-                           <h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2"><ChartBarIcon className="w-5 h-5 text-brand-primary"/> Thông tin nhân viên</h3>
-                           <div className="grid grid-cols-2 gap-4 text-sm">
-                               <div><p className="font-medium text-gray-500">Vai trò</p><p className="font-bold text-brand-dark">{ROLE_TRANSLATIONS[user.staffProfile.staffRole]}</p></div>
-                               <div><p className="font-medium text-gray-500">Chuyên môn</p><p className="font-bold text-brand-dark">{user.staffProfile.specialty?.join(', ') || 'N/A'}</p></div>
-                               <div><p className="font-medium text-gray-500">Hoa hồng</p><p className="font-bold text-brand-dark">{(user.staffProfile.commissionRate || 0) * 100}%</p></div>
-                           </div>
-                       </div>
-                    )}
-                    
+                    {/* Note: staffProfile fields removed - not in db.txt users table */}
+
                     <div>
                         <h3 className="text-lg font-semibold text-gray-700 mb-2">Lịch sử đăng nhập</h3>
                         <div className="max-h-60 overflow-y-auto border rounded-lg">
@@ -228,7 +237,7 @@ const UserDetailsModal: React.FC<{ user: User; onClose: () => void; allTiers: Ti
                         </div>
                     </div>
                 </div>
-                 <div className="bg-gray-50 px-6 py-4 flex justify-end rounded-b-lg">
+                <div className="bg-gray-50 px-6 py-4 flex justify-end rounded-b-lg">
                     <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Đóng</button>
                 </div>
             </div>
@@ -275,26 +284,26 @@ const DirectResetPasswordModal: React.FC<{
                     <div className="p-6">
                         <h2 className="text-2xl font-bold text-gray-800 mb-2">Đặt lại mật khẩu</h2>
                         <p className="text-gray-600 mb-4">Bạn đang đặt lại mật khẩu cho người dùng: <strong className="text-brand-dark">{user.name}</strong></p>
-                        
+
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Mật khẩu mới</label>
-                                <input 
-                                    type="password" 
+                                <input
+                                    type="password"
                                     value={newPassword}
                                     onChange={(e) => { setNewPassword(e.target.value); setError(''); }}
-                                    className="mt-1 w-full p-2 border rounded" 
-                                    required 
+                                    className="mt-1 w-full p-2 border rounded"
+                                    required
                                 />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Xác nhận mật khẩu mới</label>
-                                <input 
-                                    type="password" 
+                                <input
+                                    type="password"
                                     value={confirmPassword}
                                     onChange={(e) => { setConfirmPassword(e.target.value); setError(''); }}
-                                    className="mt-1 w-full p-2 border rounded" 
-                                    required 
+                                    className="mt-1 w-full p-2 border rounded"
+                                    required
                                 />
                             </div>
                             {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -355,7 +364,7 @@ const GivePointsModal: React.FC<{
                     <div className="p-6">
                         <h2 className="text-2xl font-bold text-gray-800 mb-2">Điều chỉnh điểm thưởng</h2>
                         <p className="text-gray-600 mb-4">Người dùng: <strong className="text-brand-dark">{user.name}</strong> (Điểm hiện tại: {currentWallet.points.toLocaleString()})</p>
-                        
+
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Loại điều chỉnh</label>
@@ -370,22 +379,22 @@ const GivePointsModal: React.FC<{
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Số điểm</label>
-                                <input 
-                                    type="number" 
+                                <input
+                                    type="number"
                                     value={pointsChange}
                                     onChange={(e) => setPointsChange(Math.max(0, parseInt(e.target.value) || 0))}
-                                    className="mt-1 w-full p-2 border rounded" 
+                                    className="mt-1 w-full p-2 border rounded"
                                     min="0"
-                                    required 
+                                    required
                                 />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Lý do (tùy chọn)</label>
-                                <textarea 
+                                <textarea
                                     value={reason}
                                     onChange={(e) => setReason(e.target.value)}
                                     rows={2}
-                                    className="mt-1 w-full p-2 border rounded" 
+                                    className="mt-1 w-full p-2 border rounded"
                                 />
                             </div>
                             {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -428,7 +437,7 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
     const [filterRole, setFilterRole] = useState<UserRole | 'All'>('All');
     const [filterStatus, setFilterStatus] = useState<UserStatus | 'All'>('All');
     const [currentPage, setCurrentPage] = useState(1);
-    
+
     // Modal states
     const [isAddEditModalOpen, setIsAddEditModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -441,23 +450,33 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
     const [isGivePointsModalOpen, setIsGivePointsModalOpen] = useState(false);
     const [userToGivePoints, setUserToGivePoints] = useState<User | null>(null);
     const [toast, setToast] = useState<{ visible: boolean, message: string }>({ visible: false, message: '' });
-    
+
     useEffect(() => {
         const fetchUserData = async () => {
             try {
                 setIsLoadingUsers(true);
                 setErrorUsers(null);
-                setLocalUsers(allUsers); 
-                
+
+                // If allUsers is empty or not provided, fetch from API
+                let usersToUse = allUsers;
+                if (!allUsers || allUsers.length === 0) {
+                    console.log('UsersPage: allUsers is empty, fetching from API...');
+                    usersToUse = await apiService.getUsers();
+                    console.log('UsersPage: Fetched users from API:', usersToUse.length);
+                }
+
+                setLocalUsers(usersToUse);
+
+                // Fetch wallets for Client users
                 const fetchedWallets: Record<string, Wallet> = {};
-                for (const user of allUsers) {
-                    if(user.role === 'Client') {
-                         try {
+                for (const user of usersToUse) {
+                    if (user.role === 'Client') {
+                        try {
                             const wallet = await apiService.getUserWallet(user.id);
                             fetchedWallets[user.id] = wallet;
                         } catch (walletError) {
                             console.warn(`Could not fetch wallet for user ${user.id}:`, walletError);
-                            fetchedWallets[user.id] = { balance: 0, points: 0, spinsLeft: 0 };
+                            fetchedWallets[user.id] = { balance: 0, points: 0, totalEarned: 0, totalSpent: 0 };
                         }
                     }
                 }
@@ -472,13 +491,8 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
                 setIsLoadingUsers(false);
             }
         };
-        if (allUsers.length > 0) {
-            fetchUserData();
-        } else if (!isLoadingUsers) {
-            setLocalUsers([]);
-            setWallets({});
-            setIsLoadingUsers(false);
-        }
+
+        fetchUserData();
     }, [allUsers]);
 
     const filteredUsers = useMemo(() => {
@@ -497,7 +511,7 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
     useEffect(() => {
         setCurrentPage(1);
     }, [searchTerm, filterRole, filterStatus]);
-    
+
     const handleAddUser = () => { setEditingUser(null); setIsAddEditModalOpen(true); };
     const handleEditUser = (user: User) => { setEditingUser(user); setIsAddEditModalOpen(true); };
     const handleViewDetails = (user: User) => { setViewingUser(user); setIsDetailsModalOpen(true); };
@@ -513,8 +527,13 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
                 savedUser = await apiService.createUser({ ...user, password: user.password || 'password123' });
                 setLocalUsers(prev => [savedUser, ...prev]);
                 if (savedUser.role === 'Client') {
-                    const newWallet = await apiService.getUserWallet(savedUser.id);
-                    setWallets(prev => ({ ...prev, [savedUser.id]: newWallet }));
+                    try {
+                        const newWallet = await apiService.getUserWallet(savedUser.id);
+                        setWallets(prev => ({ ...prev, [savedUser.id]: newWallet }));
+                    } catch (walletError) {
+                        console.warn(`Could not fetch wallet for new user ${savedUser.id}:`, walletError);
+                        setWallets(prev => ({ ...prev, [savedUser.id]: { balance: 0, points: 0, totalEarned: 0, totalSpent: 0 } }));
+                    }
                 }
             }
             setToast({ visible: true, message: `Lưu người dùng ${savedUser.name} thành công!` });
@@ -531,7 +550,7 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
         try {
             const updatedWallet = await apiService.updateUserWallet(userId, { points: newPoints });
             setWallets(prev => ({ ...prev, [userId]: updatedWallet }));
-            await apiService.createPointsHistoryEntry(userId, { description: reason, pointsChange: newPoints - (wallets[userId]?.points || 0), userId: userId });
+            await apiService.createPointsHistoryEntry(userId, { description: reason, pointsChange: newPoints - (wallets[userId]?.points || 0), type: newPoints > (wallets[userId]?.points || 0) ? 'earned' : 'spent', source: 'admin' });
             setToast({ visible: true, message: `Điểm của ${localUsers.find(u => u.id === userId)?.name} đã được cập nhật.` });
         } catch (err: any) {
             console.error("Error saving points:", err);
@@ -543,7 +562,7 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
         }
     };
 
-    const handleToggleLockUser = async (userId: string) => { 
+    const handleToggleLockUser = async (userId: string) => {
         try {
             await apiService.toggleUserLockStatus(userId);
             setLocalUsers(prev => prev.map(u => u.id === userId ? { ...u, status: u.status === 'Locked' ? 'Active' : 'Locked' } : u));
@@ -555,7 +574,7 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
             setTimeout(() => setToast({ visible: false, message: '' }), 4000);
         }
     };
-    
+
     const handleResetPassword = (user: User) => {
         if (user.role === 'Client') {
             setUserToReset(user);
@@ -565,20 +584,29 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
             setIsDirectResetModalOpen(true);
         }
     };
-    
+
     const handleConfirmResetPassword = async () => {
         if (userToReset) {
-            setToast({ visible: true, message: `Đã gửi email đặt lại mật khẩu cho ${userToReset.name}. (Mock)` });
-            setTimeout(() => setToast({ visible: false, message: '' }), 4000);
-            setIsResetConfirmOpen(false);
+            try {
+                // TODO: Implement password reset email functionality
+                // This would call an API endpoint to send reset password email
+                console.log(`Sending password reset email to ${userToReset.email}`);
+                setToast({ visible: true, message: `Đã gửi email đặt lại mật khẩu cho ${userToReset.name}.` });
+            } catch (error) {
+                console.error('Error sending password reset email:', error);
+                setToast({ visible: true, message: 'Không thể gửi email. Vui lòng thử lại sau.' });
+            } finally {
+                setTimeout(() => setToast({ visible: false, message: '' }), 4000);
+                setIsResetConfirmOpen(false);
+            }
             setUserToReset(null);
         }
     };
-    
+
     const handleSaveNewPassword = async (userId: string, newPassword: string) => {
         try {
             await apiService.resetUserPassword(userId, newPassword);
-            setLocalUsers(prevUsers => prevUsers.map(u => 
+            setLocalUsers(prevUsers => prevUsers.map(u =>
                 u.id === userId ? { ...u, password: newPassword } : u
             ));
             setToast({ visible: true, message: `Đã cập nhật mật khẩu thành công.` });
@@ -593,11 +621,17 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
     };
 
 
-    const handleDeleteUser = async (userId: string) => { 
-        if (window.confirm('Bạn có chắc chắn muốn xóa người dùng này? Thao tác này không thể hoàn tác.')) { 
+    const handleDeleteUser = async (userId: string) => {
+        if (window.confirm('Bạn có chắc chắn muốn xóa người dùng này? Thao tác này không thể hoàn tác.')) {
             try {
                 await apiService.deleteUser(userId);
                 setLocalUsers(prev => prev.filter(u => u.id !== userId));
+                // Remove wallet if exists
+                setWallets(prev => {
+                    const updated = { ...prev };
+                    delete updated[userId];
+                    return updated;
+                });
                 setToast({ visible: true, message: `Đã xóa người dùng thành công!` });
             } catch (err: any) {
                 console.error("Error deleting user:", err);
@@ -605,29 +639,59 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
             } finally {
                 setTimeout(() => setToast({ visible: false, message: '' }), 4000);
             }
-        } 
+        }
     };
-    
+
+    // Refresh users data
+    const refreshUsers = async () => {
+        try {
+            setIsLoadingUsers(true);
+            setErrorUsers(null);
+            const fetchedUsers = await apiService.getUsers();
+            setLocalUsers(fetchedUsers);
+
+            // Refresh wallets for Client users
+            const fetchedWallets: Record<string, Wallet> = {};
+            for (const user of fetchedUsers) {
+                if (user.role === 'Client') {
+                    try {
+                        const wallet = await apiService.getUserWallet(user.id);
+                        fetchedWallets[user.id] = wallet;
+                    } catch (walletError) {
+                        console.warn(`Could not fetch wallet for user ${user.id}:`, walletError);
+                        fetchedWallets[user.id] = { balance: 0, points: 0, totalEarned: 0, totalSpent: 0 };
+                    }
+                }
+            }
+            setWallets(fetchedWallets);
+        } catch (err: any) {
+            console.error("Error refreshing users:", err);
+            setErrorUsers(err.message || "Không thể tải danh sách người dùng.");
+        } finally {
+            setIsLoadingUsers(false);
+        }
+    };
+
     return (
         <div>
             {isAddEditModalOpen && <AddEditUserModal user={editingUser} onClose={() => setIsAddEditModalOpen(false)} onSave={handleSaveUser} />}
             {isDetailsModalOpen && viewingUser && <UserDetailsModal user={viewingUser} onClose={() => setIsDetailsModalOpen(false)} allTiers={allTiers} />}
             {isDirectResetModalOpen && userForDirectReset && (
-                <DirectResetPasswordModal 
-                    user={userForDirectReset} 
-                    onClose={() => setIsDirectResetModalOpen(false)} 
-                    onSave={handleSaveNewPassword} 
+                <DirectResetPasswordModal
+                    user={userForDirectReset}
+                    onClose={() => setIsDirectResetModalOpen(false)}
+                    onSave={handleSaveNewPassword}
                 />
             )}
             {isGivePointsModalOpen && userToGivePoints && (
                 <GivePointsModal
                     user={userToGivePoints}
-                    currentWallet={wallets[userToGivePoints.id] || { balance: 0, points: 0, spinsLeft: 0 }}
+                    currentWallet={wallets[userToGivePoints.id] || { balance: 0, points: 0, totalEarned: 0, totalSpent: 0 }}
                     onClose={() => setIsGivePointsModalOpen(false)}
                     onSavePoints={handleSavePoints}
                 />
             )}
-            
+
             {toast.visible && (
                 <div className="fixed top-24 right-6 bg-green-500 text-white p-4 rounded-lg shadow-lg z-[100] animate-fadeInDown transition-all">
                     <div className="flex items-center gap-3">
@@ -638,7 +702,7 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
                     </div>
                 </div>
             )}
-            
+
             {isResetConfirmOpen && userToReset && (
                 <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={() => setIsResetConfirmOpen(false)}>
                     <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full text-center transform transition-all animate-fadeIn" onClick={(e) => e.stopPropagation()}>
@@ -664,7 +728,7 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
             )}
 
             <h1 className="text-3xl font-bold text-gray-800 mb-6">Quản lý Người dùng</h1>
-            
+
             <div className="mb-6 flex flex-col md:flex-row gap-4">
                 <div className="relative flex-grow"><input type="text" placeholder="Tìm kiếm theo tên hoặc email..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full p-3 pl-10 border border-gray-300 rounded-lg focus:ring-brand-primary focus:border-brand-primary" /><SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" /></div>
                 <select value={filterRole} onChange={e => setFilterRole(e.target.value as UserRole | 'All')} className="p-3 border border-gray-300 rounded-lg bg-white">

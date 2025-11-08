@@ -121,7 +121,8 @@ export const StaffAppointmentsPage: React.FC<AppointmentsPageProps> = ({ current
                         await apiService.createPointsHistoryEntry(client.id, {
                             description: `Điểm thưởng từ dịch vụ: ${service.name}`,
                             pointsChange: pointsEarned,
-                            userId: client.id,
+                            type: 'earned',
+                            source: 'service_completion',
                         });
                         
                         setToastMessage(`Đã hoàn thành dịch vụ cho ${client.name}. Khách hàng nhận được ${pointsEarned} điểm.`);
@@ -211,7 +212,6 @@ export const StaffAppointmentsPage: React.FC<AppointmentsPageProps> = ({ current
                                     <p className="text-sm font-semibold text-gray-500">{new Date(app.date).toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} - {app.time}</p>
                                     <h3 className="text-xl font-bold text-gray-800 mt-1">{app.serviceName}</h3>
                                     {client && <p className="text-gray-600 text-sm">Khách hàng: <button onClick={() => setViewingClient(client)} className="font-semibold text-brand-primary hover:underline">{client.name}</button> - {client.phone}</p>}
-                                    {app.room && <p className="text-xs text-gray-500 mt-1">Phòng: {app.room}</p>}
                                     {app.notesForTherapist && <p className="text-xs text-gray-500 mt-1 italic">Ghi chú cho KTV: "{app.notesForTherapist}"</p>}
                                 </div>
                                 <div className="flex flex-col items-end gap-3 self-end sm:self-center flex-shrink-0 sm:ml-4">
@@ -253,7 +253,6 @@ export const StaffAppointmentsPage: React.FC<AppointmentsPageProps> = ({ current
                                 <div><p className="text-sm text-gray-500">Giờ hẹn</p><p className="font-semibold text-gray-800">{selectedAppointment.time}</p></div>
                                 <div><p className="text-sm text-gray-500">Khách hàng</p><p className="font-semibold text-gray-800">{allUsers.find(u => u.id === selectedAppointment.userId)?.name}</p></div>
                                 <div><p className="text-sm text-gray-500">SĐT Khách hàng</p><p className="font-semibold text-gray-800">{allUsers.find(u => u.id === selectedAppointment.userId)?.phone}</p></div>
-                                {selectedAppointment.room && <div><p className="text-sm text-gray-500">Phòng</p><p className="font-semibold text-gray-800">{selectedAppointment.room}</p></div>}
                                 {selectedAppointment.notesForTherapist && <div><p className="text-sm text-gray-500">Ghi chú cho KTV</p><p className="font-semibold text-gray-800">{selectedAppointment.notesForTherapist}</p></div>}
                             </div>
                             <div><p className="text-sm text-gray-500">Trạng thái</p>{getStatusBadge(selectedAppointment.status)}</div>

@@ -3,9 +3,9 @@ import { NavLink, Link } from 'react-router-dom';
 import type { User, StaffRole } from '../../types';
 import {
     DashboardIcon, CalendarIcon, AppointmentsIcon, TreatmentIcon,
-    CustomerInteractionIcon, RewardsIcon, UpsellingIcon, ReportsIcon ,
+    CustomerInteractionIcon, RewardsIcon, UpsellingIcon, ReportsIcon,
     // FIX: Replaced NotificationsIcon with BellIcon as it's the correct icon for notifications.
-    BellIcon , ProfileIcon , TransactionHistoryIcon,
+    BellIcon, ProfileIcon, TransactionHistoryIcon,
     ChevronDoubleLeftIcon, ChevronDoubleRightIcon, LogoIcon, ChevronDownIcon,
     ClipboardListIcon,
     UsersIcon
@@ -22,48 +22,50 @@ interface StaffSidebarProps {
 const getNavGroups = (staffRole: StaffRole | 'Admin') => {
     const allLinks = [
         // Group: Chung
-        { name: 'Tổng quan', path: '/staff/dashboard', icon: <DashboardIcon className="w-5 h-5"/>, group: 'Chung' },
-        { name: 'Lịch làm việc', path: '/staff/schedule', icon: <CalendarIcon className="w-5 h-5"/>, group: 'Chung' },
-        { name: 'Lịch hẹn cá nhân', path: '/staff/appointments', icon: <AppointmentsIcon className="w-5 h-5"/>, group: 'Chung' },
+        { name: 'Tổng quan', path: '/staff/dashboard', icon: <DashboardIcon className="w-5 h-5" />, group: 'Chung' },
+        { name: 'Lịch làm việc', path: '/staff/schedule', icon: <CalendarIcon className="w-5 h-5" />, group: 'Chung' },
+        { name: 'Lịch hẹn cá nhân', path: '/staff/appointments', icon: <AppointmentsIcon className="w-5 h-5" />, group: 'Chung' },
         // FIX: Replaced ClipboardDocumentListIcon with ClipboardListIcon as it's available in shared/icons.tsx.
-        { name: 'Công việc của tôi', path: '/staff/my-tasks', icon: <ClipboardListIcon className="w-5 h-5"/>, group: 'Chung' },
+        { name: 'Công việc của tôi', path: '/staff/my-tasks', icon: <ClipboardListIcon className="w-5 h-5" />, group: 'Chung' },
         // FIX: Replaced NotificationsIcon with BellIcon to match available icons.
-        { name: 'Thông báo & Tin nội bộ', path: '/staff/notifications', icon: <BellIcon className="w-5 h-5"/>, group: 'Chung' },
+        { name: 'Thông báo & Tin nội bộ', path: '/staff/notifications', icon: <BellIcon className="w-5 h-5" />, group: 'Chung' },
 
         // Group: Nghiệp vụ
-        { name: 'Liệu trình khách hàng', path: '/staff/treatment-progress', icon: <TreatmentIcon className="w-5 h-5"/>, roles: ['Technician', 'Manager', 'Admin'], group: 'Nghiệp vụ' },
-        { name: 'Khách hàng của tôi', path: '/staff/my-clients', icon: <UsersIcon className="w-5 h-5"/>, group: 'Nghiệp vụ' },
-        { name: 'Tư vấn KH', path: '/staff/customer-interaction', icon: <CustomerInteractionIcon className="w-5 h-5"/>, group: 'Nghiệp vụ' },
-        { name: 'Bán thêm sản phẩm', path: '/staff/upselling', icon: <UpsellingIcon className="w-5 h-5"/>, roles: ['Technician', 'Manager', 'Admin'], group: 'Nghiệp vụ' },
-        
+        { name: 'Liệu trình khách hàng', path: '/staff/treatment-progress', icon: <TreatmentIcon className="w-5 h-5" />, roles: ['Technician', 'Manager', 'Admin'], group: 'Nghiệp vụ' },
+        { name: 'Khách hàng của tôi', path: '/staff/my-clients', icon: <UsersIcon className="w-5 h-5" />, group: 'Nghiệp vụ' },
+        { name: 'Tư vấn KH', path: '/staff/customer-interaction', icon: <CustomerInteractionIcon className="w-5 h-5" />, group: 'Nghiệp vụ' },
+        { name: 'Bán thêm sản phẩm', path: '/staff/upselling', icon: <UpsellingIcon className="w-5 h-5" />, roles: ['Technician', 'Manager', 'Admin'], group: 'Nghiệp vụ' },
+
         // Group: Hiệu suất
-        { name: 'Điểm thưởng cá nhân', path: '/staff/rewards', icon: <RewardsIcon className="w-5 h-5"/>, roles: ['Technician', 'Manager', 'Admin'], group: 'Hiệu suất' },
-        { name: 'Thống kê cá nhân', path: '/staff/personal-reports', icon: <ReportsIcon className="w-5 h-5"/>, roles: ['Technician', 'Manager', 'Admin'], group: 'Hiệu suất' },
-        { name: 'Lịch sử giao dịch', path: '/staff/transaction-history', icon: <TransactionHistoryIcon className="w-5 h-5"/>, roles: ['Technician', 'Manager', 'Admin'], group: 'Hiệu suất' },
+        { name: 'Điểm thưởng cá nhân', path: '/staff/rewards', icon: <RewardsIcon className="w-5 h-5" />, roles: ['Technician', 'Manager', 'Admin'], group: 'Hiệu suất' },
+        { name: 'Thống kê cá nhân', path: '/staff/personal-reports', icon: <ReportsIcon className="w-5 h-5" />, roles: ['Technician', 'Manager', 'Admin'], group: 'Hiệu suất' },
+        { name: 'Lịch sử giao dịch', path: '/staff/transaction-history', icon: <TransactionHistoryIcon className="w-5 h-5" />, roles: ['Technician', 'Manager', 'Admin'], group: 'Hiệu suất' },
 
         // Group: Tài khoản
-        { name: 'Hồ sơ cá nhân', path: '/staff/profile', icon: <ProfileIcon className="w-5 h-5"/>, group: 'Tài khoản' },
+        { name: 'Hồ sơ cá nhân', path: '/staff/profile', icon: <ProfileIcon className="w-5 h-5" />, group: 'Tài khoản' },
     ];
 
     const visibleLinks = allLinks.filter(link => !link.roles || link.roles.includes(staffRole));
-    
+
     const groups = visibleLinks.reduce((acc, link) => {
         acc[link.group] = acc[link.group] || [];
         acc[link.group].push(link);
         return acc;
     }, {} as Record<string, typeof visibleLinks>);
-    
+
     return Object.entries(groups).map(([title, links]) => ({ title, links }));
 };
 
 
 const StaffSidebar: React.FC<StaffSidebarProps> = ({ isCollapsed, toggleSidebar, currentUser, isMobile = false, closeMobileMenu }) => {
-    const role = currentUser.role === 'Admin' ? 'Admin' : currentUser.staffProfile!.staffRole;
+    // Note: staffRole field removed from users table in db.txt
+    // Default to 'Technician' for all Staff since we can't determine their specific role
+    const role: StaffRole | 'Admin' = currentUser.role === 'Admin' ? 'Admin' : 'Technician';
     const navGroups = getNavGroups(role);
     const [openGroups, setOpenGroups] = useState<string[]>(['Chung', 'Nghiệp vụ', 'Hiệu suất', 'Tài khoản']);
 
     const toggleGroup = (title: string) => {
-        setOpenGroups(prev => 
+        setOpenGroups(prev =>
             prev.includes(title) ? prev.filter(g => g !== title) : [...prev, title]
         );
     };
@@ -76,12 +78,12 @@ const StaffSidebar: React.FC<StaffSidebarProps> = ({ isCollapsed, toggleSidebar,
                     {!isCollapsed && <span className="text-xl font-serif font-bold">Staff Portal</span>}
                 </Link>
                 {!isMobile && (
-                     <button onClick={toggleSidebar} className="p-1 rounded-full text-gray-400 hover:bg-slate-700 dark:hover:bg-gray-700">
+                    <button onClick={toggleSidebar} className="p-1 rounded-full text-gray-400 hover:bg-slate-700 dark:hover:bg-gray-700">
                         {isCollapsed ? <ChevronDoubleRightIcon className="w-5 h-5" /> : <ChevronDoubleLeftIcon className="w-5 h-5" />}
                     </button>
                 )}
             </div>
-            
+
             <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto">
                 {navGroups.map(group => (
                     <div key={group.title}>
@@ -99,8 +101,7 @@ const StaffSidebar: React.FC<StaffSidebarProps> = ({ isCollapsed, toggleSidebar,
                                     to={link.path}
                                     onClick={closeMobileMenu}
                                     className={({ isActive }) =>
-                                        `flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors group ${
-                                        isActive
+                                        `flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors group ${isActive
                                             ? 'bg-brand-primary text-white shadow-md'
                                             : 'text-gray-300 hover:bg-slate-700 dark:hover:bg-gray-700 hover:text-white'
                                         } ${isCollapsed ? 'justify-center' : ''}`
@@ -112,7 +113,7 @@ const StaffSidebar: React.FC<StaffSidebarProps> = ({ isCollapsed, toggleSidebar,
                                 </NavLink>
                             ))}
                         </div>
-                         {isCollapsed && openGroups.includes(group.title) && (
+                        {isCollapsed && openGroups.includes(group.title) && (
                             <div className="mt-1 space-y-1">
                                 {group.links.map(link => (
                                     <NavLink key={link.name} to={link.path} onClick={closeMobileMenu} className={({ isActive }) => `flex justify-center items-center p-3 rounded-md transition-colors group ${isActive ? 'bg-brand-primary text-white' : 'text-gray-300 hover:bg-slate-700 dark:hover:bg-gray-700'}`} title={link.name}>

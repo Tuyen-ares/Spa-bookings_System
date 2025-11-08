@@ -15,11 +15,12 @@ interface StaffTransactionHistoryPageProps {
 
 const PAYMENTS_PER_PAGE = 10;
 const PAYMENT_METHODS: PaymentMethod[] = ['Cash', 'Card', 'Momo', 'VNPay', 'ZaloPay'];
-const PAYMENT_STATUSES: PaymentStatus[] = ['Completed', 'Pending', 'Refunded'];
+const PAYMENT_STATUSES: PaymentStatus[] = ['Completed', 'Pending', 'Refunded', 'Failed'];
 const STATUS_CONFIG: Record<PaymentStatus, { text: string; color: string; bgColor: string; }> = {
     Completed: { text: 'Hoàn thành', color: 'text-green-800', bgColor: 'bg-green-100' },
     Pending: { text: 'Chờ xử lý', color: 'text-yellow-800', bgColor: 'bg-yellow-100' },
     Refunded: { text: 'Đã hoàn tiền', color: 'text-red-800', bgColor: 'bg-red-100' },
+    Failed: { text: 'Thất bại', color: 'text-red-800', bgColor: 'bg-red-100' },
 };
 const METHOD_TEXT: Record<PaymentMethod, string> = {
     Cash: 'Tiền mặt', Card: 'Thẻ', Momo: 'Momo', VNPay: 'VNPay', ZaloPay: 'ZaloPay'
@@ -69,13 +70,13 @@ export const StaffTransactionHistoryPage: React.FC<StaffTransactionHistoryPagePr
     }, [allPayments, currentUser.id]);
 
     const stats = useMemo(() => {
-        // FIX: Property 'commissionRate' does not exist on type 'User'.
-        const totalCommission = myPayments.filter(p => p.status === 'Completed').reduce((sum, p) => sum + (p.amount * (currentUser.staffProfile?.commissionRate || 0)), 0);
+        // Note: commissionRate not in db.txt, using default 0
+        const totalCommission = 0;
         const totalServicesPerformed = myPayments.filter(p => p.status === 'Completed' && p.appointmentId).length;
-        const totalProductsSold = myPayments.filter(p => p.status === 'Completed' && p.productId).length;
+        // Note: productId removed from Payment - products table removed from db.txt
+        const totalProductsSold = 0;
         return { totalCommission, totalServicesPerformed, totalProductsSold };
-        // FIX: Property 'commissionRate' does not exist on type 'User'.
-    }, [myPayments, currentUser.staffProfile]);
+    }, [myPayments]);
 
     const filteredPayments = useMemo(() => {
         return myPayments
@@ -84,8 +85,8 @@ export const StaffTransactionHistoryPage: React.FC<StaffTransactionHistoryPagePr
                 const service = p.serviceName;
                 const searchLower = searchTerm.toLowerCase();
                 return p.transactionId.toLowerCase().includes(searchLower) ||
-                       (client && client.name.toLowerCase().includes(searchLower)) ||
-                       (service && service.toLowerCase().includes(searchLower));
+                    (client && client.name.toLowerCase().includes(searchLower)) ||
+                    (service && service.toLowerCase().includes(searchLower));
             })
             .filter(p => filterClient === 'all' || p.userId === filterClient)
             .filter(p => filterMethod === 'All' || p.method === filterMethod)
@@ -95,8 +96,8 @@ export const StaffTransactionHistoryPage: React.FC<StaffTransactionHistoryPagePr
                 const paymentDate = new Date(p.date);
                 const startDate = filterDateRange.start ? new Date(filterDateRange.start) : null;
                 const endDate = filterDateRange.end ? new Date(filterDateRange.end) : null;
-                if(startDate) startDate.setHours(0,0,0,0);
-                if(endDate) endDate.setHours(23,59,59,999);
+                if (startDate) startDate.setHours(0, 0, 0, 0);
+                if (endDate) endDate.setHours(23, 59, 59, 999);
                 return (!startDate || paymentDate >= startDate) && (!endDate || paymentDate <= endDate);
             });
     }, [myPayments, searchTerm, filterClient, filterMethod, filterStatus, filterDateRange, allUsers]);
@@ -141,9 +142,9 @@ export const StaffTransactionHistoryPage: React.FC<StaffTransactionHistoryPagePr
                         {PAYMENT_STATUSES.map(s => <option key={s} value={s}>{STATUS_CONFIG[s].text}</option>)}
                     </select>
                     <div className="flex items-center gap-2 lg:col-span-2">
-                        <input type="date" value={filterDateRange.start} onChange={e => setFilterDateRange(p => ({...p, start: e.target.value}))} className="w-full p-2 border rounded-md text-sm"/>
+                        <input type="date" value={filterDateRange.start} onChange={e => setFilterDateRange(p => ({ ...p, start: e.target.value }))} className="w-full p-2 border rounded-md text-sm" />
                         <span className="text-gray-500">-</span>
-                        <input type="date" value={filterDateRange.end} onChange={e => setFilterDateRange(p => ({...p, end: e.target.value}))} className="w-full p-2 border rounded-md text-sm"/>
+                        <input type="date" value={filterDateRange.end} onChange={e => setFilterDateRange(p => ({ ...p, end: e.target.value }))} className="w-full p-2 border rounded-md text-sm" />
                     </div>
                 </div>
             </div>
@@ -167,14 +168,15 @@ export const StaffTransactionHistoryPage: React.FC<StaffTransactionHistoryPagePr
                             paginatedPayments.map(payment => {
                                 const client = allUsers.find(u => u.id === payment.userId);
                                 // FIX: Property 'commissionRate' does not exist on type 'User'.
-                                const commissionAmount = payment.amount * (currentUser.staffProfile?.commissionRate || 0);
+                                // Note: commissionRate not in db.txt
+                                const commissionAmount = 0;
                                 return (
                                     <tr key={payment.id} className="border-b hover:bg-gray-50">
                                         <td className="p-4 font-mono text-xs">{payment.transactionId}</td>
                                         <td className="p-4">
                                             {client ? (<div className="flex items-center gap-3"><img src={client.profilePictureUrl} alt={client.name} className="w-8 h-8 rounded-full" /><div><p className="font-semibold text-gray-800 text-sm">{client.name}</p></div></div>) : "Không rõ"}
                                         </td>
-                                        <td className="p-4 text-sm">{payment.serviceName || allServices.find(s => s.id === payment.productId)?.name || 'Sản phẩm không rõ'}</td>
+                                        <td className="p-4 text-sm">{payment.serviceName || 'Dịch vụ không rõ'}</td>
                                         <td className="p-4 text-sm font-semibold text-brand-primary">{formatPrice(payment.amount)}</td>
                                         <td className="p-4 text-sm font-semibold text-purple-600">{formatPrice(commissionAmount)}</td>
                                         <td className="p-4 text-sm">{METHOD_TEXT[payment.method]}</td>
@@ -191,7 +193,7 @@ export const StaffTransactionHistoryPage: React.FC<StaffTransactionHistoryPagePr
                     </tbody>
                 </table>
             </div>
-             {totalPages > 0 ? (
+            {totalPages > 0 ? (
                 <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
             ) : (
                 <div className="text-center py-10 text-gray-500">Không có giao dịch nào để hiển thị.</div>

@@ -10,12 +10,6 @@ const STATUS_CONFIG: Record<StaffTask['status'], { text: string; color: string; 
     overdue: { text: 'Quá hạn', color: 'text-red-800', bgColor: 'bg-red-100' },
 };
 
-const PRIORITY_CONFIG: Record<StaffTask['priority'], { text: string; color: string; }> = {
-    low: { text: 'Thấp', color: 'text-gray-600' },
-    medium: { text: 'Trung bình', color: 'text-orange-600' },
-    high: { text: 'Cao', color: 'text-red-600' },
-};
-
 interface MyTasksPageProps {
     currentUser: User;
 }
@@ -89,14 +83,13 @@ const MyTasksPage: React.FC<MyTasksPageProps> = ({ currentUser }) => {
                     <div className="text-center p-8 text-red-500">Lỗi: {error}</div>
                 ) : filteredTasks.length > 0 ? (
                     filteredTasks.map(task => (
-                        <div key={task.id} className="bg-white p-5 rounded-lg shadow-md border-l-4" style={{ borderColor: task.priority === 'high' ? '#EF4444' : task.priority === 'medium' ? '#F97316' : '#6B7280' }}>
+                        <div key={task.id} className="bg-white p-5 rounded-lg shadow-md border-l-4 border-blue-500">
                             <div className="flex justify-between items-start">
                                 <div>
                                     <h3 className="text-xl font-bold text-gray-800">{task.title}</h3>
                                     <p className="text-sm text-gray-600 mt-1">{task.description}</p>
                                     <div className="flex items-center gap-4 text-xs text-gray-500 mt-2">
                                         <span>Ngày hết hạn: {new Date(task.dueDate).toLocaleDateString('vi-VN')}</span>
-                                        <span className={`font-semibold ${PRIORITY_CONFIG[task.priority].color}`}>Ưu tiên: {PRIORITY_CONFIG[task.priority].text}</span>
                                     </div>
                                 </div>
                                 <div className="flex-shrink-0 ml-4 text-right">

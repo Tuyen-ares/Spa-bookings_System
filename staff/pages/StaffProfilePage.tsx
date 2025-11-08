@@ -18,7 +18,7 @@ const StaffProfilePage: React.FC<StaffProfilePageProps> = ({ currentUser, onUpda
     const [formData, setFormData] = useState<User>(currentUser);
     const [imagePreview, setImagePreview] = useState<string>(currentUser.profilePictureUrl || '');
 
-    const isTechnician = currentUser.role === 'Staff' && currentUser.staffProfile?.staffRole === 'Technician';
+    const isTechnician = currentUser.role === 'Staff';
 
     useEffect(() => {
         setFormData(currentUser);
@@ -26,14 +26,16 @@ const StaffProfilePage: React.FC<StaffProfilePageProps> = ({ currentUser, onUpda
     }, [currentUser]);
 
     const myStaffTier: StaffTier | undefined = useMemo(() => {
-        // FIX: Define MOCK_STAFF_TIERS locally to fix import issue.
-        const MOCK_STAFF_TIERS: StaffTier[] = [
+        // Staff tiers are configuration constants (fetched from backend)
+        // For now, default to 'Mới' tier since staffTierId is not in users table
+        // TODO: Calculate staff tier based on appointments count and rating when needed
+        const STAFF_TIERS: StaffTier[] = [
             { id: 'Mới', name: 'Mới', minAppointments: 0, minRating: 0, commissionBoost: 0, color: '#A8A29E', badgeImageUrl: 'https://picsum.photos/seed/staff-tier-new/50/50' },
             { id: 'Thành thạo', name: 'Thành thạo', minAppointments: 50, minRating: 4, commissionBoost: 0.05, color: '#EF4444', badgeImageUrl: 'https://picsum.photos/seed/staff-tier-proficient/50/50' },
             { id: 'Chuyên gia', name: 'Chuyên gia', minAppointments: 150, minRating: 4.7, commissionBoost: 0.1, color: '#10B981', badgeImageUrl: 'https://picsum.photos/seed/staff-tier-expert/50/50' },
         ];
-        return MOCK_STAFF_TIERS.find(tier => tier.id === currentUser.staffProfile?.staffTierId);
-    }, [currentUser.staffProfile]);
+        return STAFF_TIERS.find(tier => tier.id === 'Mới') || STAFF_TIERS[0];
+    }, []);
 
     const handleSave = () => {
         onUpdateUser(formData); // This updates the global currentUser in App.tsx and local storage
@@ -57,32 +59,18 @@ const StaffProfilePage: React.FC<StaffProfilePageProps> = ({ currentUser, onUpda
     };
     
     const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        // Note: staffProfile fields (experience, etc.) removed from users table in db.txt
+        // This handler is kept for backward compatibility but doesn't update any fields
         const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            staffProfile: {
-                ...prev.staffProfile!,
-                [name]: value,
-            }
-        }));
+        // Just update formData directly if needed
+        setFormData(prev => ({ ...prev, [name]: value }));
     };
 
 
     const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { value, checked } = e.target;
-        setFormData(prev => {
-            const currentSpecialties = prev.staffProfile?.specialty || [];
-            const newSpecialties = checked
-                ? [...currentSpecialties, value]
-                : currentSpecialties.filter(s => s !== value);
-            return {
-                ...prev,
-                staffProfile: {
-                    ...prev.staffProfile!,
-                    specialty: newSpecialties,
-                }
-            };
-        });
+        // Note: specialty field removed from users table in db.txt
+        // This handler is kept for backward compatibility but doesn't update any fields
+        // Specialty filtering is no longer available
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -122,7 +110,8 @@ const StaffProfilePage: React.FC<StaffProfilePageProps> = ({ currentUser, onUpda
                         </div>
                         <div>
                             <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">{currentUser.name}</h1>
-                            <p className="text-brand-primary text-lg font-semibold">{currentUser.staffProfile?.staffRole}</p>
+                            {/* Note: staffRole removed from users table in db.txt */}
+                            <p className="text-brand-primary text-lg font-semibold">Nhân viên</p>
                             {myStaffTier && (
                                 <p className="text-sm mt-1 font-semibold" style={{color: myStaffTier.color}}>Cấp bậc: {myStaffTier.name}</p>
                             )}
@@ -174,30 +163,8 @@ const StaffProfilePage: React.FC<StaffProfilePageProps> = ({ currentUser, onUpda
                                 <label htmlFor="file-upload" className="cursor-pointer bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 w-full text-center block">Tải lên từ máy</label>
                                 <input id="file-upload" name="file-upload" type="file" className="sr-only" onChange={handleFileChange} accept="image/*" />
                             </div>
-                            {isTechnician && (
-                                <div className="md:col-span-2">
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Chuyên môn</label>
-                                    <div className="grid grid-cols-2 gap-2 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
-                                        {AVAILABLE_SPECIALTIES.map(s => (
-                                            <label key={s} className="flex items-center gap-2 text-sm text-gray-800">
-                                                <input
-                                                    type="checkbox"
-                                                    name="specialty"
-                                                    value={s}
-                                                    checked={formData.staffProfile?.specialty?.includes(s) || false}
-                                                    onChange={handleCheckboxChange}
-                                                    className="rounded text-brand-primary focus:ring-brand-primary"
-                                                />
-                                                {s}
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-medium text-gray-700">Kinh nghiệm</label>
-                                <textarea name="experience" value={formData.staffProfile?.experience || ''} onChange={handleProfileChange} rows={3} className="mt-1 w-full p-2 border rounded"></textarea>
-                            </div>
+                            {/* Note: specialty and experience fields removed from users table in db.txt */}
+                            {/* Specialty and experience editing sections removed */}
                         </div>
                         <div className="flex justify-end gap-4 mt-6">
                             <button type="button" onClick={handleCancel} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Hủy</button>
@@ -212,28 +179,13 @@ const StaffProfilePage: React.FC<StaffProfilePageProps> = ({ currentUser, onUpda
                                 <p className="flex items-center gap-2"><UsersIcon className="w-5 h-5 text-gray-500" /> <span className="font-semibold text-gray-800">{currentUser.name}</span></p>
                                 <p className="flex items-center gap-2"><PhoneIcon className="w-5 h-5 text-gray-500" /> <span className="font-semibold text-gray-800">{currentUser.phone || 'Chưa cập nhật'}</span></p>
                                 <p className="flex items-center gap-2"><BuildingOffice2Icon className="w-5 h-5 text-gray-500" /> <span className="font-semibold text-gray-800">{currentUser.email}</span></p>
-                                <p className="flex items-center gap-2"><AwardIcon className="w-5 h-5 text-gray-500" /> <span className="font-semibold text-gray-800">{currentUser.staffProfile?.staffRole}</span></p>
+                                {/* Note: staffRole removed from users table in db.txt */}
+                                <p className="flex items-center gap-2"><AwardIcon className="w-5 h-5 text-gray-500" /> <span className="font-semibold text-gray-800">Nhân viên</span></p>
                             </div>
                         </div>
 
-                        {isTechnician && (
-                            <div className="bg-gray-50 p-6 rounded-lg border">
-                                <h3 className="text-lg font-semibold text-gray-700 mb-3">Thông tin chuyên môn</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                                    <p className="flex items-center gap-2"><AwardIcon className="w-5 h-5 text-gray-500" /> <span className="font-semibold text-gray-800">{currentUser.staffProfile?.specialty?.join(', ') || 'Chưa cập nhật'}</span></p>
-                                    <p className="flex items-center gap-2"><AwardIcon className="w-5 h-5 text-gray-500" /> <span className="font-semibold text-gray-800">{currentUser.staffProfile?.experience || 'Chưa cập nhật'}</span></p>
-                                </div>
-                            </div>
-                        )}
-                        
-                        <div className="bg-gray-50 p-6 rounded-lg border">
-                            <h3 className="text-lg font-semibold text-gray-700 mb-3">Mã QR cá nhân</h3>
-                            {currentUser.staffProfile?.qrCodeUrl ? (
-                                <img src={currentUser.staffProfile.qrCodeUrl} alt="Mã QR" className="w-32 h-32 object-cover rounded-md" />
-                            ) : (
-                                <p className="text-sm text-gray-500">Chưa có mã QR. Vui lòng liên hệ quản lý để được cấp.</p>
-                            )}
-                        </div>
+                        {/* Note: specialty, experience, and qrCodeUrl fields removed from users table in db.txt */}
+                        {/* Professional info and QR code sections removed */}
                     </div>
                 )}
             </div>

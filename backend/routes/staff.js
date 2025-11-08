@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database'); // Sequelize models
 const { v4: uuidv4 } = require('uuid');
-const { MOCK_STAFF_TIERS } = require('../constants.js');
+const { STAFF_TIERS } = require('../constants.js');
 
 // GET /api/staff/availability/:staffId - Get staff's daily availability
 router.get('/availability/:staffId', async (req, res) => {
@@ -136,99 +136,163 @@ router.delete('/shifts/:id', async (req, res) => {
 
 // GET /api/staff/tiers - Get all staff tiers (from constants for now, or a model if needed)
 router.get('/tiers', async (req, res) => {
-    // Staff tiers are not a separate model with full CRUD usually,
-    // they are often defined in constants or derived.
-    // If you need them to be dynamic, create a StaffTier model.
-    res.json(MOCK_STAFF_TIERS);
+    // Staff tiers are configuration constants (not stored in database)
+    // They define business rules for staff tier levels
+    res.json(STAFF_TIERS);
 });
 
 // GET /api/staff/products - Get all products
+// Note: Product table removed - returning empty array
 router.get('/products', async (req, res) => {
-    try {
-        const products = await db.Product.findAll();
-        res.json(products);
-    } catch (error) {
-        console.error('Error fetching products:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
+    res.json([]);
 });
 
 // GET /api/staff/sales - Get all sales
+// Note: Sale table removed - returning empty array
 router.get('/sales', async (req, res) => {
-    try {
-        const sales = await db.Sale.findAll();
-        res.json(sales);
-    } catch (error) {
-        console.error('Error fetching sales:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
+    res.json([]);
 });
 
 // POST /api/staff/sales - Record a new sale
+// Note: Sale table removed - returning error
 router.post('/sales', async (req, res) => {
-    const newSaleData = req.body;
-    if (!newSaleData.staffId || !newSaleData.productId || newSaleData.quantity === undefined || newSaleData.totalAmount === undefined) {
-        return res.status(400).json({ message: 'Missing required sale data' });
-    }
+    res.status(404).json({ message: 'Product and Sale functionality has been removed' });
+});
+
+// Note: InternalNotification and InternalNews tables have been removed
+
+// =====================================================
+// STAFF TASKS ROUTES
+// =====================================================
+
+// GET /api/staff/tasks - Get all staff tasks
+router.get('/tasks', async (req, res) => {
     try {
-        const createdSale = await db.Sale.create({
-            id: uuidv4(),
-            date: new Date().toISOString(),
-            status: 'completed',
-            ...newSaleData,
+        const tasks = await db.StaffTask.findAll({
+            include: [
+                { model: db.User, as: 'AssignedTo', attributes: ['id', 'name', 'email'] },
+                { model: db.User, as: 'AssignedBy', attributes: ['id', 'name', 'email'] }
+            ]
         });
-        // Optionally update product stock
-        const product = await db.Product.findByPk(newSaleData.productId);
-        if (product) {
-            await product.update({ stock: product.stock - newSaleData.quantity });
-        }
-        res.status(201).json(createdSale);
+        res.json(tasks);
     } catch (error) {
-        console.error('Error creating sale:', error);
+        console.error('Error fetching staff tasks:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
 });
 
-// GET /api/staff/notifications/:userId - Get internal notifications for current user/all
-router.get('/notifications/:userId', async (req, res) => {
-    const { userId } = req.params;
-    try {
-        const userNotifications = await db.InternalNotification.findAll({
-            where: db.Sequelize.or(
-                { recipientId: userId },
-                { recipientType: 'all' }
-            )
-        });
-        res.json(userNotifications);
-    } catch (error) {
-        console.error('Error fetching internal notifications:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-});
-
-// PUT /api/staff/notifications/:id/read - Mark notification as read
-router.put('/notifications/:id/read', async (req, res) => {
+// GET /api/staff/tasks/:id - Get a specific task
+router.get('/tasks/:id', async (req, res) => {
     const { id } = req.params;
     try {
-        const notification = await db.InternalNotification.findByPk(id);
-        if (!notification) {
-            return res.status(404).json({ message: 'Notification not found' });
+        const task = await db.StaffTask.findByPk(id, {
+            include: [
+                { model: db.User, as: 'AssignedTo', attributes: ['id', 'name', 'email'] },
+                { model: db.User, as: 'AssignedBy', attributes: ['id', 'name', 'email'] }
+            ]
+        });
+        if (!task) {
+            return res.status(404).json({ message: 'Task not found' });
         }
-        await notification.update({ isRead: true });
-        res.status(200).json({ message: 'Notification marked as read' });
+        res.json(task);
     } catch (error) {
-        console.error('Error marking notification as read:', error);
+        console.error('Error fetching staff task:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
 });
 
-// GET /api/staff/news - Get internal news
-router.get('/news', async (req, res) => {
+// GET /api/staff/tasks/assigned-to/:staffId - Get tasks assigned to a specific staff
+router.get('/tasks/assigned-to/:staffId', async (req, res) => {
+    const { staffId } = req.params;
     try {
-        const internalNews = await db.InternalNews.findAll();
-        res.json(internalNews);
+        const tasks = await db.StaffTask.findAll({
+            where: { assignedToId: staffId },
+            include: [
+                { model: db.User, as: 'AssignedTo', attributes: ['id', 'name', 'email'] },
+                { model: db.User, as: 'AssignedBy', attributes: ['id', 'name', 'email'] }
+            ],
+            order: [['dueDate', 'ASC']]
+        });
+        res.json(tasks);
     } catch (error) {
-        console.error('Error fetching internal news:', error);
+        console.error('Error fetching staff tasks:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// POST /api/staff/tasks - Create a new task
+router.post('/tasks', async (req, res) => {
+    const { title, description, assignedToId, assignedById, dueDate, status } = req.body;
+    if (!title || !assignedToId || !assignedById || !dueDate) {
+        return res.status(400).json({ message: 'Missing required task data' });
+    }
+    try {
+        const newTask = await db.StaffTask.create({
+            id: `task-${uuidv4()}`,
+            title,
+            description,
+            assignedToId,
+            assignedById,
+            dueDate,
+            status: status || 'pending',
+            createdAt: new Date(),
+        });
+        const taskWithRelations = await db.StaffTask.findByPk(newTask.id, {
+            include: [
+                { model: db.User, as: 'AssignedTo', attributes: ['id', 'name', 'email'] },
+                { model: db.User, as: 'AssignedBy', attributes: ['id', 'name', 'email'] }
+            ]
+        });
+        res.status(201).json(taskWithRelations);
+    } catch (error) {
+        console.error('Error creating staff task:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// PUT /api/staff/tasks/:id - Update a task
+router.put('/tasks/:id', async (req, res) => {
+    const { id } = req.params;
+    const updateData = req.body;
+    try {
+        const task = await db.StaffTask.findByPk(id);
+        if (!task) {
+            return res.status(404).json({ message: 'Task not found' });
+        }
+        
+        // If status is being updated to 'completed', set completedAt
+        if (updateData.status === 'completed' && task.status !== 'completed') {
+            updateData.completedAt = new Date();
+        } else if (updateData.status !== 'completed' && task.status === 'completed') {
+            updateData.completedAt = null;
+        }
+        
+        await task.update(updateData);
+        const updatedTask = await db.StaffTask.findByPk(id, {
+            include: [
+                { model: db.User, as: 'AssignedTo', attributes: ['id', 'name', 'email'] },
+                { model: db.User, as: 'AssignedBy', attributes: ['id', 'name', 'email'] }
+            ]
+        });
+        res.json(updatedTask);
+    } catch (error) {
+        console.error('Error updating staff task:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// DELETE /api/staff/tasks/:id - Delete a task
+router.delete('/tasks/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await db.StaffTask.destroy({ where: { id } });
+        if (result > 0) {
+            res.status(204).send();
+        } else {
+            res.status(404).json({ message: 'Task not found' });
+        }
+    } catch (error) {
+        console.error('Error deleting staff task:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
 });

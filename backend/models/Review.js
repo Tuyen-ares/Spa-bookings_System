@@ -60,6 +60,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    images: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      comment: 'Mảng URL ảnh đánh giá: ["url1", "url2"]',
+    },
     date: {
       type: DataTypes.DATE,
       allowNull: false,

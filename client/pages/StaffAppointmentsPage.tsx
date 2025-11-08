@@ -41,12 +41,12 @@ export const StaffAppointmentsPage: React.FC<AppointmentsPageProps> = ({ current
     const filteredAppointments = useMemo(() => {
         return myAppointments.filter(app => {
             const client = allUsers.find(u => u.id === app.userId);
-            
+
             const matchesSearch = searchTerm === '' ||
-                                  app.serviceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                  (client && client.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                                  (client && client.email.toLowerCase().includes(searchTerm.toLowerCase()));
-            
+                app.serviceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (client && client.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                (client && client.email.toLowerCase().includes(searchTerm.toLowerCase()));
+
             const matchesService = filterService === 'all' || app.serviceId === filterService;
             const matchesClient = filterClient === 'all' || app.userId === filterClient;
 
@@ -56,17 +56,17 @@ export const StaffAppointmentsPage: React.FC<AppointmentsPageProps> = ({ current
 
     const todayAppointments = useMemo(() => {
         return filteredAppointments.filter(app => app.date === today && (app.status === 'upcoming' || app.status === 'in-progress' || app.status === 'pending'))
-                                   .sort((a,b) => a.time.localeCompare(b.time));
+            .sort((a, b) => a.time.localeCompare(b.time));
     }, [filteredAppointments, today]);
 
     const upcomingAppointments = useMemo(() => {
         return filteredAppointments.filter(app => app.date > today && (app.status === 'upcoming' || app.status === 'pending'))
-                                   .sort((a,b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime());
+            .sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime());
     }, [filteredAppointments, today]);
 
     const pastAppointments = useMemo(() => {
         return filteredAppointments.filter(app => app.date < today || app.status === 'completed' || app.status === 'cancelled')
-                                   .sort((a,b) => new Date(`${b.date}T${b.time}`).getTime() - new Date(`${a.date}T${a.time}`).getTime());
+            .sort((a, b) => new Date(`${b.date}T${b.time}`).getTime() - new Date(`${a.date}T${a.time}`).getTime());
     }, [filteredAppointments, today]);
 
     const availableServices = useMemo(() => {
@@ -96,7 +96,7 @@ export const StaffAppointmentsPage: React.FC<AppointmentsPageProps> = ({ current
         setAppointments(prev =>
             prev.map(item => (item.id === app.id ? { ...item, status: newStatus } : item))
         );
-        
+
         // Close modals immediately
         setSelectedAppointment(null);
         setAppointmentToComplete(null);
@@ -104,45 +104,46 @@ export const StaffAppointmentsPage: React.FC<AppointmentsPageProps> = ({ current
 
         try {
             const updatedAppointment = await apiService.updateAppointment(app.id, { status: newStatus });
-    
+
             // If completed, award points
             if (newStatus === 'completed') {
                 const service = allServices.find(s => s.id === app.serviceId);
                 const client = allUsers.find(u => u.id === app.userId);
-    
+
                 if (service && client) {
                     const price = service.discountPrice || service.price;
                     const pointsEarned = Math.floor(price / 10000);
-                    
+
                     if (pointsEarned > 0) {
                         const clientWallet = await apiService.getUserWallet(client.id);
                         await apiService.updateUserWallet(client.id, { points: clientWallet.points + pointsEarned });
-                        
+
                         await apiService.createPointsHistoryEntry(client.id, {
                             description: `Điểm thưởng từ dịch vụ: ${service.name}`,
                             pointsChange: pointsEarned,
-                            userId: client.id,
+                            type: 'earned',
+                            source: 'service_completion',
                         });
-                        
+
                         setToastMessage(`Đã hoàn thành dịch vụ cho ${client.name}. Khách hàng nhận được ${pointsEarned} điểm.`);
                     } else {
                         setToastMessage(`Đã hoàn thành dịch vụ "${app.serviceName}" cho ${client.name}.`);
                     }
                 } else {
-                     setToastMessage(`Đã hoàn thành dịch vụ "${app.serviceName}".`);
+                    setToastMessage(`Đã hoàn thành dịch vụ "${app.serviceName}".`);
                 }
             } else {
                 setToastMessage(`Đã cập nhật trạng thái lịch hẹn "${app.serviceName}".`);
             }
-            
+
             // Sync local state with server response in case of any discrepancies
             setAppointments(prev => prev.map(item => (item.id === updatedAppointment.id ? updatedAppointment : item)));
-    
+
         } catch (error) {
             console.error("Failed to update appointment:", error);
             setToastMessage(`Lỗi: Không thể cập nhật lịch hẹn.`);
             // Revert UI on error
-            setAppointments(originalAppointments); 
+            setAppointments(originalAppointments);
         } finally {
             setTimeout(() => setToastMessage(null), 4000);
         }
@@ -204,14 +205,13 @@ export const StaffAppointmentsPage: React.FC<AppointmentsPageProps> = ({ current
                 ) : (
                     appointmentsToRender.map(app => {
                         const client = allUsers.find(u => u.id === app.userId);
-                        
+
                         return (
                             <div key={app.id} className="bg-white p-5 rounded-lg shadow-md flex flex-col sm:flex-row justify-between items-start gap-4">
                                 <div className="flex-1">
                                     <p className="text-sm font-semibold text-gray-500">{new Date(app.date).toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} - {app.time}</p>
                                     <h3 className="text-xl font-bold text-gray-800 mt-1">{app.serviceName}</h3>
                                     {client && <p className="text-gray-600 text-sm">Khách hàng: <button onClick={() => setViewingClient(client)} className="font-semibold text-brand-primary hover:underline">{client.name}</button> - {client.phone}</p>}
-                                    {app.room && <p className="text-xs text-gray-500 mt-1">Phòng: {app.room}</p>}
                                     {app.notesForTherapist && <p className="text-xs text-gray-500 mt-1 italic">Ghi chú cho KTV: "{app.notesForTherapist}"</p>}
                                 </div>
                                 <div className="flex flex-col items-end gap-3 self-end sm:self-center flex-shrink-0 sm:ml-4">
@@ -253,13 +253,12 @@ export const StaffAppointmentsPage: React.FC<AppointmentsPageProps> = ({ current
                                 <div><p className="text-sm text-gray-500">Giờ hẹn</p><p className="font-semibold text-gray-800">{selectedAppointment.time}</p></div>
                                 <div><p className="text-sm text-gray-500">Khách hàng</p><p className="font-semibold text-gray-800">{allUsers.find(u => u.id === selectedAppointment.userId)?.name}</p></div>
                                 <div><p className="text-sm text-gray-500">SĐT Khách hàng</p><p className="font-semibold text-gray-800">{allUsers.find(u => u.id === selectedAppointment.userId)?.phone}</p></div>
-                                {selectedAppointment.room && <div><p className="text-sm text-gray-500">Phòng</p><p className="font-semibold text-gray-800">{selectedAppointment.room}</p></div>}
                                 {selectedAppointment.notesForTherapist && <div><p className="text-sm text-gray-500">Ghi chú cho KTV</p><p className="font-semibold text-gray-800">{selectedAppointment.notesForTherapist}</p></div>}
                             </div>
                             <div><p className="text-sm text-gray-500">Trạng thái</p>{getStatusBadge(selectedAppointment.status)}</div>
                         </div>
                         <div className="mt-6 text-right">
-                             {selectedAppointment.date === today && selectedAppointment.status === 'upcoming' && (
+                            {selectedAppointment.date === today && selectedAppointment.status === 'upcoming' && (
                                 <button onClick={() => handleAction(selectedAppointment, 'in-progress')} className="bg-green-600 text-white hover:bg-green-700 font-semibold px-4 py-2 rounded-md text-sm transition-colors mr-3">
                                     Bắt đầu dịch vụ
                                 </button>
@@ -279,7 +278,7 @@ export const StaffAppointmentsPage: React.FC<AppointmentsPageProps> = ({ current
                     </div>
                 </div>
             )}
-            
+
             {appointmentToComplete && (
                 <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" onClick={() => setAppointmentToComplete(null)}>
                     <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full text-center transform transition-all animate-fadeIn" onClick={(e) => e.stopPropagation()}>
@@ -307,7 +306,7 @@ export const StaffAppointmentsPage: React.FC<AppointmentsPageProps> = ({ current
                     </div>
                 </div>
             )}
-            
+
             {viewingClient && (
                 <ClientProfileModal
                     client={viewingClient}

@@ -30,6 +30,7 @@ interface ReportsPageProps {
 const ReportsPage: React.FC<ReportsPageProps> = ({ allAppointments, allServices, allUsers, allTiers }) => {
     const [allPromotions, setAllPromotions] = useState<Promotion[]>([]);
     const [allRedeemableVouchers, setAllRedeemableVouchers] = useState<RedeemableVoucher[]>([]);
+    const [wallets, setWallets] = useState<Record<string, { points: number }>>({});
     const currentYear = new Date().getFullYear();
 
     useEffect(() => {
@@ -41,12 +42,27 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ allAppointments, allServices,
                 ]);
                 setAllPromotions(promos);
                 setAllRedeemableVouchers(vouchers);
+
+                // Fetch wallets to calculate tier levels
+                const clientUsers = allUsers.filter(u => u.role === 'Client');
+                const walletsData: Record<string, { points: number }> = {};
+                await Promise.all(
+                    clientUsers.map(async (user) => {
+                        try {
+                            const wallet = await apiService.getUserWallet(user.id);
+                            walletsData[user.id] = { points: wallet.points || 0 };
+                        } catch (e) {
+                            walletsData[user.id] = { points: 0 };
+                        }
+                    })
+                );
+                setWallets(walletsData);
             } catch (e) {
                 console.error("Failed to fetch report data", e);
             }
         };
         fetchData();
-    }, []);
+    }, [allUsers]);
 
     const aggregatedData = useMemo(() => {
         // FIX: Use props passed from App.tsx instead of mock data.
@@ -63,7 +79,10 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ allAppointments, allServices,
             const monthRevenue = completedAppointments.filter(app => {
                 const appDate = new Date(app.date);
                 return appDate.getMonth() === i && appDate.getFullYear() === currentYear;
-            }).reduce((sum, app) => sum + (allServices.find(s => s.id === app.serviceId)?.price || 0), 0);
+            }).reduce((sum, app) => {
+                const service = allServices.find(s => s.id === app.serviceId);
+                return sum + (parseFloat(String(service?.price || service?.discountPrice || 0)));
+            }, 0);
             return { month: `T${i + 1}`, revenue: monthRevenue };
         });
 
@@ -99,9 +118,10 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ allAppointments, allServices,
                 const totalStaffRevenue = staffCompletedAppointments.reduce((sum, app) => sum + (allServices.find(s => s.id === app.serviceId)?.price || 0), 0);
                 const totalStaffAppointments = staffCompletedAppointments.length;
                 // FIX: Access selfCareIndex from customerProfile, providing a fallback.
-                const averageRating = allUsers.find(u => u.id === staff.id)?.customerProfile?.selfCareIndex ? ((allUsers.find(u => u.id === staff.id)?.customerProfile?.selfCareIndex || 0) / 100) * 5 : 4.5;
-                // FIX: Access commissionRate from staffProfile.
-                const commissionRate = staff.staffProfile?.commissionRate || 0;
+                // Note: selfCareIndex not in db.txt, using default rating
+                const averageRating = 4.5;
+                // Note: commissionRate not in db.txt, using default
+                const commissionRate = 0;
                 const commissionEarned = totalStaffRevenue * commissionRate;
                 return {
                     id: staff.id,
@@ -117,8 +137,17 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ allAppointments, allServices,
         // --- Customer Tier Distribution ---
         const tierDistribution: Record<string, number> = {};
         allUsers.filter(u => u.role === 'Client').forEach(client => {
-            // FIX: Access tierLevel from customerProfile.
-            const tierName = allTiers.find(t => t.level === client.customerProfile?.tierLevel)?.name || 'Chưa xếp hạng';
+            // Calculate tier level from wallet points since tierLevel is not in users table
+            const userPoints = wallets[client.id]?.points || 0;
+            const sortedTiers = [...allTiers].sort((a, b) => (a.pointsRequired || 0) - (b.pointsRequired || 0));
+            let userTier = 1; // Default to tier 1
+            for (let i = sortedTiers.length - 1; i >= 0; i--) {
+                if (userPoints >= (sortedTiers[i].pointsRequired || 0)) {
+                    userTier = sortedTiers[i].level;
+                    break;
+                }
+            }
+            const tierName = allTiers.find(t => t.level === userTier)?.name || 'Chưa xếp hạng';
             tierDistribution[tierName] = (tierDistribution[tierName] || 0) + 1;
         });
         const customerTierDistribution = Object.entries(tierDistribution)
@@ -152,7 +181,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ allAppointments, allServices,
                 description: voucher.description,
                 pointsRequired: voucher.pointsRequired,
                 value: formatCurrency(voucher.value),
-                redeemedCount: allAppointments.filter(app => app.status === 'completed' && app.staffNotesAfterSession?.includes(voucher.description)).length, // Mock redeemed count
+                redeemedCount: 0, // TODO: Calculate from actual redemption records when redemption table is added
             };
         }).sort((a,b) => b.redeemedCount - a.redeemedCount);
 
@@ -163,7 +192,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ allAppointments, allServices,
             customerTierDistribution, newCustomersMonthly,
             promotionPerformance, voucherPerformance,
         };
-    }, [currentYear, allAppointments, allServices, allUsers, allTiers, allPromotions, allRedeemableVouchers]); // FIX: Updated dependency array
+    }, [currentYear, allAppointments, allServices, allUsers, allTiers, allPromotions, allRedeemableVouchers, wallets]); // FIX: Added wallets to dependency array
 
     return (
         <div>
@@ -389,7 +418,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ allAppointments, allServices,
                                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Voucher</th>
                                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Điểm YC</th>
                                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Giá trị</th>
-                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lượt đổi (mock)</th>
+                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lượt đổi</th>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">

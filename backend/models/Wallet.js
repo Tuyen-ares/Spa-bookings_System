@@ -14,7 +14,7 @@ module.exports = (sequelize, DataTypes) => {
       onDelete: 'CASCADE',
     },
     balance: { // For storing monetary balance if applicable
-      type: DataTypes.FLOAT,
+      type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
       defaultValue: 0,
     },
@@ -23,10 +23,22 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: 0,
     },
-    spinsLeft: { // For lucky wheel game
+    totalEarned: {
       type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+      comment: 'Tổng điểm đã tích được',
+    },
+    totalSpent: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+      comment: 'Tổng điểm đã sử dụng',
+    },
+    pointsHistory: {
+      type: DataTypes.JSON,
       allowNull: true,
-      defaultValue: 3, 
+      comment: 'Lịch sử điểm: [{date, pointsChange, type, source, description}]',
     },
   }, {
     tableName: 'wallets',

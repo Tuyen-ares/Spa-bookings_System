@@ -50,18 +50,66 @@ const StaffPage: React.FC<StaffPageProps> = ({ allUsers, allServices, allAppoint
     const [filterStatus, setFilterStatus] = useState<UserStatus | 'All'>('All');
     const [currentPage, setCurrentPage] = useState(1);
     
+    // Fetch staff data from API if allUsers is empty or refresh when needed
     useEffect(() => {
-        setIsLoading(true);
-        const staffMembers = allUsers.filter(u => u.role === 'Admin' || u.role === 'Staff');
-        setLocalStaff(staffMembers);
-        setIsLoading(false);
+        const fetchStaffData = async () => {
+            setIsLoading(true);
+            try {
+                // If allUsers is empty or has no staff, fetch from API
+                if (!allUsers || allUsers.length === 0) {
+                    console.log('StaffPage: allUsers is empty, fetching from API...');
+                    const fetchedUsers = await apiService.getUsers();
+                    const staffMembers = fetchedUsers.filter(u => u.role === 'Admin' || u.role === 'Staff');
+                    setLocalStaff(staffMembers);
+                    console.log('StaffPage: Fetched staff from API:', staffMembers.length);
+                } else {
+                    // Filter staff from allUsers prop
+                    const staffMembers = allUsers.filter(u => u.role === 'Admin' || u.role === 'Staff');
+                    setLocalStaff(staffMembers);
+                    console.log('StaffPage: Filtered staff from props:', staffMembers.length, 'Total users:', allUsers.length);
+                }
+            } catch (error) {
+                console.error('StaffPage: Error fetching staff:', error);
+                // Fallback: try to filter from allUsers even if empty
+                const staffMembers = allUsers ? allUsers.filter(u => u.role === 'Admin' || u.role === 'Staff') : [];
+                setLocalStaff(staffMembers);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        
+        fetchStaffData();
     }, [allUsers]);
 
     const filteredStaff = useMemo(() => {
-        return localStaff
-            .filter(user => user.name.toLowerCase().includes(searchTerm.toLowerCase()) || user.email.toLowerCase().includes(searchTerm.toLowerCase()))
-            .filter(user => filterStatus === 'All' || user.status === filterStatus)
-            .filter(user => filterRole === 'All' || user.staffProfile?.staffRole === filterRole);
+        if (!localStaff || localStaff.length === 0) {
+            return [];
+        }
+        
+        let filtered = localStaff;
+        
+        // Filter by search term
+        if (searchTerm.trim()) {
+            filtered = filtered.filter(user => {
+                const nameMatch = user.name?.toLowerCase().includes(searchTerm.toLowerCase()) || false;
+                const emailMatch = user.email?.toLowerCase().includes(searchTerm.toLowerCase()) || false;
+                return nameMatch || emailMatch;
+            });
+        }
+        
+        // Filter by status
+        if (filterStatus !== 'All') {
+            filtered = filtered.filter(user => user.status === filterStatus);
+        }
+        
+        // Filter by role (Note: staffRole not in db.txt users table, so filter by role only)
+        if (filterRole !== 'All') {
+            // Since we don't have staffRole field, we can only filter by Admin/Staff
+            // For now, show all Staff when filtering by any staff role
+            filtered = filtered.filter(user => user.role === 'Staff' || user.role === 'Admin');
+        }
+        
+        return filtered;
     }, [localStaff, searchTerm, filterRole, filterStatus]);
 
     const totalPages = Math.ceil(filteredStaff.length / USERS_PER_PAGE);
@@ -134,11 +182,11 @@ const StaffPage: React.FC<StaffPageProps> = ({ allUsers, allServices, allAppoint
                                         </td>
                                         <td className="p-4">
                                             <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                                                {ROLE_TRANSLATIONS[user.staffProfile?.staffRole || user.role]}
+                                                {ROLE_TRANSLATIONS[user.role]}
                                             </span>
                                         </td>
                                         <td className="p-4 text-xs text-gray-600 max-w-xs truncate">
-                                            {user.staffProfile?.specialty?.join(', ') || 'N/A'}
+                                            N/A
                                         </td>
                                         <td className="p-4">
                                             <span className={`px-2 py-1 text-xs font-semibold rounded-full ${user.status === 'Active' ? 'bg-green-100 text-green-800' : user.status === 'Inactive' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>

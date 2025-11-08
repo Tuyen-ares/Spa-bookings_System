@@ -61,7 +61,7 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
     const navigate = useNavigate();
     const [promotions, setPromotions] = useState<Promotion[]>([]);
     const [redeemableVouchers, setRedeemableVouchers] = useState<RedeemableVoucher[]>([]);
-    const [pointsHistory, setPointsHistory] = useState<PointsHistory[]>([]);
+    const [pointsHistory, setPointsHistory] = useState<Array<{date: string; pointsChange: number; type: string; source: string; description: string}>>([]);
     const [luckyWheelPrizes, setLuckyWheelPrizes] = useState<Prize[]>([]);
     
     // New states for extra data and features
@@ -139,15 +139,14 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
 
     // ... (rest of the logic: availablePromotions, handleRedeemVoucher, handleClaimPromotion, handleSpin, etc.) ...
      const handleSpin = async () => {
-        if (!currentUser || !wallet || isSpinning || (wallet.spinsLeft ?? 0) <= 0) return;
+        // Note: spinsLeft field removed from Wallet type in db.txt
+        // Lucky wheel functionality disabled until spinsLeft is re-added to database
+        if (!currentUser || !wallet || isSpinning) return;
+        alert('Tính năng vòng quay may mắn đang được bảo trì.');
+        return;
     
         setIsSpinning(true);
         try {
-            const currentWalletState = await apiService.getUserWallet(currentUser.id);
-            const newSpinsLeft = (currentWalletState.spinsLeft ?? 0) - 1;
-            await apiService.updateUserWallet(currentUser.id, { spinsLeft: newSpinsLeft });
-            setWallet(prev => prev ? { ...prev, spinsLeft: newSpinsLeft } : null);
-    
             const prizes = luckyWheelPrizes;
             if (prizes.length === 0) { setIsSpinning(false); return; }
             
@@ -167,16 +166,16 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                 try {
                     const freshWallet = await apiService.getUserWallet(currentUser.id);
                     let walletUpdatePayload: Partial<Wallet> = {};
-                    let newHistoryEntry: Partial<PointsHistory> | null = null;
+                    let newHistoryEntry: { date?: string; pointsChange: number; type?: string; source?: string; description: string } | null = null;
     
                     switch (prize.type) {
                         case 'points':
                             walletUpdatePayload = { points: freshWallet.points + prize.value };
-                            newHistoryEntry = { description: `Vòng quay may mắn: +${prize.value} điểm`, pointsChange: prize.value };
+                            newHistoryEntry = { description: `Vòng quay may mắn: +${prize.value} điểm`, pointsChange: prize.value, type: 'earned', source: 'lucky_wheel' };
                             break;
                         case 'spin':
-                            walletUpdatePayload = { spinsLeft: (freshWallet.spinsLeft ?? 0) + prize.value };
-                            newHistoryEntry = { description: `Vòng quay may mắn: +${prize.value} lượt quay`, pointsChange: 0 };
+                            // Note: spinsLeft removed from Wallet, skip this prize type
+                            newHistoryEntry = { description: `Vòng quay may mắn: +${prize.value} lượt quay (tạm thời không khả dụng)`, pointsChange: 0, type: 'earned', source: 'lucky_wheel' };
                             break;
                         case 'voucher':
                         case 'voucher_fixed':
@@ -202,8 +201,10 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                     }
     
                     if (newHistoryEntry) {
-                        const createdHistory = await apiService.createPointsHistoryEntry(currentUser.id, newHistoryEntry);
-                        setPointsHistory(prev => [createdHistory, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+                        await apiService.createPointsHistoryEntry(currentUser.id, newHistoryEntry);
+                        // Refresh points history
+                        const updatedHistory = await apiService.getUserPointsHistory(currentUser.id);
+                        setPointsHistory(updatedHistory.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
                     }
     
                 } catch (error) { console.error("Failed to apply prize:", error); alert("Đã có lỗi xảy ra khi nhận phần thưởng."); }
@@ -253,8 +254,20 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                             <div className="text-center md:text-left mb-4 md:mb-0">
                                 <p className="text-xl font-semibold">Xin chào, {currentUser.name}!</p>
                                 <p className="text-3xl font-bold mt-1">{wallet.points.toLocaleString()} điểm</p>
-                                {/* FIX: Access tierLevel from customerProfile to match the User type. */}
-                                <p className="text-sm">Bạn đang ở hạng {allTiers.find(t => t.level === currentUser.customerProfile?.tierLevel)?.name || 'Đồng'}</p>
+                                {/* Calculate tier from wallet points since tierLevel is not in users table */}
+                                <p className="text-sm">Bạn đang ở hạng {(() => {
+                                    if (!wallet) return 'Đồng';
+                                    const userPoints = wallet.points || 0;
+                                    const sortedTiers = [...allTiers].sort((a, b) => (a.pointsRequired || 0) - (b.pointsRequired || 0));
+                                    let tierLevel = 1;
+                                    for (let i = sortedTiers.length - 1; i >= 0; i--) {
+                                        if (userPoints >= (sortedTiers[i].pointsRequired || 0)) {
+                                            tierLevel = sortedTiers[i].level;
+                                            break;
+                                        }
+                                    }
+                                    return allTiers.find(t => t.level === tierLevel)?.name || 'Đồng';
+                                })()}</p>
                             </div>
                             <Link to="/profile" className="bg-white text-brand-dark px-6 py-3 rounded-full font-bold shadow-lg hover:bg-gray-100 transition-colors">
                                 Quản lý hồ sơ
@@ -286,8 +299,21 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                     
                     {/* Birthday & Group & Tier Offers */}
                     <div className="space-y-6">
-                        {/* FIX: Access tierLevel from customerProfile to match the User type. */}
-                        {promotions.filter(p => p.targetAudience === 'Group' || p.targetAudience === `Tier Level ${currentUser.customerProfile?.tierLevel}`).map(promo => {
+                        {/* Calculate tier from wallet points since tierLevel is not in users table */}
+                        {promotions.filter(p => {
+                            if (p.targetAudience === 'Group') return true;
+                            if (!wallet) return p.targetAudience === 'Tier Level 1';
+                            const userPoints = wallet.points || 0;
+                            const sortedTiers = [...allTiers].sort((a, b) => (a.pointsRequired || 0) - (b.pointsRequired || 0));
+                            let tierLevel = 1;
+                            for (let i = sortedTiers.length - 1; i >= 0; i--) {
+                                if (userPoints >= (sortedTiers[i].pointsRequired || 0)) {
+                                    tierLevel = sortedTiers[i].level;
+                                    break;
+                                }
+                            }
+                            return p.targetAudience === `Tier Level ${tierLevel}`;
+                        }).map(promo => {
                             const tier = allTiers.find(t => `Tier Level ${t.level}` === promo.targetAudience);
                             const glowStyle = tier ? { '--glow-color-start': hexToRgba(tier.color, 0.2), '--glow-color-end': hexToRgba(tier.color, 0.6) } as React.CSSProperties : {};
                             return (

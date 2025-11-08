@@ -21,12 +21,12 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
     allTreatmentCourses,
 }) => {
     const navigate = useNavigate();
-    const [localAppointments, setLocalAppointments] = useState(allAppointments);
+    const [localAppointments, setLocalAppointments] = useState<Appointment[]>([]);
+    const [isLoadingAppointments, setIsLoadingAppointments] = useState(true);
     const [activeTab, setActiveTab] = useState<'upcoming' | 'history' | 'courses'>('upcoming');
     const [viewingAppointment, setViewingAppointment] = useState<(Appointment & { dateTime: Date }) | null>(null);
     const [appointmentToCancel, setAppointmentToCancel] = useState<(Appointment & { dateTime: Date }) | null>(null);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
-
 
     // Filter & Sort States
     const [upcomingSort, setUpcomingSort] = useState('date-asc');
@@ -37,10 +37,55 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
     const [historyFilterService, setHistoryFilterService] = useState('all');
     const [historyFilterTime, setHistoryFilterTime] = useState('all');
     const [historyFilterStatus, setHistoryFilterStatus] = useState('all');
+    
+    // Treatment Courses Filter States
+    const [coursesFilterTime, setCoursesFilterTime] = useState('all');
 
+    // Fetch appointments from API to ensure we have the latest data
     useEffect(() => {
-        setLocalAppointments(allAppointments);
-    }, [allAppointments]);
+        const fetchAppointments = async () => {
+            try {
+                setIsLoadingAppointments(true);
+                // Fetch user-specific appointments
+                const userAppointments = await apiService.getUserAppointments(currentUser.id);
+                setLocalAppointments(userAppointments);
+            } catch (error) {
+                console.error("Failed to fetch appointments:", error);
+                // Fallback to allAppointments from props if API call fails
+                setLocalAppointments(allAppointments.filter(app => app.userId === currentUser.id));
+            } finally {
+                setIsLoadingAppointments(false);
+            }
+        };
+        
+        fetchAppointments();
+        
+        // Also listen for refresh event
+        const handleRefresh = () => {
+            fetchAppointments();
+        };
+        window.addEventListener('refresh-appointments', handleRefresh);
+        return () => {
+            window.removeEventListener('refresh-appointments', handleRefresh);
+        };
+    }, [currentUser.id, allAppointments]);
+
+    // Also update when allAppointments changes (e.g., after booking)
+    useEffect(() => {
+        if (allAppointments.length > 0) {
+            const userApps = allAppointments.filter(app => app.userId === currentUser.id);
+            if (userApps.length > 0) {
+                setLocalAppointments(prev => {
+                    // Merge and deduplicate appointments
+                    const merged = [...prev, ...userApps];
+                    const unique = merged.filter((app, index, self) => 
+                        index === self.findIndex(a => a.id === app.id)
+                    );
+                    return unique;
+                });
+            }
+        }
+    }, [allAppointments, currentUser.id]);
 
     const handleCancelAppointment = async () => {
         if (!appointmentToCancel) return;
@@ -61,16 +106,30 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
     // --- Memoized Data Processing ---
     const { myUpcomingAppointments, myHistoryAppointments, myTreatmentCourses } = useMemo(() => {
         const now = new Date();
+        // Filter appointments for current user
         const myApps = localAppointments.filter(app => app.userId === currentUser.id);
 
+        // Upcoming appointments: include 'pending' (awaiting admin confirmation), 'upcoming' (confirmed), and 'in-progress'
+        // Also include appointments that are in the future (even if status is pending)
         const upcoming = myApps
-            .filter(app => ['upcoming', 'pending', 'in-progress'].includes(app.status))
             .map(app => ({...app, dateTime: new Date(`${app.date}T${app.time}`) }))
-            .filter(app => app.dateTime >= now);
+            .filter(app => {
+                // Include if status is pending, upcoming, or in-progress
+                const isUpcomingStatus = ['upcoming', 'pending', 'in-progress'].includes(app.status);
+                // Also include if date is in the future (for appointments that might have been just created)
+                const isFutureDate = app.dateTime >= now;
+                return isUpcomingStatus && isFutureDate;
+            });
 
+        // History appointments: completed or cancelled, or past appointments regardless of status
         const history = myApps
-            .filter(app => ['completed', 'cancelled'].includes(app.status))
-            .map(app => ({...app, dateTime: new Date(`${app.date}T${app.time}`) }));
+            .map(app => ({...app, dateTime: new Date(`${app.date}T${app.time}`) }))
+            .filter(app => {
+                const isCompletedOrCancelled = ['completed', 'cancelled'].includes(app.status);
+                const isPastDate = app.dateTime < now;
+                // Include if completed/cancelled, or if past date (old appointments)
+                return isCompletedOrCancelled || (isPastDate && !['upcoming', 'pending', 'in-progress'].includes(app.status));
+            });
 
         const courses = allTreatmentCourses.filter(course => course.clientId === currentUser.id);
         
@@ -82,26 +141,111 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
         return myUpcomingAppointments.filter(app => app.dateTime <= twentyFourHoursFromNow);
     }, [myUpcomingAppointments]);
 
-    const filterByTime = (apps: (Appointment & { dateTime: Date })[], timeFilter: string) => {
+    // Helper function to get time range boundaries
+    const getTimeRange = () => {
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
+        today.setHours(0, 0, 0, 0);
+        
+        // Start of week (Monday)
         const startOfWeek = new Date(today);
-        startOfWeek.setDate(today.getDate() - today.getDay() + (today.getDay() === 0 ? -6 : 1)); // Monday
+        const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ...
+        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        startOfWeek.setDate(today.getDate() - daysToMonday);
+        startOfWeek.setHours(0, 0, 0, 0);
+        
+        // End of week (Sunday)
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59, 999);
+        
+        // Start of month
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        startOfMonth.setHours(0, 0, 0, 0);
+        
+        // End of month
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        endOfMonth.setHours(23, 59, 59, 999);
+        
+        return { today, startOfWeek, endOfWeek, startOfMonth, endOfMonth };
+    };
+
+    const filterByTime = (apps: (Appointment & { dateTime: Date })[], timeFilter: string) => {
+        const { today, startOfWeek, endOfWeek, startOfMonth, endOfMonth } = getTimeRange();
 
         switch (timeFilter) {
             case 'today':
-                return apps.filter(app => app.date === today.toISOString().split('T')[0]);
+                // Filter appointments that fall within today (00:00:00 to 23:59:59)
+                return apps.filter(app => {
+                    const appDate = new Date(app.dateTime);
+                    appDate.setHours(0, 0, 0, 0);
+                    return appDate.getTime() === today.getTime();
+                });
             case 'this-week':
-                return apps.filter(app => app.dateTime >= startOfWeek);
+                // Filter appointments that fall within this week (Monday to Sunday)
+                return apps.filter(app => {
+                    const appDateTime = app.dateTime.getTime();
+                    return appDateTime >= startOfWeek.getTime() && appDateTime <= endOfWeek.getTime();
+                });
             case 'this-month':
-                return apps.filter(app => app.dateTime >= startOfMonth);
+                // Filter appointments that fall within this month
+                return apps.filter(app => {
+                    const appDateTime = app.dateTime.getTime();
+                    return appDateTime >= startOfMonth.getTime() && appDateTime <= endOfMonth.getTime();
+                });
             case 'all':
             default:
                 return apps;
         }
+    };
+    
+    // Filter treatment courses by time based on sessions or nextAppointmentDate
+    const filterCoursesByTime = (courses: TreatmentCourse[], timeFilter: string) => {
+        if (timeFilter === 'all') return courses;
+        
+        const { today, startOfWeek, endOfWeek, startOfMonth, endOfMonth } = getTimeRange();
+        
+        return courses.filter(course => {
+            // Check if course has sessions with dates in the time range
+            if (course.sessions && Array.isArray(course.sessions) && course.sessions.length > 0) {
+                const hasSessionInRange = course.sessions.some(session => {
+                    if (!session.date) return false;
+                    const sessionDate = new Date(session.date);
+                    sessionDate.setHours(0, 0, 0, 0);
+                    
+                    switch (timeFilter) {
+                        case 'today':
+                            return sessionDate.getTime() === today.getTime();
+                        case 'this-week':
+                            return sessionDate.getTime() >= startOfWeek.getTime() && sessionDate.getTime() <= endOfWeek.getTime();
+                        case 'this-month':
+                            return sessionDate.getTime() >= startOfMonth.getTime() && sessionDate.getTime() <= endOfMonth.getTime();
+                        default:
+                            return false;
+                    }
+                });
+                if (hasSessionInRange) return true;
+            }
+            
+            // Check nextAppointmentDate if available
+            if (course.nextAppointmentDate) {
+                const nextDate = new Date(course.nextAppointmentDate);
+                nextDate.setHours(0, 0, 0, 0);
+                
+                switch (timeFilter) {
+                    case 'today':
+                        return nextDate.getTime() === today.getTime();
+                    case 'this-week':
+                        return nextDate.getTime() >= startOfWeek.getTime() && nextDate.getTime() <= endOfWeek.getTime();
+                    case 'this-month':
+                        return nextDate.getTime() >= startOfMonth.getTime() && nextDate.getTime() <= endOfMonth.getTime();
+                    default:
+                        return false;
+                }
+            }
+            
+            return false;
+        });
     };
     
     const displayUpcoming = useMemo(() => {
@@ -138,26 +282,47 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
 
     const uniqueServiceIds = useMemo(() => [...new Set(myUpcomingAppointments.map(a => a.serviceId).concat(myHistoryAppointments.map(a => a.serviceId)))], [myUpcomingAppointments, myHistoryAppointments]);
     const serviceFilterOptions = allServices.filter(s => uniqueServiceIds.includes(s.id));
+    
+    // Filter treatment courses by time
+    const displayCourses = useMemo(() => {
+        return filterCoursesByTime(myTreatmentCourses, coursesFilterTime);
+    }, [myTreatmentCourses, coursesFilterTime]);
 
     // --- Render Functions for Cards ---
 
-    const UpcomingAppointmentCard: React.FC<{ appointment: Appointment & { dateTime: Date } }> = ({ appointment }) => (
-        <div className="bg-white p-5 rounded-lg shadow-soft-lg border border-gray-100">
-            <div className="flex justify-between items-start">
-                <div>
-                    <p className="text-sm font-semibold text-gray-600 mb-2">
-                        {appointment.dateTime.toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} - {appointment.time}
-                    </p>
-                    <h4 className="text-xl font-bold font-serif text-brand-text">{appointment.serviceName}</h4>
+    const UpcomingAppointmentCard: React.FC<{ appointment: Appointment & { dateTime: Date } }> = ({ appointment }) => {
+        // Determine status badge based on appointment status
+        const getStatusBadge = () => {
+            if (appointment.status === 'pending') {
+                return <span className="px-3 py-1 text-xs font-bold rounded-full bg-yellow-100 text-yellow-800 flex-shrink-0">Chờ xác nhận</span>;
+            } else if (appointment.status === 'upcoming') {
+                return <span className="px-3 py-1 text-xs font-bold rounded-full bg-blue-100 text-blue-800 flex-shrink-0">Đã xác nhận</span>;
+            } else if (appointment.status === 'in-progress') {
+                return <span className="px-3 py-1 text-xs font-bold rounded-full bg-purple-100 text-purple-800 flex-shrink-0">Đang tiến hành</span>;
+            }
+            return null;
+        };
+
+        return (
+            <div className="bg-white p-5 rounded-lg shadow-soft-lg border border-gray-100">
+                <div className="flex justify-between items-start">
+                    <div>
+                        <p className="text-sm font-semibold text-gray-600 mb-2">
+                            {appointment.dateTime.toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} - {appointment.time}
+                        </p>
+                        <h4 className="text-xl font-bold font-serif text-brand-text">{appointment.serviceName}</h4>
+                    </div>
+                    {getStatusBadge()}
                 </div>
-                <span className="px-3 py-1 text-xs font-bold rounded-full bg-blue-100 text-blue-800 flex-shrink-0">Đã xác nhận</span>
+                <div className="border-t mt-4 pt-4 flex justify-end items-center gap-3">
+                    <button onClick={() => setViewingAppointment(appointment)} className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Xem Chi Tiết</button>
+                    {appointment.status !== 'pending' && (
+                        <button onClick={() => setAppointmentToCancel(appointment)} className="px-4 py-2 text-sm font-semibold bg-red-50 text-red-700 rounded-md hover:bg-red-100">Hủy lịch</button>
+                    )}
+                </div>
             </div>
-            <div className="border-t mt-4 pt-4 flex justify-end items-center gap-3">
-                <button onClick={() => setViewingAppointment(appointment)} className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Xem Chi Tiết</button>
-                <button onClick={() => setAppointmentToCancel(appointment)} className="px-4 py-2 text-sm font-semibold bg-red-50 text-red-700 rounded-md hover:bg-red-100">Hủy lịch</button>
-            </div>
-        </div>
-    );
+        );
+    };
 
     const HistoryAppointmentCard: React.FC<{ appointment: Appointment & { dateTime: Date } }> = ({ appointment }) => (
         <div className="bg-white p-5 rounded-lg shadow-soft-lg border border-gray-100 flex justify-between items-center">
@@ -249,7 +414,12 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                 </div>
                             )}
 
-                            {displayUpcoming.length > 0 ? (
+                            {isLoadingAppointments ? (
+                                <div className="text-center py-10">
+                                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto mb-4"></div>
+                                    <p className="text-gray-500">Đang tải lịch hẹn...</p>
+                                </div>
+                            ) : displayUpcoming.length > 0 ? (
                                 displayUpcoming.map(app => <UpcomingAppointmentCard key={app.id} appointment={app} />)
                             ) : (
                                 <p className="text-center text-gray-500 py-10">Không có lịch hẹn sắp tới.</p>
@@ -292,11 +462,22 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                     
                     {activeTab === 'courses' && (
                         <div className="space-y-6">
-                            {myTreatmentCourses.length > 0 ? (
-                                myTreatmentCourses.map(course => <TreatmentCourseCard key={course.id} course={course} />)
+                            <div className="bg-white p-4 rounded-lg shadow-md flex items-center justify-center gap-2">
+                                {['all', 'today', 'this-week', 'this-month'].map(filter => {
+                                    const labels: Record<string, string> = {all: 'Tất cả', today: 'Hôm nay', 'this-week': 'Tuần này', 'this-month': 'Tháng này'};
+                                    return <button key={filter} onClick={() => setCoursesFilterTime(filter)} className={`px-3 py-1.5 text-sm font-semibold rounded-full ${coursesFilterTime === filter ? 'bg-brand-primary text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>{labels[filter]}</button>
+                                })}
+                            </div>
+                            
+                            {displayCourses.length > 0 ? (
+                                displayCourses.map(course => <TreatmentCourseCard key={course.id} course={course} />)
                             ) : (
                                 <div className="text-center py-10 bg-white rounded-lg shadow-md">
-                                    <p className="text-lg text-gray-500">Bạn chưa đăng ký liệu trình nào.</p>
+                                    <p className="text-lg text-gray-500">
+                                        {myTreatmentCourses.length > 0 
+                                            ? 'Không có liệu trình nào trong khoảng thời gian đã chọn.' 
+                                            : 'Bạn chưa đăng ký liệu trình nào.'}
+                                    </p>
                                 </div>
                             )}
                         </div>

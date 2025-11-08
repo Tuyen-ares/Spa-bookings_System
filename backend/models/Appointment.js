@@ -28,6 +28,11 @@ module.exports = (sequelize, DataTypes) => {
         key: 'id',
       },
     },
+    userName: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'Tên khách hàng (để hiển thị trên lịch)',
+    },
     date: {
       type: DataTypes.DATEONLY, // YYYY-MM-DD
       allowNull: false,
@@ -58,10 +63,6 @@ module.exports = (sequelize, DataTypes) => {
         key: 'id',
       },
     },
-    room: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
     notesForTherapist: {
       type: DataTypes.TEXT,
       allowNull: true,
@@ -91,6 +92,14 @@ module.exports = (sequelize, DataTypes) => {
     bookingGroupId: {
       type: DataTypes.STRING,
       allowNull: true,
+    },
+    roomId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      references: {
+        model: 'rooms',
+        key: 'id',
+      },
     }
   }, {
     tableName: 'appointments',

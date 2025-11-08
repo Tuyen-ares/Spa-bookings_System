@@ -1,10 +1,15 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { getChatbotResponse } from '../services/geminiService';
-import type { ChatMessage } from '../../types';
+import type { ChatMessage, Service, TreatmentCourse } from '../../types';
 import { ChatbotIcon }from '../../shared/icons';
 
-const Chatbot: React.FC = () => {
+interface ChatbotProps {
+    services?: Service[];
+    treatmentCourses?: TreatmentCourse[];
+}
+
+const Chatbot: React.FC<ChatbotProps> = ({ services = [], treatmentCourses = [] }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [userInput, setUserInput] = useState('');
@@ -42,11 +47,12 @@ const Chatbot: React.FC = () => {
         setIsLoading(true);
 
         try {
-            const botResponse = await getChatbotResponse(newMessages);
+            // Pass services and treatment courses to the chatbot
+            const botResponse = await getChatbotResponse(newMessages, services, treatmentCourses);
             setMessages(prev => [...prev, { sender: 'bot', text: botResponse }]);
         } catch (error) {
             console.error("Chatbot error:", error);
-            setMessages(prev => [...prev, { sender: 'bot', text: "Rất xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại." }]);
+            setMessages(prev => [...prev, { sender: 'bot', text: "Rất xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại hoặc liên hệ với chúng tôi qua hotline: 098-765-4321." }]);
         } finally {
             setIsLoading(false);
         }
