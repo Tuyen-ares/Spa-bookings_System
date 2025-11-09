@@ -297,4 +297,63 @@ router.delete('/tasks/:id', async (req, res) => {
     }
 });
 
+// GET /api/staff/notifications/:userId - Get internal notifications
+// userId can be 'all' to get all notifications or a specific user ID
+router.get('/notifications/:userId', async (req, res) => {
+    const { userId } = req.params;
+    try {
+        if (!db.InternalNotification) {
+            return res.json([]); // Return empty array if model doesn't exist
+        }
+        
+        const where = userId === 'all' ? {} : { userId };
+        const notifications = await db.InternalNotification.findAll({
+            where,
+            order: [['createdAt', 'DESC']]
+        });
+        res.json(notifications);
+    } catch (error) {
+        console.error('Error fetching internal notifications:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// PUT /api/staff/notifications/:id/read - Mark notification as read
+router.put('/notifications/:id/read', async (req, res) => {
+    const { id } = req.params;
+    try {
+        if (!db.InternalNotification) {
+            return res.status(404).json({ message: 'Notification model not found' });
+        }
+        
+        const notification = await db.InternalNotification.findByPk(id);
+        if (!notification) {
+            return res.status(404).json({ message: 'Notification not found' });
+        }
+        
+        await notification.update({ isRead: true });
+        res.json(notification);
+    } catch (error) {
+        console.error('Error marking notification as read:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// GET /api/staff/news - Get internal news
+router.get('/news', async (req, res) => {
+    try {
+        if (!db.InternalNews) {
+            return res.json([]); // Return empty array if model doesn't exist
+        }
+        
+        const news = await db.InternalNews.findAll({
+            order: [['publishDate', 'DESC']]
+        });
+        res.json(news);
+    } catch (error) {
+        console.error('Error fetching internal news:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
 module.exports = router;
