@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import type { User } from '../types';
 import { LogoIcon, ChevronDownIcon, MenuIcon, CloseIcon } from '../shared/icons';
+import { NotificationBell } from '../client/components/NotificationBell';
 
 interface HeaderProps {
     currentUser: User | null;
@@ -78,6 +79,7 @@ const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                     </nav>
 
                     <div className="hidden md:flex items-center gap-4">
+                        {currentUser && <NotificationBell currentUser={currentUser} />}
                         {currentUser ? (
                             <div className="relative" ref={userMenuRef}>
                                 <button onClick={() => setIsUserMenuOpen(prev => !prev)} className="flex items-center gap-2 group p-1 rounded-full transition-colors hover:bg-brand-primary/10" aria-haspopup="true" aria-expanded={isUserMenuOpen}>

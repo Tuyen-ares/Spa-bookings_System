@@ -6,7 +6,7 @@ import type {
     Sale, InternalNotification, InternalNews,
     TreatmentCourse, Review, Payment, Mission, Prize, ServiceCategory, StaffTask, PaymentMethod,
     // FIX: Imported missing types to resolve compilation errors.
-    TreatmentSession, UserStatus, Room
+    TreatmentSession, UserStatus, Room, Notification, TreatmentSessionDetail
 } from '../../types';
 
 const API_BASE_URL = 'http://localhost:3001/api'; // Point to the backend server
@@ -112,6 +112,10 @@ export const deleteService = (id: string) => remove(`${API_BASE_URL}/services/${
 export const createAppointment = (data: Partial<Appointment>) => create<Appointment>(`${API_BASE_URL}/appointments`, data);
 export const updateAppointment = (id: string, data: Partial<Appointment>) => update<Appointment>(`${API_BASE_URL}/appointments/${id}`, data);
 export const cancelAppointment = (id: string) => update<Appointment>(`${API_BASE_URL}/appointments/${id}`, { status: 'cancelled' });
+export const confirmAppointment = (id: string) => fetch(`${API_BASE_URL}/appointments/${id}/confirm`, {
+    method: 'PUT',
+    headers: getAuthHeaders()
+}).then(handleResponse) as Promise<{ appointment: Appointment; message: string }>;
 
 export const createReview = (data: Partial<Review>) => create<Review>(`${API_BASE_URL}/reviews`, data);
 export const updateReview = (id: string, data: Partial<Review>) => update<Review>(`${API_BASE_URL}/reviews/${id}`, data);
@@ -120,12 +124,15 @@ export const deleteReview = (id: string) => remove(`${API_BASE_URL}/reviews/${id
 export const createPromotion = (data: Partial<Promotion>) => create<Promotion>(`${API_BASE_URL}/promotions`, data);
 export const updatePromotion = (id: string, data: Partial<Promotion>) => update<Promotion>(`${API_BASE_URL}/promotions/${id}`, data);
 export const deletePromotion = (id: string) => remove(`${API_BASE_URL}/promotions/${id}`);
+export const applyPromotion = async (code: string): Promise<{ success: boolean; message: string; promotion: Promotion }> => {
+    const response = await fetch(`${API_BASE_URL}/promotions/apply/${code}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+    });
+    return handleResponse(response);
+};
 
-export const createRedeemableVoucher = (data: Partial<RedeemableVoucher>) => create<RedeemableVoucher>(`${API_BASE_URL}/vouchers`, data);
-export const updateRedeemableVoucher = (id: string, data: Partial<RedeemableVoucher>) => update<RedeemableVoucher>(`${API_BASE_URL}/vouchers/${id}`, data);
-export const deleteRedeemableVoucher = (id: string) => remove(`${API_BASE_URL}/vouchers/${id}`);
-
-export const createRedeemedReward = (data: Partial<RedeemedReward>) => create<RedeemedReward>(`${API_BASE_URL}/vouchers/redeemed`, data);
 export const updateUserWallet = (userId: string, data: Partial<Wallet>) => update<Wallet>(`${API_BASE_URL}/wallets/${userId}`, data);
 export const createPointsHistoryEntry = (userId: string, data: {date?: string; pointsChange: number; type?: string; source?: string; description: string}) => create(`${API_BASE_URL}/wallets/${userId}/points-history`, data);
 
@@ -155,26 +162,99 @@ export const deleteStaffTask = (id: string) => remove(`${API_BASE_URL}/staff/tas
 
 export const processPayment = async (appointmentId: string, method: PaymentMethod, finalAmount: number): Promise<{ paymentUrl?: string; paymentId?: string; success?: boolean; payment?: Payment }> => {
     // This is a specific action, so we define it separately
+    const body = { appointmentId, method, amount: finalAmount };
     const response = await fetch(`${API_BASE_URL}/payments/process`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ appointmentId, method, amount: finalAmount })
+        body: JSON.stringify(body)
     });
     return handleResponse(response);
 };
 
 export const updatePayment = (id: string, data: Partial<Payment>) => update<Payment>(`${API_BASE_URL}/payments/${id}`, data);
+export const deletePayment = (id: string) => remove(`${API_BASE_URL}/payments/${id}`);
 
-export const getTreatmentCourses = async (templateOnly: boolean = false): Promise<TreatmentCourse[]> => {
-  const url = templateOnly 
-    ? `${API_BASE_URL}/treatment-courses?template=true`
-    : `${API_BASE_URL}/treatment-courses`;
+// --- TREATMENT COURSES ---
+export const getTreatmentCourses = async (params?: {
+  clientId?: string;
+  status?: string;
+  templateOnly?: boolean;
+  templatesOnly?: boolean;
+  includeExpired?: boolean;
+  includeCompleted?: boolean;
+}): Promise<TreatmentCourse[]> => {
+  let url = `${API_BASE_URL}/treatment-courses`;
+  const queryParams = new URLSearchParams();
+  
+  if (params?.templateOnly || params?.templatesOnly) queryParams.append('templatesOnly', 'true');
+  if (params?.clientId) queryParams.append('clientId', params.clientId);
+  if (params?.status) queryParams.append('status', params.status);
+  if (params?.includeExpired) queryParams.append('includeExpired', 'true');
+  if (params?.includeCompleted) queryParams.append('includeCompleted', 'true');
+  
+  const queryString = queryParams.toString();
+  if (queryString) url += `?${queryString}`;
+  
   return fetch(url).then(handleResponse);
 };
-export const getTreatmentCourseById = async (id: string): Promise<TreatmentCourse> => fetch(`${API_BASE_URL}/treatment-courses/${id}`).then(handleResponse);
-export const createTreatmentCourse = (data: Partial<TreatmentCourse>) => create<TreatmentCourse>(`${API_BASE_URL}/treatment-courses`, data);
-export const updateTreatmentCourse = (id: string, data: Partial<TreatmentCourse>) => update<TreatmentCourse>(`${API_BASE_URL}/treatment-courses/${id}`, data);
-export const deleteTreatmentCourse = (id: string) => remove(`${API_BASE_URL}/treatment-courses/${id}`);
+
+export const getTreatmentCourseById = async (id: string): Promise<TreatmentCourse> => 
+  fetch(`${API_BASE_URL}/treatment-courses/${id}`).then(handleResponse);
+
+export const createTreatmentCourse = (data: Partial<TreatmentCourse>) => 
+  create<TreatmentCourse>(`${API_BASE_URL}/treatment-courses`, data);
+
+export const registerForTreatmentCourse = (templateId: string, clientId: string) =>
+  fetch(`${API_BASE_URL}/treatment-courses/${templateId}/register`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ clientId })
+  }).then(handleResponse) as Promise<{ course: TreatmentCourse; message: string }>;
+
+export const updateTreatmentCourse = (id: string, data: Partial<TreatmentCourse>) => 
+  update<TreatmentCourse>(`${API_BASE_URL}/treatment-courses/${id}`, data);
+
+export const deleteTreatmentCourse = (id: string) => 
+  remove(`${API_BASE_URL}/treatment-courses/${id}`);
+
+// New Phase 1 APIs
+export const pauseTreatmentCourse = (id: string, reason: string) =>
+  fetch(`${API_BASE_URL}/treatment-courses/${id}/pause`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason })
+  }).then(handleResponse);
+
+export const resumeTreatmentCourse = (id: string, extendExpiryDays?: number) =>
+  fetch(`${API_BASE_URL}/treatment-courses/${id}/resume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ extendExpiryDays })
+  }).then(handleResponse);
+
+export const getTreatmentCourseProgress = (id: string) =>
+  fetch(`${API_BASE_URL}/treatment-courses/${id}/progress`).then(handleResponse);
+
+export const scheduleSessionInCourse = (courseId: string, sessionId: string, data: {
+  appointmentDate: string;
+  appointmentTime: string;
+  serviceId: string;
+  staffId?: string;
+  notes?: string;
+}) =>
+  fetch(`${API_BASE_URL}/treatment-courses/${courseId}/sessions/${sessionId}/schedule`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(handleResponse);
+
+export const completeSessionInCourse = (courseId: string, sessionId: string, data: any) =>
+  fetch(`${API_BASE_URL}/treatment-courses/${courseId}/sessions/${sessionId}/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(handleResponse);
+
 export const updateTier = async (level: number, tierData: Partial<Tier>): Promise<Tier> => update(`${API_BASE_URL}/vouchers/tiers/${level}`, tierData);
 export const updateMission = (id: string, data: Partial<Mission>) => update<Mission>(`${API_BASE_URL}/missions/${id}`, data);
 // Add other function stubs as needed...
@@ -190,3 +270,18 @@ export const getRoomById = async (id: string): Promise<Room> => fetch(`${API_BAS
 export const createRoom = (data: Partial<Room>) => create<Room>(`${API_BASE_URL}/rooms`, data);
 export const updateRoom = (id: string, data: Partial<Room>) => update<Room>(`${API_BASE_URL}/rooms/${id}`, data);
 export const deleteRoom = (id: string) => remove(`${API_BASE_URL}/rooms/${id}`);
+
+// --- NOTIFICATIONS ---
+export const getNotifications = async (userId: string): Promise<Notification[]> => fetch(`${API_BASE_URL}/notifications/user/${userId}`).then(handleResponse);
+export const getUnreadCount = async (userId: string): Promise<{ count: number }> => fetch(`${API_BASE_URL}/notifications/unread/${userId}`).then(handleResponse);
+export const markNotificationRead = (id: string) => update(`${API_BASE_URL}/notifications/${id}/read`, {});
+export const markAllNotificationsRead = (userId: string) => update(`${API_BASE_URL}/notifications/read-all/${userId}`, {});
+export const deleteNotification = (id: string) => remove(`${API_BASE_URL}/notifications/${id}`);
+
+// --- TREATMENT SESSIONS ---
+export const getTreatmentSessions = async (courseId: string): Promise<TreatmentSessionDetail[]> => fetch(`${API_BASE_URL}/treatment-sessions/course/${courseId}`).then(handleResponse);
+export const getTreatmentSessionById = async (id: string): Promise<TreatmentSessionDetail> => fetch(`${API_BASE_URL}/treatment-sessions/${id}`).then(handleResponse);
+export const createTreatmentSession = (data: Partial<TreatmentSessionDetail>) => create<TreatmentSessionDetail>(`${API_BASE_URL}/treatment-sessions`, data);
+export const updateTreatmentSessionDetail = (id: string, data: Partial<TreatmentSessionDetail>) => update<TreatmentSessionDetail>(`${API_BASE_URL}/treatment-sessions/${id}`, data);
+export const completeTreatmentSession = (id: string, data: Partial<TreatmentSessionDetail>) => update<TreatmentSessionDetail>(`${API_BASE_URL}/treatment-sessions/${id}/complete`, data);
+export const deleteTreatmentSession = (id: string) => remove(`${API_BASE_URL}/treatment-sessions/${id}`);

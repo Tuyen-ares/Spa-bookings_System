@@ -52,20 +52,29 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
             } catch (error) {
                 console.error("Failed to fetch appointments:", error);
                 // Fallback to allAppointments from props if API call fails
-                setLocalAppointments(allAppointments.filter(app => app.userId === currentUser.id));
+                const fallbackApps = allAppointments.filter(app => app.userId === currentUser.id);
+                setLocalAppointments(fallbackApps);
             } finally {
                 setIsLoadingAppointments(false);
             }
         };
         
+        // Fetch immediately on mount
         fetchAppointments();
+        
+        // Set up polling every 10 seconds to auto-update appointments
+        const interval = setInterval(() => {
+            fetchAppointments();
+        }, 10000); // 10 seconds
         
         // Also listen for refresh event
         const handleRefresh = () => {
             fetchAppointments();
         };
         window.addEventListener('refresh-appointments', handleRefresh);
+        
         return () => {
+            clearInterval(interval);
             window.removeEventListener('refresh-appointments', handleRefresh);
         };
     }, [currentUser.id, allAppointments]);
@@ -247,6 +256,19 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
             return false;
         });
     };
+
+    // Group appointments by date
+    const groupAppointmentsByDate = (appointments: (Appointment & { dateTime: Date })[]) => {
+        const grouped: Record<string, (Appointment & { dateTime: Date })[]> = {};
+        appointments.forEach(app => {
+            const dateString = app.dateTime.toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+            if (!grouped[dateString]) {
+                grouped[dateString] = [];
+            }
+            grouped[dateString].push(app);
+        });
+        return grouped;
+    };
     
     const displayUpcoming = useMemo(() => {
         let filtered = [...myUpcomingAppointments];
@@ -308,7 +330,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 <div className="flex justify-between items-start">
                     <div>
                         <p className="text-sm font-semibold text-gray-600 mb-2">
-                            {appointment.dateTime.toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} - {appointment.time}
+                            {appointment.time}
                         </p>
                         <h4 className="text-xl font-bold font-serif text-brand-text">{appointment.serviceName}</h4>
                     </div>
@@ -335,31 +357,97 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 <span className={`px-3 py-1 text-xs font-bold rounded-full ${appointment.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                     {appointment.status === 'completed' ? 'Hoàn thành' : 'Đã hủy'}
                 </span>
-                {appointment.status === 'completed' && (
-                    <div className="flex items-center gap-3">
-                        <button className="text-sm font-semibold text-green-600 hover:underline">Đánh giá</button>
-                        <button onClick={() => navigate(`/booking?serviceId=${appointment.serviceId}`)} className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Đặt lại</button>
-                    </div>
-                )}
+                <div className="flex items-center gap-3">
+                    <button onClick={() => setViewingAppointment(appointment)} className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Xem Chi Tiết</button>
+                    {appointment.status === 'completed' && (
+                        <>
+                            <button onClick={() => navigate(`/service/${appointment.serviceId}`)} className="text-sm font-semibold text-green-600 hover:underline">Đánh giá</button>
+                            <button onClick={() => navigate(`/booking?serviceId=${appointment.serviceId}`)} className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Đặt lại</button>
+                        </>
+                    )}
+                </div>
             </div>
         </div>
     );
     
     const TreatmentCourseCard: React.FC<{ course: TreatmentCourse }> = ({ course }) => {
-        const completedSessions = course.sessions.filter(s => s.status === 'completed').length;
-        const progress = (completedSessions / course.totalSessions) * 100;
+        const sessions = course.sessions || [];
+        const completedSessions = sessions.filter(s => s.status === 'completed').length;
+        const progress = course.totalSessions > 0 ? (completedSessions / course.totalSessions) * 100 : 0;
+        const firstService = course.services && course.services.length > 0 ? course.services[0] : null;
+        const isCompleted = completedSessions === course.totalSessions && course.totalSessions > 0;
+        const pendingSessions = sessions.filter(s => s.status === 'pending').length;
+        const scheduledSessions = sessions.filter(s => s.status === 'scheduled').length;
+        
         return (
-            <div className="bg-white p-6 rounded-lg shadow-soft-lg border border-gray-100">
-                <div className="flex justify-between items-center mb-3">
-                    <h4 className="text-xl font-bold font-serif text-brand-text">{course.serviceName} ({course.totalSessions} buổi)</h4>
-                    <span className="text-sm font-semibold text-brand-dark">Hoàn thành {completedSessions}/{course.totalSessions} buổi</span>
+            <div 
+                className={`bg-white p-6 rounded-lg shadow-lg border-2 transition-all hover:shadow-xl cursor-pointer ${
+                    isCompleted 
+                        ? 'border-green-400 bg-green-50' 
+                        : 'border-brand-primary hover:border-brand-dark'
+                }`}
+                onClick={() => navigate(`/treatment-course/${course.id}`)}
+            >
+                <div className="flex justify-between items-start mb-4">
+                    <div className="flex-1">
+                        <h4 className="text-xl font-bold font-serif text-brand-text mb-2">{course.name}</h4>
+                        <div className="flex flex-wrap gap-2 text-sm">
+                            <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full font-semibold">
+                                {course.totalSessions} buổi
+                            </span>
+                            {completedSessions > 0 && (
+                                <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full font-semibold">
+                                    ✓ {completedSessions} hoàn thành
+                                </span>
+                            )}
+                            {scheduledSessions > 0 && (
+                                <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full font-semibold">
+                                    📅 {scheduledSessions} đã đặt lịch
+                                </span>
+                            )}
+                            {pendingSessions > 0 && (
+                                <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full font-semibold">
+                                    ⏳ {pendingSessions} chờ đặt lịch
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                    <div className="text-right">
+                        <div className="text-3xl font-bold text-brand-primary">{Math.round(progress)}%</div>
+                        <div className="text-xs text-gray-500">Tiến độ</div>
+                    </div>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
-                    <div className="bg-brand-primary h-2.5 rounded-full" style={{ width: `${progress}%` }}></div>
+                
+                <div className="w-full bg-gray-200 rounded-full h-3 mb-4 overflow-hidden">
+                    <div 
+                        className="bg-gradient-to-r from-brand-primary to-amber-500 h-3 rounded-full transition-all duration-500" 
+                        style={{ width: `${progress}%` }}
+                    ></div>
                 </div>
-                <div className="flex justify-end items-center gap-3">
-                    <button className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Xem chi tiết liệu trình</button>
-                    <button onClick={() => navigate(`/booking?serviceId=${course.serviceId}`)} className="px-4 py-2 text-sm font-semibold bg-brand-dark text-white rounded-md hover:bg-brand-primary">Đặt buổi tiếp theo</button>
+                
+                {isCompleted && (
+                    <div className="mb-4 p-3 bg-green-100 border border-green-300 rounded-lg">
+                        <p className="text-green-800 font-semibold text-center">
+                            🎉 Chúc mừng! Bạn đã hoàn thành liệu trình!
+                        </p>
+                    </div>
+                )}
+                
+                <div className="flex justify-end items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                    <button 
+                        onClick={() => navigate(`/treatment-course/${course.id}`)} 
+                        className="px-4 py-2 text-sm font-semibold bg-brand-primary text-white rounded-md hover:bg-brand-dark transition-colors"
+                    >
+                        📋 Xem chi tiết & Đặt lịch
+                    </button>
+                    {isCompleted && (
+                        <button 
+                            onClick={() => navigate(`/payment?courseId=${course.id}`)} 
+                            className="px-4 py-2 text-sm font-semibold bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                        >
+                            💳 Thanh toán
+                        </button>
+                    )}
                 </div>
             </div>
         );
@@ -420,7 +508,29 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                     <p className="text-gray-500">Đang tải lịch hẹn...</p>
                                 </div>
                             ) : displayUpcoming.length > 0 ? (
-                                displayUpcoming.map(app => <UpcomingAppointmentCard key={app.id} appointment={app} />)
+                                Object.entries(groupAppointmentsByDate(displayUpcoming)).map(([dateString, appointments]) => (
+                                    <div key={dateString}>
+                                        {/* Date header */}
+                                        <div 
+                                            className="bg-gradient-to-r from-brand-secondary to-amber-50 p-4 rounded-lg flex items-center justify-between mb-3"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-2xl font-bold text-brand-primary">{dateString.split(',')[0].split(' ')[1]}</span>
+                                                <div>
+                                                    <p className="font-semibold text-gray-800">{dateString}</p>
+                                                    <p className="text-sm text-gray-600">{appointments.length} lịch hẹn</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* All appointments displayed */}
+                                        <div className="space-y-3 ml-4 mb-6">
+                                            {appointments.map(app => (
+                                                <UpcomingAppointmentCard key={app.id} appointment={app} />
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))
                             ) : (
                                 <p className="text-center text-gray-500 py-10">Không có lịch hẹn sắp tới.</p>
                             )}
@@ -516,8 +626,22 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                 </div>
                                 <div>
                                     <p className="text-sm text-gray-500">Trạng thái thanh toán</p>
-                                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${viewingAppointment.paymentStatus === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                        {viewingAppointment.paymentStatus === 'Paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                                        viewingAppointment.status === 'cancelled'
+                                            ? 'bg-gray-100 text-gray-600'
+                                            : viewingAppointment.status === 'completed'
+                                                ? 'bg-green-100 text-green-800'
+                                                : viewingAppointment.paymentStatus === 'Paid'
+                                                    ? 'bg-green-100 text-green-800'
+                                                    : 'bg-yellow-100 text-yellow-800'
+                                    }`}>
+                                        {viewingAppointment.status === 'cancelled'
+                                            ? 'Chưa thanh toán'
+                                            : viewingAppointment.status === 'completed'
+                                                ? 'Đã thanh toán'
+                                                : viewingAppointment.paymentStatus === 'Paid'
+                                                    ? 'Đã thanh toán'
+                                                    : 'Chưa thanh toán'}
                                     </span>
                                 </div>
                             </div>

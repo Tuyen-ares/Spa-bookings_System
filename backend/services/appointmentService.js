@@ -230,6 +230,21 @@ class AppointmentService {
             bookingGroupId: data.bookingGroupId || uuidv4()
         });
 
+        // Create notification for admin
+        try {
+            await db.Notification.create({
+                id: uuidv4(),
+                type: 'new_appointment',
+                title: 'Lịch hẹn mới',
+                message: `${user.name} đã đặt lịch ${service.name} vào ${date} lúc ${time}`,
+                relatedId: appointment.id,
+                isRead: false,
+                createdAt: new Date()
+            });
+        } catch (notifError) {
+            console.error('Error creating notification:', notifError);
+        }
+
         return appointment;
     }
 
@@ -278,12 +293,65 @@ class AppointmentService {
             staffNotesAfterSession: staffNotes
         });
 
+        // Nếu appointment này thuộc về treatment course, cập nhật session
+        if (appointment.treatmentSessionId) {
+            const session = await db.TreatmentSession.findByPk(appointment.treatmentSessionId);
+            if (session) {
+                await session.update({
+                    status: 'completed',
+                    completedDate: new Date(),
+                    treatmentNotes: staffNotes
+                });
+
+                // Cập nhật tiến độ course
+                if (appointment.treatmentCourseId) {
+                    await this.updateCourseProgress(appointment.treatmentCourseId);
+                }
+            }
+        }
+
         // Award points to customer
         if (appointment.userId) {
             await this.awardPointsToCustomer(appointment.userId, appointment);
         }
 
         return appointment;
+    }
+
+    /**
+     * Update course progress after completing a session
+     */
+    async updateCourseProgress(courseId) {
+        try {
+            const course = await db.TreatmentCourse.findByPk(courseId);
+            if (!course) return;
+
+            // Count completed sessions
+            const completedCount = await db.TreatmentSession.count({
+                where: {
+                    treatmentCourseId: courseId,
+                    status: 'completed'
+                }
+            });
+
+            const totalSessions = course.totalSessions || 0;
+            const progress = totalSessions > 0 ? Math.round((completedCount / totalSessions) * 100) : 0;
+            
+            let courseStatus = 'in-progress';
+            if (completedCount === 0) {
+                courseStatus = 'pending';
+            } else if (completedCount >= totalSessions) {
+                courseStatus = 'completed';
+            }
+
+            await course.update({
+                completedSessions: completedCount,
+                progress: progress,
+                status: courseStatus
+            });
+        } catch (error) {
+            console.error('Error updating course progress:', error);
+        }
     }
 
     /**

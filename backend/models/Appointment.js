@@ -42,7 +42,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
     },
     status: {
-      type: DataTypes.ENUM('upcoming', 'completed', 'cancelled', 'pending', 'in-progress'),
+      type: DataTypes.ENUM('upcoming', 'completed', 'cancelled', 'pending', 'in-progress', 'scheduled'),
       allowNull: false,
       defaultValue: 'pending',
     },
@@ -100,6 +100,16 @@ module.exports = (sequelize, DataTypes) => {
         model: 'rooms',
         key: 'id',
       },
+    },
+    treatmentCourseId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'Link to treatment course if this appointment is part of a course',
+    },
+    treatmentSessionId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'Link to specific session in treatment course',
     }
   }, {
     tableName: 'appointments',

@@ -9,11 +9,7 @@ const formatPrice = (price: number) => new Intl.NumberFormat('vi-VN', { style: '
 
 type ServiceWithStatus = Service & { isActive: boolean };
 
-interface ServicesPageProps {
-    allServices: Service[];
-}
-
-const ServicesPage: React.FC<ServicesPageProps> = ({ allServices }) => {
+const ServicesPage: React.FC = () => {
     const location = useLocation(); // Track route changes
     const [localServices, setLocalServices] = useState<ServiceWithStatus[]>([]);
     const [categories, setCategories] = useState<string[]>([]);
@@ -89,21 +85,29 @@ const ServicesPage: React.FC<ServicesPageProps> = ({ allServices }) => {
             let savedService: Service;
             if (serviceData.id) {
                 savedService = await apiService.updateService(serviceData.id, serviceData);
-                // After saving, refetch all data to ensure consistency
-                await fetchServiceData();
             } else {
                 savedService = await apiService.createService(serviceData);
-                // After saving, refetch all data to ensure consistency
-                await fetchServiceData();
             }
             
+            // Close modal first
+            setIsAddEditModalOpen(false);
+            
+            // Show loading state
+            setIsLoadingServices(true);
+            
+            // Small delay to ensure backend has updated
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Then refetch data to ensure consistency
+            await fetchServiceData();
+            
             setToast({ visible: true, message: `Lưu dịch vụ ${savedService.name} thành công!` });
+            setTimeout(() => setToast({ visible: false, message: '' }), 4000);
         } catch (err: any) {
             console.error("Error saving service:", err);
             setToast({ visible: true, message: `Lưu dịch vụ thất bại: ${err.message}` });
-        } finally {
-            setIsAddEditModalOpen(false);
             setTimeout(() => setToast({ visible: false, message: '' }), 4000);
+            setIsAddEditModalOpen(false);
         }
     };
 

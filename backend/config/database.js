@@ -71,6 +71,11 @@ db.Payment = require('../models/Payment')(sequelize, DataTypes);
 db.Review = require('../models/Review')(sequelize, DataTypes);
 db.StaffTask = require('../models/StaffTask')(sequelize, DataTypes);
 db.Room = require('../models/Room')(sequelize, DataTypes);
+db.Notification = require('../models/Notification')(sequelize, DataTypes);
+db.TreatmentSession = require('../models/TreatmentSession')(sequelize, DataTypes);
+db.TreatmentCourseService = require('../models/TreatmentCourseService')(sequelize, DataTypes);
+db.TreatmentPackage = require('../models/TreatmentPackage')(sequelize, DataTypes);
+db.TreatmentPackageService = require('../models/TreatmentPackageService')(sequelize, DataTypes);
 
 
 // --- Define Associations ---
@@ -127,9 +132,49 @@ db.TreatmentCourse.belongsTo(db.User, { foreignKey: 'clientId', as: 'Client' });
 db.User.hasMany(db.TreatmentCourse, { foreignKey: 'therapistId', as: 'TherapistCourses', onDelete: 'SET NULL' });
 db.TreatmentCourse.belongsTo(db.User, { foreignKey: 'therapistId', as: 'Therapist' });
 
-// TreatmentCourse - Service
+// TreatmentCourse - Service (DEPRECATED - use TreatmentCourseService instead)
 db.Service.hasMany(db.TreatmentCourse, { foreignKey: 'serviceId', onDelete: 'CASCADE' });
 db.TreatmentCourse.belongsTo(db.Service, { foreignKey: 'serviceId' });
+
+// TreatmentCourse - Services (Many-to-Many through TreatmentCourseService)
+db.TreatmentCourse.belongsToMany(db.Service, {
+  through: db.TreatmentCourseService,
+  foreignKey: 'treatmentCourseId',
+  otherKey: 'serviceId',
+  as: 'CourseServices'
+});
+db.Service.belongsToMany(db.TreatmentCourse, {
+  through: db.TreatmentCourseService,
+  foreignKey: 'serviceId',
+  otherKey: 'treatmentCourseId',
+  as: 'AssociatedCourses'
+});
+
+// TreatmentCourseService associations
+db.TreatmentCourseService.belongsTo(db.TreatmentCourse, { foreignKey: 'treatmentCourseId' });
+db.TreatmentCourseService.belongsTo(db.Service, { foreignKey: 'serviceId' });
+
+// TreatmentPackage - Service (many-to-many)
+db.TreatmentPackage.belongsToMany(db.Service, {
+  through: db.TreatmentPackageService,
+  foreignKey: 'treatmentPackageId',
+  otherKey: 'serviceId',
+  as: 'PackageServices'
+});
+db.Service.belongsToMany(db.TreatmentPackage, {
+  through: db.TreatmentPackageService,
+  foreignKey: 'serviceId',
+  otherKey: 'treatmentPackageId',
+  as: 'TreatmentPackages'
+});
+
+// TreatmentPackageService associations
+db.TreatmentPackageService.belongsTo(db.TreatmentPackage, { foreignKey: 'treatmentPackageId' });
+db.TreatmentPackageService.belongsTo(db.Service, { foreignKey: 'serviceId' });
+
+// TreatmentCourse - TreatmentPackage (when customer registers)
+db.TreatmentPackage.hasMany(db.TreatmentCourse, { foreignKey: 'packageId', as: 'EnrolledCourses' });
+db.TreatmentCourse.belongsTo(db.TreatmentPackage, { foreignKey: 'packageId', as: 'Package' });
 
 // TreatmentCourse - Appointment (initialAppointmentId)
 db.Appointment.hasMany(db.TreatmentCourse, { foreignKey: 'initialAppointmentId', as: 'InitialTreatmentCourses', onDelete: 'SET NULL' });
@@ -155,6 +200,18 @@ db.Review.belongsTo(db.Appointment, { foreignKey: 'appointmentId' });
 // Room Associations
 db.Room.hasMany(db.Appointment, { foreignKey: 'roomId', onDelete: 'SET NULL' });
 db.Appointment.belongsTo(db.Room, { foreignKey: 'roomId' });
+
+// Notification Associations - Temporarily disabled to avoid FK conflicts
+// db.User.hasMany(db.Notification, { foreignKey: 'userId', onDelete: 'CASCADE', constraints: false });
+// db.Notification.belongsTo(db.User, { foreignKey: 'userId', constraints: false });
+
+// TreatmentSession Associations - Temporarily disabled to avoid FK conflicts
+// db.TreatmentCourse.hasMany(db.TreatmentSession, { foreignKey: 'treatmentCourseId', onDelete: 'CASCADE', constraints: false });
+// db.TreatmentSession.belongsTo(db.TreatmentCourse, { foreignKey: 'treatmentCourseId', constraints: false });
+// db.Appointment.hasOne(db.TreatmentSession, { foreignKey: 'appointmentId', onDelete: 'SET NULL', constraints: false });
+// db.TreatmentSession.belongsTo(db.Appointment, { foreignKey: 'appointmentId', constraints: false });
+// db.User.hasMany(db.TreatmentSession, { foreignKey: 'therapistId', as: 'TherapistSessions', onDelete: 'SET NULL', constraints: false });
+// db.TreatmentSession.belongsTo(db.User, { foreignKey: 'therapistId', as: 'Therapist', constraints: false });
 
 // Helper to calculate total spending for a user
 db.calculateUserTotalSpending = async (userId) => {

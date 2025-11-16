@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import type { User } from '../../types';
-import { ChevronDownIcon, BellIcon, MenuIcon, SearchIcon } from '../../shared/icons';
+import { ChevronDownIcon, MenuIcon, SearchIcon } from '../../shared/icons';
+import { AdminNotificationBell } from './AdminNotificationBell';
 
 interface AdminHeaderProps {
     currentUser: User;
@@ -46,11 +47,7 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({ currentUser, onLogout, toggle
             
             {/* Right side: Notifications and User Menu */}
             <div className="flex items-center space-x-4">
-                <button className="relative p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 focus:outline-none rounded-full" aria-label="Thông báo">
-                    <span className="absolute top-0 right-0 h-2 w-2 mt-1 mr-2 bg-red-500 rounded-full"></span>
-                    <span className="absolute top-0 right-0 h-2 w-2 mt-1 mr-2 bg-red-500 rounded-full animate-ping"></span>
-                    <BellIcon className="h-6 w-6"/>
-                </button>
+                <AdminNotificationBell currentUser={currentUser} />
 
                 <div className="relative" ref={menuRef}>
                     <button
@@ -69,8 +66,8 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({ currentUser, onLogout, toggle
                     </button>
                     {isMenuOpen && (
                         <div className="absolute right-0 w-48 mt-2 py-2 bg-white rounded-md shadow-lg z-20">
-                            <Link to="/" className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                Quay lại trang chủ
+                            <Link to="/admin/profile" className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                Hồ sơ
                             </Link>
                             <button
                                 onClick={handleLogout}

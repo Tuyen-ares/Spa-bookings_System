@@ -84,4 +84,51 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
+// POST /api/promotions/apply/:code - Apply promotion code (check stock and decrement)
+router.post('/apply/:code', async (req, res) => {
+    const { code } = req.params;
+    try {
+        const promotion = await db.Promotion.findOne({ where: { code } });
+        if (!promotion) {
+            return res.status(404).json({ message: 'Mã khuyến mãi không hợp lệ' });
+        }
+
+        // Check if promotion is active
+        if (!promotion.isActive) {
+            return res.status(400).json({ message: 'Mã khuyến mãi này không còn hoạt động' });
+        }
+
+        // Check expiry date
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const expiryDate = new Date(promotion.expiryDate);
+        expiryDate.setHours(0, 0, 0, 0);
+        if (today > expiryDate) {
+            return res.status(400).json({ message: 'Mã khuyến mãi đã hết hạn' });
+        }
+
+        // Check stock (số lượng còn lại)
+        if (promotion.stock !== null && promotion.stock <= 0) {
+            return res.status(400).json({ message: 'Mã khuyến mãi đã hết lượt sử dụng' });
+        }
+
+        // Decrement stock (trừ 1)
+        if (promotion.stock !== null) {
+            await promotion.decrement('stock', { by: 1 });
+        }
+        
+        // Fetch updated promotion
+        const updatedPromotion = await db.Promotion.findByPk(promotion.id);
+        
+        res.json({
+            success: true,
+            message: 'Áp dụng mã thành công',
+            promotion: updatedPromotion
+        });
+    } catch (error) {
+        console.error('Error applying promotion:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
 module.exports = router;

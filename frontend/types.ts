@@ -21,7 +21,8 @@ export interface Service {
   description: string;
   longDescription?: string;
   price: number;
-  discountPrice?: number;
+  discountPercent?: number; // Phần trăm giảm giá (0-100)
+  discountPrice?: number; // Giá sau khi giảm (được tính tự động từ backend)
   duration: number; // in minutes
   category?: string; // The category name, populated from the join
   categoryId?: number; // The actual foreign key (nullable)
@@ -116,6 +117,7 @@ export interface User {
   status: UserStatus;
   lastLogin?: string;
   loginHistory?: LoginAttempt[];
+  roomId?: string; // Room assigned to staff member
   // Note: CustomerProfile and StaffProfile removed - all info in users table
 }
 
@@ -131,14 +133,10 @@ export interface Promotion {
   discountType: 'percentage' | 'fixed';
   discountValue: number;
   termsAndConditions?: string;
-  targetAudience?: PromotionTargetAudience; // Who is this promotion for?
-  applicableServiceIds?: string[]; // Which services apply? Empty means all.
-  minOrderValue?: number; // Minimum order value for discount to apply
-  usageCount?: number; // For reporting, how many times used
-  usageLimit?: number | null; // NULL = không giới hạn
-  pointsRequired?: number; // Điểm cần để đổi (0 = không cần, >0 = voucher đổi điểm)
-  isVoucher?: boolean; // 1 = voucher đổi điểm, 0 = khuyến mãi thông thường
-  stock?: number | null; // Số lượng voucher còn lại (NULL = không giới hạn)
+  targetAudience?: PromotionTargetAudience;
+  applicableServiceIds?: string[];
+  minOrderValue?: number;
+  stock?: number | null; // Số lượng còn lại (NULL = không giới hạn)
   isActive?: boolean;
 }
 
@@ -178,33 +176,125 @@ export interface ChatMessage {
 }
 
 export interface TreatmentSession {
+  id?: string;
+  sessionNumber?: number;
   date: string;
   therapist: string;
   notes: string;
-  beforeAfterImages?: string[]; // New: Images for treatment progress
-  therapistNotes?: string; // New: Detailed notes from therapist
-  afterSessionImageUrl?: string; // New: Single image after session
-  status?: 'completed' | 'in-progress' | 'upcoming'; // New: Status of a single session
+  beforeAfterImages?: string[];
+  therapistNotes?: string;
+  afterSessionImageUrl?: string;
+  status?: 'completed' | 'in-progress' | 'upcoming' | 'pending' | 'scheduled' | 'cancelled';
+  // Additional fields for session detail
+  serviceId?: string;
+  serviceName?: string;
+  appointmentId?: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
+  completedDate?: string;
+  therapistId?: string;
+  therapistName?: string;
+  treatmentNotes?: string;
+  nextSessionAdvice?: string;
+  skinConditionBefore?: string;
+  skinConditionAfter?: string;
 }
 
 export interface TreatmentCourse {
   id: string;
-  serviceId: string;
-  serviceName: string;
+  name: string;
+  description?: string;
+  price: number;
   totalSessions: number;
-  sessionsPerWeek: number; // Số buổi mỗi tuần
-  weekDays?: number[]; // Mảng các thứ trong tuần: [1,3,5] = Thứ 2, Thứ 4, Thứ 6 (0=CN, 1=T2, ..., 6=T7)
-  sessionDuration: number; // Thời gian mỗi buổi (phút)
-  sessionTime?: string; // Giờ cố định cho các buổi (ví dụ: "18:00")
-  description?: string; // Mô tả liệu trình
-  imageUrl?: string; // URL hình ảnh liệu trình
-  sessions?: TreatmentSession[]; // Optional: Array of treatment sessions
-  initialAppointmentId?: string; // ID appointment đầu tiên tạo ra liệu trình (để lấy userId từ appointments)
-  clientId?: string; // Client associated with this course (có thể NULL cho template)
-  therapistId?: string; // Therapist responsible for this course
-  status: 'active' | 'completed' | 'paused'; // Status of the course
-  expiryDate?: string; // Hạn sử dụng liệu trình
-  nextAppointmentDate?: string; // Ngày hẹn tiếp theo (để nhắc nhở)
+  services: Array<{
+    serviceId: string;
+    serviceName: string;
+    order?: number;
+    price?: number;
+    duration?: number;
+  }>;
+  imageUrl?: string;
+  
+  // Thông tin đăng ký của khách hàng
+  clientId?: string;
+  therapistId?: string;
+  completedSessions: number;
+  sessions?: TreatmentSession[];
+  
+  // Trạng thái
+  status: 'draft' | 'active' | 'paused' | 'completed' | 'expired' | 'cancelled';
+  
+  // Thời gian
+  startDate?: string;
+  expiryDate?: string;
+  actualCompletionDate?: string;
+  nextAppointmentDate?: string;
+  lastCompletedDate?: string;
+  
+  // Tính toán
+  progressPercentage: number;
+  
+  // Thông tin bổ sung
+  treatmentGoals?: string;
+  initialSkinCondition?: string;
+  consultantId?: string;
+  consultantName?: string;
+  isPaused: boolean;
+  pauseReason?: string;
+  pausedDate?: string;
+  resumedDate?: string;
+  remindersSent?: Array<{type: string; date: string; status: string}>;
+  treatmentHistory?: Array<{
+    sessionNumber: number;
+    date: string;
+    notes: string;
+    skinCondition?: string;
+  }>;
+  createdAt?: string;
+  updatedAt?: string;
+  
+  // Computed fields
+  daysUntilExpiry?: number;
+  isExpiringSoon?: boolean;
+  isExpired?: boolean;
+  
+  // Associations
+  Client?: User;
+  Service?: Service;
+}
+
+export interface TreatmentSessionDetail {
+  id: string;
+  treatmentCourseId: string;
+  sessionNumber: number;
+  appointmentId?: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
+  completedDate?: string;
+  therapistId?: string;
+  therapistName?: string;
+  status: 'scheduled' | 'completed' | 'cancelled' | 'missed' | 'pending';
+  notes?: string;
+  therapistNotes?: string;
+  skinCondition?: string;
+  productsUsed?: any;
+  nextSessionRecommendation?: string;
+  rating?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: 'new_appointment' | 'appointment_confirmed' | 'appointment_cancelled' | 'appointment_reminder' | 'treatment_course_reminder' | 'promotion' | 'payment_success' | 'payment_received' | 'system';
+  title: string;
+  message: string;
+  relatedId?: string;
+  isRead: boolean;
+  sentVia: 'app' | 'email' | 'both';
+  emailSent: boolean;
+  createdAt: string;
 }
 
 export interface Therapist {
@@ -379,6 +469,7 @@ export interface StaffShift {
   isUpForSwap?: boolean;
   swapClaimedBy?: string;
   managerApprovalStatus?: 'pending_approval' | 'approved' | 'rejected';
+  roomId?: string; // Room assigned for this shift
 }
 
 

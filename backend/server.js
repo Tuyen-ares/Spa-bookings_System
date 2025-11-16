@@ -49,8 +49,11 @@ db.sequelize.sync(syncOptions) // Removed `force: true` to make data persistent
     const paymentRoutes = require('./routes/payments');
     const reviewRoutes = require('./routes/reviews');
     const chatbotRoutes = require('./routes/chatbot');
-    const treatmentCourseRoutes = require('./routes/treatmentCourses');
+    const treatmentCourseRoutes = require('./routes/treatment-courses');
     const roomRoutes = require('./routes/rooms');
+    const notificationRoutes = require('./routes/notifications');
+    const treatmentSessionRoutes = require('./routes/treatmentSessions');
+    const treatmentPackageRoutes = require('./routes/treatment-packages');
     
     // Use unprotected auth routes first
     app.use('/api/auth', authRoutes);
@@ -65,6 +68,9 @@ db.sequelize.sync(syncOptions) // Removed `force: true` to make data persistent
     app.use('/api/payments', paymentRoutes);
     app.use('/api/reviews', reviewRoutes);
     app.use('/api/treatment-courses', treatmentCourseRoutes);
+    app.use('/api/treatment-sessions', treatmentSessionRoutes);
+    app.use('/api/treatment-packages', treatmentPackageRoutes);
+    app.use('/api/notifications', notificationRoutes);
     app.use('/api/rooms', roomRoutes);
     app.use('/api/chatbot', chatbotRoutes);
 
@@ -78,6 +84,23 @@ db.sequelize.sync(syncOptions) // Removed `force: true` to make data persistent
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
       console.log(`Access the API at http://localhost:${PORT}`);
+      
+      // Schedule cron jobs
+      const cron = require('node-cron');
+      const { runTreatmentCourseCron } = require('./jobs/treatmentCourseCron');
+      
+      // Run daily at 9:00 AM
+      cron.schedule('0 9 * * *', () => {
+        runTreatmentCourseCron();
+      });
+      
+      // Run once on startup (after 10 seconds)
+      setTimeout(() => {
+        console.log('[CRON] Running initial treatment course check...');
+        runTreatmentCourseCron();
+      }, 10000);
+      
+      console.log('[CRON] Scheduled daily treatment course checks at 9:00 AM');
     });
   })
   .catch((err) => {

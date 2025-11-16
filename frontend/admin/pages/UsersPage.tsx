@@ -27,7 +27,11 @@ const getStatusText = (status: UserStatus): string => {
     }
 };
 
-const AddEditUserModal: React.FC<{ user: User | null; onClose: () => void; onSave: (user: User) => Promise<void>; }> = ({ user, onClose, onSave }) => {
+const AddEditUserModal: React.FC<{ 
+    user: User | null; 
+    onClose: () => void; 
+    onSave: (user: User) => Promise<void>;
+}> = ({ user, onClose, onSave }) => {
     const [formData, setFormData] = useState<Partial<User>>(user || { role: 'Client', status: 'Active' });
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -219,22 +223,18 @@ const UserDetailsModal: React.FC<{ user: User; onClose: () => void; allTiers: Ti
 
                     <div>
                         <h3 className="text-lg font-semibold text-gray-700 mb-2">Lịch sử đăng nhập</h3>
-                        <div className="max-h-60 overflow-y-auto border rounded-lg">
-                            <table className="w-full text-sm">
-                                <thead className="bg-gray-50"><tr className="text-left text-gray-600">
-                                    <th className="p-2">Thời gian</th><th className="p-2">Địa chỉ IP</th><th className="p-2">Thiết bị</th>
-                                </tr></thead>
-                                <tbody>
-                                    {(user.loginHistory || []).map((log, i) => (
-                                        <tr key={i} className={`border-t ${log.isUnusual ? 'bg-red-50 text-red-800' : ''}`}>
-                                            <td className="p-2">{new Date(log.date).toLocaleString('vi-VN')} {log.isUnusual && <span className="font-bold">(Bất thường)</span>}</td>
-                                            <td className="p-2">{log.ip}</td><td className="p-2">{log.device}</td>
-                                        </tr>
-                                    ))}
-                                    {(!user.loginHistory || user.loginHistory.length === 0) && <tr><td colSpan={3} className="p-4 text-center text-gray-500">Không có dữ liệu.</td></tr>}
-                                </tbody>
-                            </table>
-                        </div>
+                        {user.loginHistory && user.loginHistory.length > 0 ? (
+                            <div className="p-4 bg-gray-50 rounded-lg border">
+                                <div className="text-sm text-gray-600">Đăng nhập gần nhất:</div>
+                                <div className="text-base font-medium text-gray-900 mt-1">
+                                    {new Date(user.loginHistory[0].date).toLocaleString('vi-VN')}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="p-4 text-center text-gray-500 bg-gray-50 rounded-lg border">
+                                Không có dữ liệu.
+                            </div>
+                        )}
                     </div>
                 </div>
                 <div className="bg-gray-50 px-6 py-4 flex justify-end rounded-b-lg">
@@ -758,7 +758,8 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
                         <table className="w-full whitespace-nowrap">
                             <thead className="bg-gray-50 border-b border-gray-200"><tr className="text-left text-sm font-semibold text-gray-600"><th className="p-4">Người dùng</th><th className="p-4">Vai trò</th><th className="p-4">Điểm</th><th className="p-4">Trạng thái</th><th className="p-4">Đăng nhập cuối</th><th className="p-4">Hành động</th></tr></thead>
                             <tbody>
-                                {paginatedUsers.map(user => (
+                                {paginatedUsers.map(user => {
+                                    return (
                                     <tr key={user.id} className="border-b border-gray-200 hover:bg-gray-50">
                                         <td className="p-4"><div className="flex items-center gap-3"><img src={user.profilePictureUrl} alt={user.name} className="w-10 h-10 rounded-full object-cover" /><div><p className="font-semibold text-gray-800">{user.name}</p><p className="text-sm text-gray-500">{user.email}</p></div></div></td>
                                         <td className="p-4"><span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">{ROLE_TRANSLATIONS[user.role]}</span></td>
@@ -774,7 +775,8 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
                                             <button onClick={() => handleDeleteUser(user.id)} className="p-2 text-gray-500 hover:text-red-600" title="Xóa"><TrashIcon className="w-5 h-5" /></button>
                                         </div></td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>

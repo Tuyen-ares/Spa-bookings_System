@@ -146,7 +146,7 @@ class PaymentService {
             serviceName: appointment.serviceName,
             amount: amount,
             method: method || 'Pay at Counter',
-            status: method === 'VNPay' ? 'Pending' : 'Completed',
+            status: 'Pending', // All payments start as Pending (Cash requires admin confirmation, VNPay requires callback)
             date: new Date(),
             transactionId: `TXN-${Date.now()}`,
             therapistId: appointment.therapistId
@@ -154,7 +154,7 @@ class PaymentService {
 
         // Update appointment payment status
         await appointment.update({
-            paymentStatus: method === 'VNPay' ? 'Unpaid' : 'Paid'
+            paymentStatus: 'Unpaid' // Will be updated to 'Paid' after confirmation
         });
 
         return payment;

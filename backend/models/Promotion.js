@@ -59,28 +59,6 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: 0.00,
     },
-    usageCount: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      defaultValue: 0,
-    },
-    usageLimit: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      comment: 'NULL = không giới hạn',
-    },
-    pointsRequired: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      defaultValue: 0,
-      comment: 'Điểm cần để đổi (0 = không cần, >0 = voucher đổi điểm)',
-    },
-    isVoucher: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true,
-      defaultValue: false,
-      comment: '1 = voucher đổi điểm, 0 = khuyến mãi thông thường',
-    },
     stock: {
       type: DataTypes.INTEGER,
       allowNull: true,

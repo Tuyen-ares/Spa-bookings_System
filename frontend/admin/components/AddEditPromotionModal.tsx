@@ -23,7 +23,6 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
         targetAudience: 'All',
         applicableServiceIds: [],
         minOrderValue: 0,
-        usageCount: 0,
     });
     const [imagePreview, setImagePreview] = useState<string>(promotion?.imageUrl || '');
 
@@ -191,8 +190,8 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
                                 <input type="number" name="minOrderValue" value={formData.minOrderValue} onChange={handleChange} className="mt-1 w-full p-2 border rounded" />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Lượt dùng (nếu có)</label>
-                                <input type="number" name="usageCount" value={formData.usageCount} onChange={handleChange} className="mt-1 w-full p-2 border rounded" />
+                                <label className="block text-sm font-medium text-gray-700">Số lượng (lượt sử dụng)</label>
+                                <input type="number" name="stock" value={formData.stock || ''} onChange={handleChange} placeholder="Để trống = không giới hạn" className="mt-1 w-full p-2 border rounded" />
                             </div>
                         </div>
                     </div>

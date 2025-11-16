@@ -23,10 +23,31 @@ module.exports = (sequelize, DataTypes) => {
     price: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
+      get() {
+        const value = this.getDataValue('price');
+        return value === null ? null : parseFloat(value);
+      }
+    },
+    discountPercent: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0,
+      comment: 'Phần trăm giảm giá (0-100)',
+      validate: {
+        min: 0,
+        max: 100
+      }
     },
     discountPrice: {
-      type: DataTypes.DECIMAL(10, 2),
-      allowNull: true,
+      type: DataTypes.VIRTUAL,
+      get() {
+        const price = this.getDataValue('price');
+        const discountPercent = this.getDataValue('discountPercent');
+        if (!price || !discountPercent || discountPercent === 0) {
+          return null;
+        }
+        return parseFloat((price * (1 - discountPercent / 100)).toFixed(2));
+      }
     },
     duration: {
       type: DataTypes.INTEGER, // in minutes
@@ -47,7 +68,7 @@ module.exports = (sequelize, DataTypes) => {
       onDelete: 'SET NULL',
     },
     imageUrl: {
-      type: DataTypes.STRING(500),
+      type: DataTypes.TEXT,
       allowNull: true,
     },
     rating: {

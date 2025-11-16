@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import type { User } from '../../types';
 import { LogoIcon, ChevronDownIcon, MenuIcon, CloseIcon, ChatBubbleLeftRightIcon } from '../../shared/icons';
+import { NotificationBell } from './NotificationBell';
 
 interface HeaderProps {
     currentUser: User | null;
@@ -43,10 +44,8 @@ const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     const baseLinks = [
       { path: '/', name: 'Trang chủ' },
       { path: '/services', name: 'Dịch vụ' },
-      { path: '/treatment-courses', name: 'Liệu trình' },
       { path: '/promotions', name: 'Ưu đãi' },
-      { path: '/qa', name: 'Q&A' },
-      { path: '/contact', name: 'Liên hệ' },
+      { path: '/treatment-packages', name: 'Liệu trình' },
     ];
     
     const NavItem: React.FC<{ to: string, name: string, onClick?: () => void }> = ({ to, name, onClick }) => (
@@ -80,28 +79,32 @@ const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
 
                     <div className="hidden md:flex items-center gap-4">
                         {currentUser ? (
-                            <div className="relative" ref={userMenuRef}>
-                                <button onClick={() => setIsUserMenuOpen(prev => !prev)} className="flex items-center gap-2 group p-1 rounded-full transition-colors hover:bg-brand-primary/10" aria-haspopup="true" aria-expanded={isUserMenuOpen}>
-                                    <img src={currentUser.profilePictureUrl} alt={currentUser.name} className="w-10 h-10 rounded-full object-cover ring-2 ring-brand-secondary group-hover:ring-brand-primary transition-all" />
-                                    <span className="font-medium text-brand-dark">{currentUser.name.split(' ').pop()}</span>
-                                    <ChevronDownIcon className={`w-5 h-5 text-brand-dark transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
-                                </button>
+                            <>
+                                <NotificationBell currentUser={currentUser} />
+                                <div className="relative" ref={userMenuRef}>
+                                    <button onClick={() => setIsUserMenuOpen(prev => !prev)} className="flex items-center gap-2 group p-1 rounded-full transition-colors hover:bg-brand-primary/10" aria-haspopup="true" aria-expanded={isUserMenuOpen}>
+                                        <img src={currentUser.profilePictureUrl} alt={currentUser.name} className="w-10 h-10 rounded-full object-cover ring-2 ring-brand-secondary group-hover:ring-brand-primary transition-all" />
+                                        <span className="font-medium text-brand-dark">{currentUser.name.split(' ').pop()}</span>
+                                        <ChevronDownIcon className={`w-5 h-5 text-brand-dark transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
+                                    </button>
                                 
-                                <div className={`absolute right-0 mt-2 w-56 origin-top-right bg-white rounded-lg shadow-xl py-2 transition-all duration-200 ease-out transform ${isUserMenuOpen ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 -translate-y-2 pointer-events-none'}`}>
-                                    <div className="px-4 py-2 border-b">
-                                        <p className="font-bold text-brand-dark truncate">{currentUser.name}</p>
-                                        <p className="text-sm text-gray-500 truncate">{currentUser.email}</p>
+                                    <div className={`absolute right-0 mt-2 w-56 origin-top-right bg-white rounded-lg shadow-xl py-2 transition-all duration-200 ease-out transform ${isUserMenuOpen ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 -translate-y-2 pointer-events-none'}`}>
+                                        <div className="px-4 py-2 border-b">
+                                            <p className="font-bold text-brand-dark truncate">{currentUser.name}</p>
+                                            <p className="text-sm text-gray-500 truncate">{currentUser.email}</p>
+                                        </div>
+                                        {currentUser.role === 'Admin' && (
+                                            <Link to="/admin" className="block w-full text-left px-4 py-2 text-brand-text font-semibold hover:bg-brand-secondary" onClick={() => setIsUserMenuOpen(false)}>
+                                                Trang quản trị
+                                            </Link>
+                                        )}
+                                        <Link to="/profile" className="block w-full text-left px-4 py-2 text-brand-text hover:bg-brand-secondary" onClick={() => setIsUserMenuOpen(false)}>Hồ sơ của tôi</Link>
+                                        <Link to="/appointments" className="block w-full text-left px-4 py-2 text-brand-text hover:bg-brand-secondary" onClick={() => setIsUserMenuOpen(false)}>Lịch hẹn của tôi</Link>
+                                        <Link to="/my-treatment-courses" className="block w-full text-left px-4 py-2 text-brand-text hover:bg-brand-secondary" onClick={() => setIsUserMenuOpen(false)}>Liệu trình của tôi</Link>
+                                        <button onClick={handleLogout} className="block w-full text-left px-4 py-2 text-red-600 hover:bg-red-50">Đăng xuất</button>
                                     </div>
-                                    {currentUser.role === 'Admin' && (
-                                        <Link to="/admin" className="block w-full text-left px-4 py-2 text-brand-text font-semibold hover:bg-brand-secondary" onClick={() => setIsUserMenuOpen(false)}>
-                                            Trang quản trị
-                                        </Link>
-                                    )}
-                                    <Link to="/profile" className="block w-full text-left px-4 py-2 text-brand-text hover:bg-brand-secondary" onClick={() => setIsUserMenuOpen(false)}>Hồ sơ của tôi</Link>
-                                    <Link to="/appointments" className="block w-full text-left px-4 py-2 text-brand-text hover:bg-brand-secondary" onClick={() => setIsUserMenuOpen(false)}>Lịch hẹn của tôi</Link>
-                                    <button onClick={handleLogout} className="block w-full text-left px-4 py-2 text-red-600 hover:bg-red-50">Đăng xuất</button>
                                 </div>
-                            </div>
+                            </>
                         ) : (
                             <div className="flex items-center gap-2">
                                 <Link to="/login" className="font-medium text-brand-dark px-4 py-2 rounded-md hover:bg-brand-secondary/70 transition-colors">Đăng nhập</Link>

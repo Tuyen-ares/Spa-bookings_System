@@ -9,7 +9,7 @@ import {
 } from '../../shared/icons';
 import EmployeeOfMonth from '../components/EmployeeOfMonth';
 import * as apiService from '../../client/services/apiService';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { formatDateDDMMYYYY, parseDDMMYYYYToYYYYMMDD } from '../../shared/dateUtils';
 
 // --- HELPER & UTILITY ---
@@ -428,24 +428,6 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
             });
     }, [localAppointments, localServices, allAppointments, allServices]);
 
-    const retentionRate = useMemo(() => {
-        const safeAppointments = Array.isArray(localAppointments) && localAppointments.length > 0 ? localAppointments : (Array.isArray(allAppointments) ? allAppointments : []);
-
-        const customerAppointments = new Map<string, number>();
-        safeAppointments.forEach(app => {
-            if (app && app.userId) {
-                customerAppointments.set(app.userId, (customerAppointments.get(app.userId) || 0) + 1);
-            }
-        });
-
-        if (customerAppointments.size === 0) return 0;
-
-        const returningCustomers = Array.from(customerAppointments.values()).filter(count => count > 1).length;
-
-        return (returningCustomers / customerAppointments.size) * 100;
-
-    }, [localAppointments, allAppointments]);
-
     const bookingHeatmapData: { slots: string[]; data: Record<string, number> } = useMemo(() => {
         const safeAppointments = Array.isArray(localAppointments) && localAppointments.length > 0 ? localAppointments : (Array.isArray(allAppointments) ? allAppointments : []);
         const timeSlots = ['09:00', '11:00', '13:00', '15:00', '17:00', '19:00'];
@@ -579,7 +561,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
                         <div className="h-80">
                             {revenueChartData.length > 0 ? (
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={revenueChartData}>
+                                    <BarChart data={revenueChartData}>
                                         <CartesianGrid strokeDasharray="3 3" />
                                         <XAxis
                                             dataKey="date"
@@ -597,16 +579,12 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
                                             labelFormatter={(label) => `Ngày: ${label}`}
                                         />
                                         <Legend />
-                                        <Line
-                                            type="monotone"
+                                        <Bar
                                             dataKey="revenue"
-                                            stroke="#10b981"
-                                            strokeWidth={2}
+                                            fill="#10b981"
                                             name="Doanh thu (VND)"
-                                            dot={{ r: 4 }}
-                                            activeDot={{ r: 6 }}
                                         />
-                                    </LineChart>
+                                    </BarChart>
                                 </ResponsiveContainer>
                             ) : (
                                 <div className="h-full flex items-center justify-center bg-gray-50 rounded-md text-gray-400 italic">
@@ -639,17 +617,6 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
                                     </li>
                                 ))}
                             </ul>
-                        </div>
-                        <div className="bg-white p-6 rounded-lg shadow-md opacity-0 animate-fadeInUp" style={{ animationDelay: '800ms' }}>
-                            <h2 className="text-xl font-bold text-gray-800 mb-4">Tỷ lệ khách quay lại</h2>
-                            <div className="text-center">
-                                <p className="text-5xl font-bold text-green-600">{retentionRate.toFixed(1)}%</p>
-                                <p className="text-sm text-gray-500 mt-2">Dựa trên khách hàng có nhiều hơn 1 lịch hẹn.</p>
-                            </div>
-                            <h2 className="text-xl font-bold text-gray-800 mt-6 mb-4">Lịch hẹn</h2>
-                            <div className="bg-white p-6 rounded-lg shadow-md">
-                                <p className="text-gray-500 italic">Danh sách lịch hẹn sẽ hiển thị ở đây (placeholder).</p>
-                            </div>
                         </div>
                     </div>
                 </div>

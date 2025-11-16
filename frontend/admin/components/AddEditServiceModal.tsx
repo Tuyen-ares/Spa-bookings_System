@@ -18,7 +18,7 @@ const AddEditServiceModal: React.FC<AddEditServiceModalProps> = ({ service, onCl
     const [formData, setFormData] = useState<Partial<ServiceWithStatus>>(service || {
         name: '', price: 0, duration: 30, category: categories[0] || '',
         description: '', longDescription: '', imageUrl: '', isActive: true,
-        rating: 0, reviewCount: 0, isHot: false, isNew: false,
+        rating: 0, reviewCount: 0, isHot: false, isNew: false, discountPercent: 0,
     });
     const [imagePreview, setImagePreview] = useState<string>(service?.imageUrl || '');
     const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
@@ -35,7 +35,7 @@ const AddEditServiceModal: React.FC<AddEditServiceModalProps> = ({ service, onCl
             setFormData({
                 name: '', price: 0, duration: 30, category: defaultCategory,
                 description: '', longDescription: '', imageUrl: '', isActive: true,
-                rating: 0, reviewCount: 0, isHot: false, isNew: false,
+                rating: 0, reviewCount: 0, isHot: false, isNew: false, discountPercent: 0,
             });
             setImagePreview('');
         }
@@ -163,7 +163,24 @@ const AddEditServiceModal: React.FC<AddEditServiceModalProps> = ({ service, onCl
                             </div>
 
                             <div><label className="block text-sm font-medium text-gray-700">Giá (VND)</label><input type="number" name="price" value={formData.price || 0} onChange={handleChange} className="mt-1 w-full p-2 border rounded" required /></div>
-                            <div><label className="block text-sm font-medium text-gray-700">Giá giảm (nếu có)</label><input type="number" name="discountPrice" value={formData.discountPrice || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded" /></div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Giảm giá (%)</label>
+                                <input 
+                                    type="number" 
+                                    name="discountPercent" 
+                                    value={formData.discountPercent || ''} 
+                                    onChange={handleChange} 
+                                    className="mt-1 w-full p-2 border rounded" 
+                                    min="0"
+                                    max="100"
+                                    placeholder="0-100"
+                                />
+                                {formData.price && formData.discountPercent && formData.discountPercent > 0 && (
+                                    <p className="text-xs text-green-600 mt-1">
+                                        Giá sau giảm: {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(formData.price * (1 - formData.discountPercent / 100))}
+                                    </p>
+                                )}
+                            </div>
                             <div><label className="block text-sm font-medium text-gray-700">Thời lượng (phút)</label><input type="number" name="duration" value={formData.duration || 0} onChange={handleChange} className="mt-1 w-full p-2 border rounded" required /></div>
                             
                             <div>

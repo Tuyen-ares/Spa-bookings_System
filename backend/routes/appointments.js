@@ -8,6 +8,50 @@ const { Op } = require('sequelize');
 const bcrypt = require('bcryptjs');
 
 // --- Helper Functions ---
+
+// Helper function to create notification for admins
+const notifyAdmins = async (type, title, message, relatedId = null) => {
+    try {
+        console.log(`[notifyAdmins] Starting notification creation - Type: ${type}, Title: ${title}`);
+        
+        // Get all admin users
+        const admins = await db.User.findAll({
+            where: { role: 'Admin', status: 'Active' }
+        });
+
+        console.log(`[notifyAdmins] Found ${admins.length} admin users`);
+
+        if (admins.length === 0) {
+            console.warn('[notifyAdmins] No admin users found to notify');
+            return;
+        }
+
+        // Create notification for each admin
+        const notifications = admins.map(admin => ({
+            id: `notif-${uuidv4()}`,
+            userId: admin.id,
+            type,
+            title,
+            message,
+            relatedId,
+            sentVia: 'app',
+            isRead: false,
+            emailSent: false,
+            createdAt: new Date(),
+        }));
+
+        console.log(`[notifyAdmins] Attempting to create ${notifications.length} notifications`);
+        
+        await db.Notification.bulkCreate(notifications);
+        
+        console.log(`[notifyAdmins] ✅ Successfully created ${notifications.length} admin notifications`);
+    } catch (error) {
+        console.error('[notifyAdmins] ❌ Error creating admin notifications:', error.message);
+        console.error('[notifyAdmins] Error details:', error);
+        // Don't throw error - notification failure shouldn't break main operation
+    }
+};
+
 const updateUserAndWalletAfterAppointment = async (userId, appointment) => { /* ... (same as before) ... */ };
 
 const findBestTherapist = async (serviceId, userId, date, time) => {
@@ -332,6 +376,14 @@ router.post('/', async (req, res) => {
         }
 
         res.status(201).json(createdAppointment);
+
+        // Notify admins about new appointment (async, don't wait)
+        notifyAdmins(
+            'new_appointment',
+            'Lịch hẹn mới',
+            `${finalUserName} đã đặt lịch ${service.name} vào ${new Date(newAppointmentData.date).toLocaleDateString('vi-VN')} lúc ${newAppointmentData.time}`,
+            createdAppointment.id
+        );
     } catch (error) {
         console.error('Error creating appointment:', error);
         res.status(500).json({ message: 'Internal server error' });
@@ -348,7 +400,87 @@ router.put('/:id', async (req, res) => {
         if (!appointment) {
             return res.status(404).json({ message: 'Appointment not found' });
         }
+        
+        const oldStatus = appointment.status;
         await appointment.update(updatedData);
+        
+        // If appointment is completed and linked to a treatment session, mark session as completed
+        if (updatedData.status === 'completed' && appointment.treatmentSessionId && appointment.treatmentCourseId) {
+            try {
+                const session = await db.TreatmentSession.findByPk(appointment.treatmentSessionId);
+                if (session && session.status !== 'completed') {
+                    await session.update({
+                        status: 'completed',
+                        completedDate: new Date()
+                    });
+                    
+                    // Update course progress
+                    const course = await db.TreatmentCourse.findByPk(appointment.treatmentCourseId);
+                    if (course) {
+                        const completedCount = await db.TreatmentSession.count({
+                            where: {
+                                treatmentCourseId: course.id,
+                                status: 'completed'
+                            }
+                        });
+                        
+                        const progressPercentage = course.totalSessions > 0
+                            ? Math.round((completedCount / course.totalSessions) * 100)
+                            : 0;
+                        
+                        await course.update({
+                            completedSessions: completedCount,
+                            progressPercentage,
+                            lastCompletedDate: new Date(),
+                            status: completedCount >= course.totalSessions ? 'completed' : course.status
+                        });
+                        
+                        console.log(`✅ Session ${session.sessionNumber} completed. Course progress: ${completedCount}/${course.totalSessions}`);
+                    }
+                }
+            } catch (sessionError) {
+                console.error('Error updating treatment session:', sessionError);
+                // Don't fail the appointment update if session update fails
+            }
+        }
+        
+        // Gửi thông báo khi status thay đổi
+        if (db.Notification && oldStatus !== updatedData.status) {
+            let notifType = 'system';
+            let notifTitle = 'Cập nhật lịch hẹn';
+            let notifMessage = `Lịch hẹn ${appointment.serviceName} đã được cập nhật`;
+            
+            if (updatedData.status === 'confirmed' || updatedData.status === 'in-progress') {
+                notifType = 'appointment_confirmed';
+                notifTitle = 'Lịch hẹn đã xác nhận';
+                notifMessage = `Lịch hẹn ${appointment.serviceName} vào ${appointment.date} lúc ${appointment.time} đã được xác nhận`;
+            } else if (updatedData.status === 'cancelled') {
+                notifType = 'appointment_cancelled';
+                notifTitle = 'Lịch hẹn đã hủy';
+                notifMessage = `Lịch hẹn ${appointment.serviceName} vào ${appointment.date} lúc ${appointment.time} đã bị hủy`;
+            } else if (updatedData.status === 'completed') {
+                notifType = 'appointment_completed';
+                notifTitle = 'Hoàn thành lịch hẹn';
+                notifMessage = `Lịch hẹn ${appointment.serviceName} đã hoàn thành`;
+            }
+            
+            try {
+                await db.Notification.create({
+                    id: `notif-${uuidv4()}`,
+                    userId: appointment.userId,
+                    type: notifType,
+                    title: notifTitle,
+                    message: notifMessage,
+                    relatedId: appointment.id,
+                    sentVia: 'app',
+                    isRead: false,
+                    createdAt: new Date(),
+                });
+            } catch (notifError) {
+                console.error('Error creating notification:', notifError);
+            }
+        }
+        
         res.json(appointment);
     } catch (error) {
         console.error('Error updating appointment:', error);
@@ -356,5 +488,85 @@ router.put('/:id', async (req, res) => {
     }
 });
 
+// PUT /api/appointments/:id/confirm - Admin xác nhận appointment từ pending -> scheduled
+router.put('/:id/confirm', async (req, res) => {
+    const transaction = await db.sequelize.transaction();
+    try {
+        const { id } = req.params;
+        
+        const appointment = await db.Appointment.findByPk(id, { transaction });
+        if (!appointment) {
+            await transaction.rollback();
+            return res.status(404).json({ message: 'Appointment not found' });
+        }
+
+        // Chỉ có thể xác nhận appointment đang pending
+        if (appointment.status !== 'pending') {
+            await transaction.rollback();
+            return res.status(400).json({ message: `Cannot confirm appointment with status: ${appointment.status}` });
+        }
+
+        // Update appointment status to scheduled
+        await appointment.update({
+            status: 'scheduled'
+        }, { transaction });
+
+        // Nếu appointment thuộc treatment course, update session và tiến độ course
+        if (appointment.treatmentSessionId && appointment.treatmentCourseId) {
+            const session = await db.TreatmentSession.findByPk(appointment.treatmentSessionId, { transaction });
+            if (session) {
+                await session.update({
+                    status: 'scheduled',
+                    scheduledDate: appointment.date,
+                    appointmentId: appointment.id,
+                    serviceId: appointment.serviceId,
+                    serviceName: appointment.serviceName,
+                    staffId: appointment.therapistId || null
+                }, { transaction });
+
+                // Update course progress (increment scheduled sessions count)
+                const course = await db.TreatmentCourse.findByPk(appointment.treatmentCourseId, { transaction });
+                if (course) {
+                    const scheduledCount = await db.TreatmentSession.count({
+                        where: {
+                            treatmentCourseId: course.id,
+                            status: 'scheduled'
+                        }
+                    });
+
+                    const completedCount = await db.TreatmentSession.count({
+                        where: {
+                            treatmentCourseId: course.id,
+                            status: 'completed'
+                        }
+                    });
+
+                    const totalScheduledOrCompleted = scheduledCount + completedCount;
+                    const progressPercentage = course.totalSessions > 0
+                        ? Math.round((totalScheduledOrCompleted / course.totalSessions) * 100)
+                        : 0;
+
+                    await course.update({
+                        progressPercentage: progressPercentage,
+                        status: totalScheduledOrCompleted >= course.totalSessions ? 'completed' : 'in-progress'
+                    }, { transaction });
+
+                    console.log(`✅ Appointment confirmed. Session ${session.sessionNumber} scheduled. Course progress: ${totalScheduledOrCompleted}/${course.totalSessions}`);
+                }
+            }
+        }
+
+        await transaction.commit();
+
+        res.json({
+            appointment,
+            message: 'Appointment confirmed successfully'
+        });
+    } catch (error) {
+        await transaction.rollback();
+        console.error('Error confirming appointment:', error);
+        res.status(500).json({ message: 'Error confirming appointment', error: error.message });
+    }
+});
 
 module.exports = router;

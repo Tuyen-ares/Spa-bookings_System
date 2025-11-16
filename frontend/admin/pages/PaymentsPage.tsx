@@ -1,16 +1,16 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Payment, PaymentMethod, PaymentStatus, User } from '../../types';
-import { SearchIcon, CurrencyDollarIcon, CheckCircleIcon, ClockIcon, PrinterIcon, ArrowUturnLeftIcon } from '../../shared/icons';
+import { SearchIcon, CurrencyDollarIcon, CheckCircleIcon, ClockIcon, PrinterIcon, ArrowUturnLeftIcon, TrashIcon } from '../../shared/icons';
 import * as apiService from '../../client/services/apiService'; // Import API service
 
 const PAYMENTS_PER_PAGE = 10;
-const PAYMENT_METHODS: PaymentMethod[] = ['Cash', 'Card', 'Momo', 'VNPay', 'ZaloPay'];
+const PAYMENT_METHODS: PaymentMethod[] = ['Cash', 'VNPay'];
 const PAYMENT_STATUSES: PaymentStatus[] = ['Completed', 'Pending', 'Refunded', 'Failed'];
 const STATUS_CONFIG: Record<PaymentStatus, { text: string; color: string; bgColor: string; }> = {
     Completed: { text: 'Hoàn thành', color: 'text-green-800', bgColor: 'bg-green-100' },
-    Pending: { text: 'Chờ xử lý', color: 'text-yellow-800', bgColor: 'bg-yellow-100' },
+    Pending: { text: 'Chờ xử lý (Tiền mặt)', color: 'text-yellow-800', bgColor: 'bg-yellow-100' },
     Refunded: { text: 'Đã hoàn tiền', color: 'text-red-800', bgColor: 'bg-red-100' },
-    Failed: { text: 'Thất bại', color: 'text-red-800', bgColor: 'bg-red-100' },
+    Failed: { text: 'Đã hủy bỏ', color: 'text-gray-800', bgColor: 'bg-gray-100' },
 };
 const METHOD_TEXT: Record<PaymentMethod, string> = {
     Cash: 'Tiền mặt', Card: 'Thẻ', Momo: 'Momo', VNPay: 'VNPay', ZaloPay: 'ZaloPay'
@@ -82,17 +82,30 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
                 setIsLoading(false);
             }
         };
+        
+        // Fetch immediately on mount
         fetchPaymentData();
-    }, [allUsers]); // Depend on allUsers prop to trigger re-fetch if it changes
+        
+        // Set up polling every 10 seconds to auto-update payments
+        const interval = setInterval(() => {
+            fetchPaymentData();
+        }, 10000); // 10 seconds
+        
+        return () => clearInterval(interval);
+    }, []); // Empty dependency array - poll independent of prop changes
 
 
     const stats = useMemo(() => {
-        if (isLoading || error) return { totalRevenue: 0, successfulTransactions: 0, pendingTransactions: 0 };
-        const totalRevenue = payments.filter(p => p.status === 'Completed').reduce((sum, p) => sum + p.amount, 0);
-        const successfulTransactions = payments.filter(p => p.status === 'Completed').length;
+        if (error) return { totalRevenue: 0, successfulTransactions: 0, pendingTransactions: 0 };
+        const completedPayments = payments.filter(p => p.status === 'Completed');
+        const totalRevenue = completedPayments.reduce((sum, p) => {
+            const amount = typeof p.amount === 'string' ? parseFloat(p.amount) : (p.amount || 0);
+            return sum + amount;
+        }, 0);
+        const successfulTransactions = completedPayments.length;
         const pendingTransactions = payments.filter(p => p.status === 'Pending').length;
         return { totalRevenue, successfulTransactions, pendingTransactions };
-    }, [payments, isLoading, error]);
+    }, [payments, error]);
 
     const filteredPayments = useMemo(() => {
         return payments
@@ -132,6 +145,32 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
             } catch (err: any) {
                 console.error("Error refunding payment:", err);
                 alert(`Hoàn tiền thất bại: ${err.message || String(err)}`);
+            }
+        }
+    };
+
+    const handleConfirmPayment = async (paymentId: string) => {
+        if (window.confirm("Xác nhận đã nhận thanh toán tiền mặt?")) {
+            try {
+                const updatedPayment = await apiService.updatePayment(paymentId, { status: 'Completed' });
+                setPayments(prev => prev.map(p => p.id === updatedPayment.id ? updatedPayment : p));
+                alert('Đã xác nhận thanh toán thành công!');
+            } catch (err: any) {
+                console.error("Error confirming payment:", err);
+                alert(`Xác nhận thanh toán thất bại: ${err.message || String(err)}`);
+            }
+        }
+    };
+
+    const handleDeletePayment = async (paymentId: string) => {
+        if (window.confirm("Bạn có chắc chắn muốn xóa giao dịch này?")) {
+            try {
+                await apiService.deletePayment(paymentId);
+                setPayments(prev => prev.filter(p => p.id !== paymentId));
+                alert('Đã xóa giao dịch thành công!');
+            } catch (err: any) {
+                console.error("Error deleting payment:", err);
+                alert(`Xóa giao dịch thất bại: ${err.message || String(err)}`);
             }
         }
     };
@@ -422,6 +461,23 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
         <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-6">Quản lý Thanh toán</h1>
 
+            {/* Thông báo giao dịch tiền mặt chờ xác nhận */}
+            {stats.pendingTransactions > 0 && (
+                <div className="mb-6 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
+                    <div className="flex items-center">
+                        <div className="flex-shrink-0">
+                            <ClockIcon className="w-5 h-5 text-yellow-400" />
+                        </div>
+                        <div className="ml-3">
+                            <p className="text-sm text-yellow-700">
+                                <span className="font-semibold">Có {stats.pendingTransactions} giao dịch tiền mặt chờ xác nhận.</span>
+                                {' '}Vui lòng kiểm tra và xác nhận đã nhận tiền để hoàn thành giao dịch.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                 <StatCard title="Tổng doanh thu" value={formatPrice(stats.totalRevenue)} icon={<CurrencyDollarIcon className="w-6 h-6" />} color="bg-green-100 text-green-600" isLoading={isLoading} />
                 <StatCard title="Giao dịch thành công" value={stats.successfulTransactions.toString()} icon={<CheckCircleIcon className="w-6 h-6" />} color="bg-blue-100 text-blue-600" isLoading={isLoading} />
@@ -475,7 +531,25 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
                                             <td className="p-4"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${STATUS_CONFIG[payment.status].bgColor} ${STATUS_CONFIG[payment.status].color}`}>{STATUS_CONFIG[payment.status].text}</span></td>
                                             <td className="p-4 text-sm">{new Date(payment.date).toLocaleDateString('vi-VN')}</td>
                                             <td className="p-4"><div className="flex items-center gap-1">
-                                                {payment.status === 'Completed' && <button onClick={() => handleRefund(payment.id)} className="p-2 text-gray-500 hover:text-orange-600" title="Hoàn tiền"><ArrowUturnLeftIcon className="w-5 h-5" /></button>}
+                                                {payment.status === 'Pending' && payment.method === 'Cash' && (
+                                                    <button 
+                                                        onClick={() => handleConfirmPayment(payment.id)} 
+                                                        className="p-2 bg-green-100 text-green-600 hover:bg-green-200 rounded-md transition-colors" 
+                                                        title="Xác nhận đã nhận tiền mặt"
+                                                    >
+                                                        <CheckCircleIcon className="w-5 h-5" />
+                                                    </button>
+                                                )}
+                                                {payment.status === 'Completed' && payment.method !== 'Cash' && (
+                                                    <button onClick={() => handleRefund(payment.id)} className="p-2 text-gray-500 hover:text-orange-600" title="Hoàn tiền">
+                                                        <ArrowUturnLeftIcon className="w-5 h-5" />
+                                                    </button>
+                                                )}
+                                                {(payment.method === 'Cash' || payment.status === 'Failed') && (
+                                                    <button onClick={() => handleDeletePayment(payment.id)} className="p-2 text-gray-500 hover:text-red-600" title="Xóa giao dịch">
+                                                        <TrashIcon className="w-5 h-5" />
+                                                    </button>
+                                                )}
                                                 <button onClick={() => handlePrint(payment.id)} className="p-2 text-gray-500 hover:text-blue-600" title="In hóa đơn"><PrinterIcon className="w-5 h-5" /></button>
                                             </div></td>
                                         </tr>

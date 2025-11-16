@@ -93,9 +93,18 @@ class AuthService {
             throw new Error('Account is inactive or locked');
         }
 
-        // Update last login
+        // Update last login and login history
+        const loginHistory = user.loginHistory || [];
+        loginHistory.unshift({
+            date: new Date().toISOString()
+        });
+        
+        // Keep only last 10 login records
+        const trimmedHistory = loginHistory.slice(0, 10);
+        
         await user.update({
-            lastLogin: new Date()
+            lastLogin: new Date(),
+            loginHistory: trimmedHistory
         });
 
         // Generate token

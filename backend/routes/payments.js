@@ -5,6 +5,38 @@ const db = require('../config/database'); // Sequelize models
 const { v4: uuidv4 } = require('uuid');
 const vnpayConfig = require('../config/vnpay');
 
+// Helper function to create notification for admins
+const notifyAdmins = async (type, title, message, relatedId = null) => {
+    try {
+        // Get all admin users
+        const admins = await db.User.findAll({
+            where: { role: 'Admin', status: 'Active' }
+        });
+
+        // Create notification for each admin
+        const notifications = admins.map(admin => ({
+            id: `notif-${uuidv4()}`,
+            userId: admin.id,
+            type,
+            title,
+            message,
+            relatedId,
+            sentVia: 'app',
+            isRead: false,
+            emailSent: false,
+            createdAt: new Date(),
+        }));
+
+        if (notifications.length > 0) {
+            await db.Notification.bulkCreate(notifications);
+            console.log(`Created ${notifications.length} admin notifications for type: ${type}`);
+        }
+    } catch (error) {
+        console.error('Error creating admin notifications:', error);
+        // Don't throw error - notification failure shouldn't break main operation
+    }
+};
+
 // GET /api/payments - Get all payments (Admin)
 router.get('/', async (req, res) => {
     try {
@@ -92,6 +124,17 @@ router.post('/', async (req, res) => {
             ...newPaymentData,
         });
         res.status(201).json(createdPayment);
+
+        // Notify admins about payment (async, don't wait)
+        const user = await db.User.findByPk(newPaymentData.userId);
+        const userName = user ? user.name : 'Khách hàng';
+        const formatPrice = (price) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
+        notifyAdmins(
+            'payment_received',
+            'Thanh toán mới',
+            `${userName} đã thanh toán ${formatPrice(newPaymentData.amount)} qua ${newPaymentData.method}`,
+            createdPayment.id
+        );
     } catch (error) {
         console.error('Error creating payment:', error);
         res.status(500).json({ message: 'Internal server error' });
@@ -136,6 +179,28 @@ router.put('/:id/complete', async (req, res) => {
     }
 });
 
+// DELETE /api/payments/:id - Delete a payment (Admin only, for Cash payments or Failed payments)
+router.delete('/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const payment = await db.Payment.findByPk(id);
+        if (!payment) {
+            return res.status(404).json({ message: 'Payment not found' });
+        }
+        
+        // Only allow deletion of Cash payments or Failed payments
+        if (payment.method !== 'Cash' && payment.status !== 'Failed') {
+            return res.status(400).json({ message: 'Only Cash payments or Failed payments can be deleted' });
+        }
+
+        await payment.destroy();
+        res.json({ message: 'Payment deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting payment:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
 // POST /api/payments/process - Process payment (for VNPay, redirect to payment URL)
 router.post('/process', async (req, res) => {
     const { appointmentId, method, amount } = req.body;
@@ -151,7 +216,7 @@ router.post('/process', async (req, res) => {
             return res.status(404).json({ message: 'Appointment not found' });
         }
 
-        if (method === 'VNPay') {
+    if (method === 'VNPay') {
             try {
                 // Create payment record with Pending status
                 const paymentId = `pay-${uuidv4()}`;
@@ -217,7 +282,7 @@ router.post('/process', async (req, res) => {
                     details: process.env.NODE_ENV === 'development' ? error.stack : undefined
                 });
             }
-        } else if (method === 'Cash') {
+    } else if (method === 'Cash') {
             // Cash payment - just mark as completed
             try {
                 const payment = await db.Payment.create({
@@ -228,37 +293,47 @@ router.post('/process', async (req, res) => {
                     serviceName: appointment.serviceName,
                     amount: amount,
                     method: 'Cash',
-                    status: 'Completed',
+                    status: 'Pending', // Cash payments start as Pending, require admin confirmation
                     date: new Date().toISOString(),
                     transactionId: `CASH-${uuidv4().substring(0, 8).toUpperCase()}`,
                 });
 
                 console.log('Cash payment created:', payment.id);
 
-                // Update appointment payment status and set status to 'pending' (awaiting admin confirmation)
-                // Also update all appointments in the same booking group
+                // Update appointment - keep payment status as Unpaid until admin confirms payment
                 await appointment.update({ 
-                    paymentStatus: 'Paid',
+                    paymentStatus: 'Unpaid', // Will be updated to 'Paid' after admin confirms
                     status: 'pending' // Set to pending to await admin confirmation
                 });
 
-                console.log('Appointment payment status updated to Paid, status set to pending (awaiting confirmation)');
+                console.log('Appointment payment status updated to Unpaid, status set to pending (awaiting admin confirmation)');
                 
                 // If this appointment has a bookingGroupId, update all appointments in the same group
                 if (appointment.bookingGroupId) {
                     await db.Appointment.update(
                         { 
-                            paymentStatus: 'Paid',
-                            status: 'pending' // Set to pending to await admin confirmation
+                            paymentStatus: 'Unpaid', // Will be updated to 'Paid' after admin confirms
+                            status: 'pending'
                         },
                         { 
                             where: { bookingGroupId: appointment.bookingGroupId }
                         }
                     );
-                    console.log(`Updated all appointments in booking group ${appointment.bookingGroupId} to Paid and pending status`);
+                    console.log(`Updated all appointments in booking group ${appointment.bookingGroupId} to Unpaid and pending status`);
                 }
 
                 res.json({ payment, success: true });
+
+                // Notify admins about cash payment (async, don't wait)
+                const user = await db.User.findByPk(appointment.userId);
+                const userName = user ? user.name : 'Khách hàng';
+                const formatPrice = (price) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
+                notifyAdmins(
+                    'payment_received',
+                    'Thanh toán tiền mặt',
+                    `${userName} đã thanh toán ${formatPrice(amount)} bằng tiền mặt cho ${appointment.serviceName}`,
+                    payment.id
+                );
             } catch (cashError) {
                 console.error('Error processing cash payment:', cashError);
                 console.error('Error stack:', cashError.stack);
@@ -288,6 +363,43 @@ router.get('/vnpay-return', async (req, res) => {
         
         if (!verifyResult || !verifyResult.isSuccess) {
             console.error('VNPay signature verification failed:', verifyResult);
+            
+            // Try to find payment by orderId if available
+            const orderId = vnp_Params['vnp_TxnRef'];
+            if (orderId) {
+                const payment = await db.Payment.findOne({ 
+                    where: { transactionId: orderId } 
+                });
+                
+                if (payment) {
+                    await payment.update({ status: 'Failed' });
+                    
+                    // Update appointment status to 'cancelled'
+                    if (payment.appointmentId) {
+                        const appointment = await db.Appointment.findByPk(payment.appointmentId);
+                        if (appointment) {
+                            await appointment.update({ 
+                                status: 'cancelled',
+                                paymentStatus: 'Unpaid'
+                            });
+                            
+                            // Update booking group if exists
+                            if (appointment.bookingGroupId) {
+                                await db.Appointment.update(
+                                    { 
+                                        status: 'cancelled',
+                                        paymentStatus: 'Unpaid'
+                                    },
+                                    { 
+                                        where: { bookingGroupId: appointment.bookingGroupId }
+                                    }
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            
             // Note: Frontend uses HashRouter, so URL needs # prefix
             const failedUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/#/payment/failed?message=Invalid signature`;
             console.log('Redirecting to:', failedUrl);
@@ -365,11 +477,56 @@ router.get('/vnpay-return', async (req, res) => {
             // Note: Frontend uses HashRouter, so URL needs # prefix
             const successUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/#/payment/success?paymentId=${payment.id}`;
             console.log('Payment successful! Redirecting to:', successUrl);
+            
+            // Notify admins about VNPay payment (async, don't wait)
+            if (payment.appointmentId) {
+                const appointment = await db.Appointment.findByPk(payment.appointmentId);
+                if (appointment) {
+                    const user = await db.User.findByPk(appointment.userId);
+                    const userName = user ? user.name : 'Khách hàng';
+                    const formatPrice = (price) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
+                    notifyAdmins(
+                        'payment_received',
+                        'Thanh toán VNPay thành công',
+                        `${userName} đã thanh toán ${formatPrice(amount)} qua VNPay cho ${appointment.serviceName}`,
+                        payment.id
+                    );
+                }
+            }
+            
             return res.redirect(successUrl);
         } else {
-            // Payment failed
-            console.log('Payment failed with response code:', responseCode);
-            await payment.update({ status: 'Pending' });
+            // Payment failed or cancelled by user
+            console.log('Payment failed or cancelled with response code:', responseCode);
+            await payment.update({ status: 'Failed' });
+            
+            // Update appointment status to 'cancelled' when payment fails
+            if (payment.appointmentId) {
+                const appointment = await db.Appointment.findByPk(payment.appointmentId);
+                if (appointment) {
+                    // Update the appointment that has this payment
+                    await appointment.update({ 
+                        status: 'cancelled',
+                        paymentStatus: 'Unpaid'
+                    });
+                    console.log('Appointment status updated to cancelled due to payment failure');
+                    
+                    // If this appointment has a bookingGroupId, update all appointments in the same group
+                    if (appointment.bookingGroupId) {
+                        await db.Appointment.update(
+                            { 
+                                status: 'cancelled',
+                                paymentStatus: 'Unpaid'
+                            },
+                            { 
+                                where: { bookingGroupId: appointment.bookingGroupId }
+                            }
+                        );
+                        console.log(`Updated all appointments in booking group ${appointment.bookingGroupId} to cancelled status`);
+                    }
+                }
+            }
+            
             // Note: Frontend uses HashRouter, so URL needs # prefix
             const failedUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/#/payment/failed?message=Payment failed&paymentId=${payment.id}`;
             console.log('Redirecting to:', failedUrl);
@@ -460,5 +617,6 @@ router.post('/vnpay-ipn', async (req, res) => {
         return res.status(500).json({ RspCode: '99', Message: 'Server error' });
     }
 });
+
 
 module.exports = router;

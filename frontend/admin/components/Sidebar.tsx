@@ -23,32 +23,19 @@ const navGroups = [
             { name: 'Người dùng', path: '/admin/users', icon: <UsersIcon className="w-5 h-5"/> },
             { name: 'Dịch vụ', path: '/admin/services', icon: <ServicesIcon className="w-5 h-5"/> },
             { name: 'Lịch hẹn', path: '/admin/appointments', icon: <AppointmentsIcon className="w-5 h-5"/> },
+            { name: 'Liệu trình điều trị', path: '/admin/treatment-courses', icon: <ClipboardListIcon className="w-5 h-5"/> },
             { name: 'Thanh toán', path: '/admin/payments', icon: <PaymentsIcon className="w-5 h-5"/> },
             { name: 'Nhân viên', path: '/admin/staff', icon: <StaffIcon className="w-5 h-5"/> },
             { name: 'Quản lý Công việc', path: '/admin/jobs', icon: <ClipboardListIcon className="w-5 h-5"/> },
             { name: 'Quản lý phòng', path: '/admin/rooms', icon: <RoomIcon className="w-5 h-5"/> },
-        ]
-    },
-    {
-        title: 'Tăng trưởng',
-        links: [
             { name: 'Khuyến mãi', path: '/admin/promotions', icon: <PromotionsIcon className="w-5 h-5"/> },
-            { name: 'Cửa hàng Loyalty', path: '/admin/loyalty-shop', icon: <LoyaltyIcon className="w-5 h-5"/> },
-            { name: 'Marketing', path: '/admin/marketing', icon: <MegaphoneIcon className="w-5 h-5"/> },
-            { name: 'Nội dung', path: '/admin/content', icon: <NewspaperIcon className="w-5 h-5"/> },
+            { name: 'Báo cáo', path: '/admin/reports', icon: <ReportsIcon className="w-5 h-5"/> },
         ]
     },
-    {
-        title: 'Phân tích',
-        links: [
-            { name: 'Báo cáo', path: '/admin/reports', icon: <ReportsIcon className="w-5 h-5"/> },
-            { name: 'Cài đặt', path: '/admin/settings', icon: <SettingsIcon className="w-5 h-5"/> },
-        ]
-    }
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, toggleSidebar, isMobile = false, closeMobileMenu }) => {
-    const [openGroups, setOpenGroups] = useState<string[]>(['Quản lý', 'Tăng trưởng']);
+    const [openGroups, setOpenGroups] = useState<string[]>(['Quản lý']);
 
     const toggleGroup = (title: string) => {
         setOpenGroups(prev => 
@@ -81,7 +68,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, toggleSidebar, isMobile 
                             {!isCollapsed && <span>{group.title}</span>}
                             {!isCollapsed && <ChevronDownIcon className={`w-5 h-5 transition-transform ${openGroups.includes(group.title) ? 'rotate-180' : ''}`} />}
                         </button>
-                        <div className={`mt-1 space-y-1 overflow-hidden transition-all duration-300 ${openGroups.includes(group.title) && !isCollapsed ? 'max-h-96' : 'max-h-0'}`}>
+                        <div className={`mt-1 space-y-1 overflow-hidden transition-all duration-300 ${openGroups.includes(group.title) && !isCollapsed ? 'max-h-full' : 'max-h-0'}`}>
                             {group.links.map(link => (
                                 <NavLink
                                     key={link.name}

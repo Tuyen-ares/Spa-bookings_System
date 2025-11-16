@@ -156,13 +156,23 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
         return filtered;
     }, [staffMembers, filteredStaffId]);
 
+    // Generate 7 days starting from a selected start date (Monday to Sunday)
+    const [startDate, setStartDate] = useState(() => {
+        const today = new Date();
+        const day = today.getDay();
+        // Calculate start of week (Monday = 1, so if today is Sunday (0), go back 6 days, else go back day-1)
+        const diff = today.getDate() - (day === 0 ? 6 : day - 1);
+        today.setDate(diff);
+        return today;
+    });
+    
     const weekDays = useMemo(() => {
-        const startOfWeek = new Date(currentDate);
-        const day = startOfWeek.getDay();
-        const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
-        startOfWeek.setDate(diff);
-        return Array.from({ length: 7 }, (_, i) => new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() + i));
-    }, [currentDate]);
+        return Array.from({ length: 7 }, (_, i) => {
+            const date = new Date(startDate);
+            date.setDate(startDate.getDate() + i);
+            return date;
+        });
+    }, [startDate]);
 
     const dashboardStats = useMemo(() => {
         const todayStr = new Date().toISOString().split('T')[0];
@@ -287,11 +297,13 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
         return conflicts;
     }, [weekDays, allAppointments, staffShifts, rooms]);
 
-    const handlePrevWeek = () => setCurrentDate(prev => new Date(prev.setDate(prev.getDate() - 7)));
-    const handleNextWeek = () => setCurrentDate(prev => new Date(prev.setDate(prev.getDate() + 7)));
-
     const handleCellClick = (staff: User, date: Date, shift?: StaffShift) => {
-        setModalContext({ staff, date: date.toISOString().split('T')[0], shift });
+        // Format date to YYYY-MM-DD in local timezone to avoid date shift
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
+        setModalContext({ staff, date: dateStr, shift });
     };
 
     // Handle staff selection for quick create
@@ -552,7 +564,9 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                     onClose={() => setModalContext(null)} 
                     onSave={handleSaveShift} 
                     onDelete={handleDeleteShift} 
-                    allAppointments={allAppointments} 
+                    allAppointments={allAppointments}
+                    allRooms={rooms}
+                    existingShifts={staffShifts}
                 />
             )}
             
@@ -564,7 +578,7 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                         className="flex items-center gap-2 bg-brand-primary text-white px-4 py-2 rounded-lg hover:bg-brand-primary-dark transition-colors"
                     >
                         <PlusIcon className="w-5 h-5" />
-                        <span>Tạo ca cố định</span>
+                        <span>Tạo ca làm</span>
                     </button>
                 </div>
             </div>
@@ -574,125 +588,55 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => !isCreatingShifts && setShowQuickCreate(false)}>
                     <div className="bg-white rounded-lg shadow-xl max-w-md w-full" onClick={e => e.stopPropagation()}>
                         <div className="p-6">
-                            <h2 className="text-2xl font-bold text-gray-800 mb-4">Tạo ca cố định</h2>
+                            <h2 className="text-2xl font-bold text-gray-800 mb-4">Tạo ca làm</h2>
                             <div className="space-y-4">
-                                {filteredStaff.length === 0 ? (
-                                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                                        <p className="text-sm text-yellow-800 mb-2">
-                                            <strong>Cảnh báo:</strong> Không có nhân viên nào phù hợp.
-                                        </p>
-                                        <div className="text-xs text-yellow-700 space-y-1 mt-2">
-                                            <p>• Tổng số users: {localUsers.length || allUsers?.length || 0}</p>
-                                            <p>• Số nhân viên (Staff): {staffMembers.length}</p>
-                                            <p>• Filter hiện tại: {filteredStaffId}</p>
-                                            {staffMembers.length > 0 && (
-                                                <>
-                                                    <p className="mt-2 font-semibold">Danh sách nhân viên có sẵn:</p>
-                                                    {staffMembers.map(s => (
-                                                        <p key={s.id}>- {s.name} (Role: {s.role})</p>
-                                                    ))}
-                                                </>
-                                            )}
-                                            {localUsers.length > 0 && (
-                                                <>
-                                                    <p className="mt-2 font-semibold">Tất cả users (để debug):</p>
-                                                    {localUsers.slice(0, 5).map(u => (
-                                                        <p key={u.id}>- {u.name} (Role: {u.role})</p>
-                                                    ))}
-                                                    {localUsers.length > 5 && <p>... và {localUsers.length - 5} users khác</p>}
-                                                </>
-                                            )}
-                                        </div>
-                                        <p className="text-xs text-yellow-600 mt-2">
-                                            Vui lòng kiểm tra: 1) Có nhân viên với role "Staff" không? (Không bao gồm Admin) 2) Filter có đúng không?
-                                        </p>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Tên ca</label>
+                                    <input
+                                        type="text"
+                                        placeholder="VD: Ca sáng, Ca chiều, Ca tối..."
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-brand-primary focus:border-brand-primary"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Giờ bắt đầu</label>
+                                        <input
+                                            type="time"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-brand-primary focus:border-brand-primary"
+                                        />
                                     </div>
-                                ) : (
-                                    <>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">Chọn loại ca</label>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={() => handleQuickCreateFixedShifts('morning', weekDays)}
-                                                    disabled={isCreatingShifts}
-                                                    className="flex-1 px-4 py-2 bg-blue-100 text-blue-800 rounded-lg hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    {isCreatingShifts ? 'Đang tạo...' : 'Ca sáng (8h-12h)'}
-                                                </button>
-                                                <button
-                                                    onClick={() => handleQuickCreateFixedShifts('afternoon', weekDays)}
-                                                    disabled={isCreatingShifts}
-                                                    className="flex-1 px-4 py-2 bg-orange-100 text-orange-800 rounded-lg hover:bg-orange-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    {isCreatingShifts ? 'Đang tạo...' : 'Ca chiều (14h-18h)'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Chọn nhân viên
-                                            </label>
-                                            <div className="border border-gray-200 rounded-lg p-3 max-h-48 overflow-y-auto bg-gray-50">
-                                                <div className="mb-2 pb-2 border-b border-gray-300">
-                                                    <label className="flex items-center gap-2 cursor-pointer">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={selectedStaffIds.size === filteredStaff.length && filteredStaff.length > 0}
-                                                            onChange={handleSelectAllStaff}
-                                                            className="w-4 h-4 text-brand-primary border-gray-300 rounded focus:ring-brand-primary"
-                                                        />
-                                                        <span className="text-sm font-semibold text-gray-700">
-                                                            Chọn tất cả ({filteredStaff.length})
-                                                        </span>
-                                                    </label>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    {filteredStaff.map(staff => (
-                                                        <label key={staff.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={selectedStaffIds.has(staff.id)}
-                                                                onChange={() => handleToggleStaffSelection(staff.id)}
-                                                                className="w-4 h-4 text-brand-primary border-gray-300 rounded focus:ring-brand-primary"
-                                                            />
-                                                            <span className="text-sm text-gray-700 flex items-center gap-2">
-                                                                <img 
-                                                                    src={staff.profilePictureUrl || '/default-avatar.png'} 
-                                                                    alt={staff.name}
-                                                                    className="w-6 h-6 rounded-full object-cover"
-                                                                    onError={(e) => {
-                                                                        (e.target as HTMLImageElement).src = '/default-avatar.png';
-                                                                    }}
-                                                                />
-                                                                {staff.name}
-                                                            </span>
-                                                        </label>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                                            <p className="text-sm text-gray-700">
-                                                <strong>Số nhân viên được chọn:</strong> {selectedStaffIds.size} / {filteredStaff.length}
-                                            </p>
-                                            <p className="text-xs text-gray-600 mt-1">
-                                                <strong>Tuần:</strong> {weekDays[0].toLocaleDateString('vi-VN')} - {weekDays[6].toLocaleDateString('vi-VN')}
-                                            </p>
-                                            <p className="text-xs text-gray-600">
-                                                <strong>Số ca sẽ tạo:</strong> {selectedStaffIds.size * 7} ca (nếu chưa tồn tại)
-                                            </p>
-                                        </div>
-                                    </>
-                                )}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Giờ kết thúc</label>
+                                        <input
+                                            type="time"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-brand-primary focus:border-brand-primary"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                    <p className="text-sm text-gray-700">
+                                        <strong>Ví dụ:</strong>
+                                    </p>
+                                    <p className="text-xs text-gray-600 mt-1">• Ca sáng: 08:00 - 12:00</p>
+                                    <p className="text-xs text-gray-600">• Ca chiều: 14:00 - 18:00</p>
+                                    <p className="text-xs text-gray-600">• Ca tối: 18:00 - 22:00</p>
+                                </div>
                             </div>
                         </div>
-                        <div className="bg-gray-50 px-6 py-4 flex justify-end rounded-b-lg">
+                        <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
                             <button
                                 onClick={() => setShowQuickCreate(false)}
                                 disabled={isCreatingShifts}
                                 className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                {isCreatingShifts ? 'Đang tạo...' : 'Đóng'}
+                                Hủy
+                            </button>
+                            <button
+                                disabled={isCreatingShifts}
+                                className="px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isCreatingShifts ? 'Đang tạo...' : 'Tạo ca'}
                             </button>
                         </div>
                     </div>
@@ -789,11 +733,9 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                 </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <StatCard title="Tổng số ca làm hôm nay" value={dashboardStats.totalShiftsToday} icon={<CalendarIcon className="w-6 h-6"/>} />
                 <StatCard title="Số khách đã phục vụ" value={dashboardStats.customersServedToday} icon={<UsersIcon className="w-6 h-6"/>} />
-                <StatCard title="Hiệu suất" value={dashboardStats.performance} icon={<CheckCircleIcon className="w-6 h-6"/>} />
-                <StatCard title="Mức độ bận rộn" value={dashboardStats.busyness} icon={<ChartBarIcon className="w-6 h-6"/>} />
             </div>
 
             <div className="mb-6 flex flex-col md:flex-row gap-4 bg-white p-4 rounded-lg shadow-sm">
@@ -811,15 +753,29 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
             
             <div className="bg-white rounded-lg shadow-md overflow-x-auto">
                 <div className="p-4 flex justify-between items-center border-b">
-                    <button onClick={handlePrevWeek} className="p-2 rounded-full hover:bg-gray-100">
-                        <ChevronLeftIcon />
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <label className="text-sm font-medium text-gray-700">Từ ngày:</label>
+                        <input
+                            type="date"
+                            value={startDate.toISOString().split('T')[0]}
+                            onChange={(e) => setStartDate(new Date(e.target.value))}
+                            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-brand-primary focus:border-brand-primary"
+                        />
+                    </div>
                     <h2 className="text-lg font-semibold">
                         {weekDays[0].toLocaleDateString('vi-VN')} - {weekDays[6].toLocaleDateString('vi-VN')}
                     </h2>
-                    <button onClick={handleNextWeek} className="p-2 rounded-full hover:bg-gray-100">
-                        <ChevronRightIcon />
-                    </button>
+                    <div className="flex gap-2">
+                        <button onClick={() => setStartDate(prev => { const d = new Date(prev); d.setDate(d.getDate() - 7); return d; })} className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-1">
+                            <ChevronLeftIcon className="w-4 h-4" /> Tuần trước
+                        </button>
+                        <button onClick={() => setStartDate(new Date())} className="px-3 py-2 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg">
+                            Hôm nay
+                        </button>
+                        <button onClick={() => setStartDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + 7); return d; })} className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-1">
+                            Tuần sau <ChevronRightIcon className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
                 <table className="w-full">
                     <thead>
@@ -905,13 +861,7 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                 </table>
             </div>
 
-            {/* Available Slots Info */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-blue-800 mb-2">Slot trống có sẵn</h3>
-                <p className="text-sm text-blue-600">
-                    Tổng số slot trống: <strong>{calculateAvailableSlots.length}</strong> (Nhân viên có ca + Phòng trống)
-                </p>
-            </div>
+
         </div>
     );
 };

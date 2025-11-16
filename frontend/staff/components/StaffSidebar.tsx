@@ -25,24 +25,7 @@ const getNavGroups = (staffRole: StaffRole | 'Admin') => {
         { name: 'Tổng quan', path: '/staff/dashboard', icon: <DashboardIcon className="w-5 h-5" />, group: 'Chung' },
         { name: 'Lịch làm việc', path: '/staff/schedule', icon: <CalendarIcon className="w-5 h-5" />, group: 'Chung' },
         { name: 'Lịch hẹn cá nhân', path: '/staff/appointments', icon: <AppointmentsIcon className="w-5 h-5" />, group: 'Chung' },
-        // FIX: Replaced ClipboardDocumentListIcon with ClipboardListIcon as it's available in shared/icons.tsx.
-        { name: 'Công việc của tôi', path: '/staff/my-tasks', icon: <ClipboardListIcon className="w-5 h-5" />, group: 'Chung' },
-        // FIX: Replaced NotificationsIcon with BellIcon to match available icons.
-        { name: 'Thông báo & Tin nội bộ', path: '/staff/notifications', icon: <BellIcon className="w-5 h-5" />, group: 'Chung' },
-
-        // Group: Nghiệp vụ
-        { name: 'Liệu trình khách hàng', path: '/staff/treatment-progress', icon: <TreatmentIcon className="w-5 h-5" />, roles: ['Technician', 'Manager', 'Admin'], group: 'Nghiệp vụ' },
-        { name: 'Khách hàng của tôi', path: '/staff/my-clients', icon: <UsersIcon className="w-5 h-5" />, group: 'Nghiệp vụ' },
-        { name: 'Tư vấn KH', path: '/staff/customer-interaction', icon: <CustomerInteractionIcon className="w-5 h-5" />, group: 'Nghiệp vụ' },
-        { name: 'Bán thêm sản phẩm', path: '/staff/upselling', icon: <UpsellingIcon className="w-5 h-5" />, roles: ['Technician', 'Manager', 'Admin'], group: 'Nghiệp vụ' },
-
-        // Group: Hiệu suất
-        { name: 'Điểm thưởng cá nhân', path: '/staff/rewards', icon: <RewardsIcon className="w-5 h-5" />, roles: ['Technician', 'Manager', 'Admin'], group: 'Hiệu suất' },
-        { name: 'Thống kê cá nhân', path: '/staff/personal-reports', icon: <ReportsIcon className="w-5 h-5" />, roles: ['Technician', 'Manager', 'Admin'], group: 'Hiệu suất' },
-        { name: 'Lịch sử giao dịch', path: '/staff/transaction-history', icon: <TransactionHistoryIcon className="w-5 h-5" />, roles: ['Technician', 'Manager', 'Admin'], group: 'Hiệu suất' },
-
-        // Group: Tài khoản
-        { name: 'Hồ sơ cá nhân', path: '/staff/profile', icon: <ProfileIcon className="w-5 h-5" />, group: 'Tài khoản' },
+        { name: 'Hồ sơ của tôi', path: '/staff/profile', icon: <ProfileIcon className="w-5 h-5" />, group: 'Chung' },
     ];
 
     const visibleLinks = allLinks.filter(link => !link.roles || link.roles.includes(staffRole));
@@ -62,7 +45,7 @@ const StaffSidebar: React.FC<StaffSidebarProps> = ({ isCollapsed, toggleSidebar,
     // Default to 'Technician' for all Staff since we can't determine their specific role
     const role: StaffRole | 'Admin' = currentUser.role === 'Admin' ? 'Admin' : 'Technician';
     const navGroups = getNavGroups(role);
-    const [openGroups, setOpenGroups] = useState<string[]>(['Chung', 'Nghiệp vụ', 'Hiệu suất', 'Tài khoản']);
+    const [openGroups, setOpenGroups] = useState<string[]>(['Chung']);
 
     const toggleGroup = (title: string) => {
         setOpenGroups(prev =>

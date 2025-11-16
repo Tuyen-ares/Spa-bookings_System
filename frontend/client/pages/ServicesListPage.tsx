@@ -110,6 +110,25 @@ export const ServicesListPage: React.FC<ServicesListPageProps> = ({ allServices 
         };
 
         fetchInitialData();
+    
+        // Re-fetch when tab becomes visible or window regains focus (helps reflect admin changes without full reload)
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'visible') fetchInitialData();
+        };
+        const onFocus = () => fetchInitialData();
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        window.addEventListener('focus', onFocus);
+
+        // Polling: refresh every 30 seconds while page is visible
+        const interval = setInterval(() => {
+            if (document.visibilityState === 'visible') fetchInitialData();
+        }, 30000);
+
+        return () => {
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+            window.removeEventListener('focus', onFocus);
+            clearInterval(interval);
+        };
     }, [location.pathname]); // Re-fetch when navigating to this page
 
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);

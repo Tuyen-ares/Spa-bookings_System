@@ -69,6 +69,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     const [showAddModal, setShowAddModal] = useState(false);
     const [treatmentCourses, setTreatmentCourses] = useState<TreatmentCourse[]>([]);
     const [staffShifts, setStaffShifts] = useState<StaffShift[]>([]);
+    const [allRooms, setAllRooms] = useState<any[]>([]);
     const [newAppointmentForm, setNewAppointmentForm] = useState<{
         customerSearch: string;
         selectedCustomerId: string | null;
@@ -81,6 +82,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         serviceId: string;
         treatmentCourseId: string;
         therapistId: string;
+        roomId: string;
         notes: string;
     }>({
         customerSearch: '',
@@ -94,6 +96,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         serviceId: '',
         treatmentCourseId: '',
         therapistId: '',
+        roomId: '',
         notes: '',
     });
 
@@ -104,6 +107,21 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     // State for dropdown visibility
     const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
     const [showQuickAddCustomer, setShowQuickAddCustomer] = useState(false);
+
+    // State for expanded dates in calendar
+    const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+
+    const toggleDateExpand = (dateKey: string) => {
+        setExpandedDates(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(dateKey)) {
+                newSet.delete(dateKey);
+            } else {
+                newSet.add(dateKey);
+            }
+            return newSet;
+        });
+    };
 
     useEffect(() => {
         setAppointments(initialAppointments);
@@ -141,6 +159,82 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         fetchAppointments();
     }, []);
 
+    // Handle confirm appointment
+    const handleConfirm = async (appointment: Appointment) => {
+        if (!confirm(`Xác nhận lịch hẹn của ${appointment.userName || 'khách hàng'}?`)) return;
+        
+        try {
+            setAppointments(prev => 
+                prev.map(apt => 
+                    apt.id === appointment.id 
+                        ? { ...apt, status: 'in-progress' } 
+                        : apt
+                )
+            );
+            
+            await apiService.updateAppointment(appointment.id, { 
+                status: 'in-progress',
+            });
+            
+            alert('Đã xác nhận lịch hẹn thành công!');
+            
+            setTimeout(() => {
+                const fetchLatest = async () => {
+                    const data = await apiService.getAppointments();
+                    setAppointments(data);
+                };
+                fetchLatest();
+            }, 300);
+        } catch (error) {
+            console.error('Error confirming appointment:', error);
+            alert('Có lỗi xảy ra khi xác nhận lịch hẹn');
+        }
+    };
+
+    // Handle reject appointment
+    const handleReject = (appointment: Appointment) => {
+        setAppointmentToCancel(appointment);
+    };
+
+    const handleRejectConfirm = async () => {
+        if (!appointmentToCancel) return;
+        if (!rejectionReason.trim()) {
+            alert('Vui lòng nhập lý do hủy');
+            return;
+        }
+
+        try {
+            setAppointments(prev => 
+                prev.map(apt => 
+                    apt.id === appointmentToCancel.id 
+                        ? { ...apt, status: 'cancelled', rejectionReason: rejectionReason } 
+                        : apt
+                )
+            );
+            
+            await apiService.updateAppointment(appointmentToCancel.id, { 
+                status: 'cancelled',
+                rejectionReason: rejectionReason,
+            });
+            
+            setAppointmentToCancel(null);
+            setRejectionReason('');
+            
+            alert('Đã hủy lịch hẹn thành công!');
+            
+            setTimeout(() => {
+                const fetchLatest = async () => {
+                    const data = await apiService.getAppointments();
+                    setAppointments(data);
+                };
+                fetchLatest();
+            }, 300);
+        } catch (error) {
+            console.error('Error rejecting appointment:', error);
+            alert('Có lỗi xảy ra khi hủy lịch hẹn');
+        }
+    };
+
     // Fetch treatment courses and staff shifts when modal opens
     useEffect(() => {
         if (showAddModal) {
@@ -152,8 +246,9 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                     const fetchPromises = [
                         apiService.getUsers(),
                         apiService.getServices(),
-                        apiService.getTreatmentCourses(true),
+                        apiService.getTreatmentCourses({}),
                         apiService.getAllStaffShifts(),
+                        apiService.getRooms(),
                     ];
 
                     const results = await Promise.allSettled(fetchPromises);
@@ -199,6 +294,15 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                         console.error('Error fetching staff shifts:', shiftsResult.reason);
                         setStaffShifts([]);
                     }
+
+                    // Handle rooms
+                    const roomsResult = results[4];
+                    if (roomsResult.status === 'fulfilled' && Array.isArray(roomsResult.value)) {
+                        setAllRooms(roomsResult.value as any[]);
+                    } else if (roomsResult.status === 'rejected') {
+                        console.error('Error fetching rooms:', roomsResult.reason);
+                        setAllRooms([]);
+                    }
                 } catch (err: any) {
                     console.error('Error fetching modal data:', err);
                     // Don't show alert here, let individual fetch errors be logged
@@ -229,7 +333,23 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             }
             const updatedAppointment = await apiService.updateAppointment(appointmentToUpdate.id, payload);
 
+            // Update local state immediately for better UX
             setAppointments(prev => prev.map(app => app.id === updatedAppointment.id ? updatedAppointment : app));
+            
+            // Reload appointments from server to ensure data is fresh
+            setTimeout(async () => {
+                try {
+                    const freshData = await apiService.getAppointments();
+                    setAppointments(freshData);
+                    // Emit event to update App.tsx state
+                    window.dispatchEvent(new CustomEvent('appointments-updated', { 
+                        detail: { appointments: freshData } 
+                    }));
+                } catch (reloadErr) {
+                    console.error('Error reloading appointments:', reloadErr);
+                }
+            }, 300);
+            
             setSelectedAppointment(null);
             setAppointmentToCancel(null);
             setRejectionReason('');
@@ -242,6 +362,34 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     const handleConfirmCancellation = () => {
         if (appointmentToCancel) {
             handleAction(appointmentToCancel, 'cancelled', rejectionReason);
+        }
+    };
+
+    const handleConfirmPayment = async (appointment: Appointment) => {
+        try {
+            const updatedAppointment = await apiService.updateAppointment(appointment.id, { 
+                paymentStatus: 'Paid' 
+            });
+            
+            // Update local state
+            setAppointments(prev => prev.map(app => 
+                app.id === updatedAppointment.id ? updatedAppointment : app
+            ));
+            
+            // Update selected appointment if it's open
+            if (selectedAppointment?.id === appointment.id) {
+                setSelectedAppointment(updatedAppointment);
+            }
+            
+            // Emit event to update App.tsx state
+            window.dispatchEvent(new CustomEvent('appointments-updated', { 
+                detail: { appointments: appointments.map(a => a.id === updatedAppointment.id ? updatedAppointment : a) } 
+            }));
+            
+            alert('Đã xác nhận thanh toán thành công!');
+        } catch (error) {
+            console.error('Error confirming payment:', error);
+            alert('Có lỗi xảy ra khi xác nhận thanh toán');
         }
     };
 
@@ -364,12 +512,11 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 c.id === course.id ? { ...c, quantity: c.quantity + 1 } : c
             ));
         } else {
-            // Get service price for treatment course
-            const relatedService = localServices.find(s => s.id === course.serviceId);
+            // Use course price directly
             setSelectedTreatmentCourses(prev => [...prev, {
                 id: course.id,
-                name: course.serviceName,
-                price: relatedService?.price || 0,
+                name: course.name,
+                price: course.price || 0,
                 quantity: 1,
             }]);
         }
@@ -417,13 +564,13 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         // Get staff IDs from shifts
         const staffIds = new Set(shiftsOnDate.map(s => s.staffId));
 
-        // Return staff users
+        // Return ONLY staff users who have shifts on this date (removed the check for currently selected therapist)
         return localUsers.filter(u =>
             u.role === 'Staff' &&
             u.status === 'Active' &&
-            (staffIds.has(u.id) || newAppointmentForm.therapistId === u.id)
+            staffIds.has(u.id)
         );
-    }, [newAppointmentForm.date, newAppointmentForm.shiftId, staffShifts, localUsers, newAppointmentForm.therapistId]);
+    }, [newAppointmentForm.date, newAppointmentForm.shiftId, staffShifts, localUsers]);
 
     // Get available time slots from staff shifts
     const availableTimeSlots = useMemo(() => {
@@ -484,6 +631,11 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 return;
             }
 
+            if (!newAppointmentForm.roomId) {
+                alert('Vui lòng chọn phòng');
+                return;
+            }
+
             const selectedDate = parseDDMMYYYYToYYYYMMDD(newAppointmentForm.date);
             if (!selectedDate) {
                 alert('Ngày không hợp lệ');
@@ -529,6 +681,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                             therapist: selectedTherapist.name,
                             notesForTherapist: newAppointmentForm.notes || '',
                             status: 'upcoming' as const,
+                            roomId: newAppointmentForm.roomId || undefined,
                         });
                     }
                 }
@@ -538,6 +691,11 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             for (const courseItem of selectedTreatmentCourses) {
                 const course = treatmentCourses.find(c => c.id === courseItem.id);
                 if (course) {
+                    // Use first service from the course services array
+                    const firstService = course.services && course.services.length > 0 
+                        ? course.services[0] 
+                        : null;
+                    
                     for (let i = 0; i < courseItem.quantity; i++) {
                         appointmentsToCreate.push({
                             userId: newAppointmentForm.selectedCustomerId || '',
@@ -546,13 +704,14 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                             email: newAppointmentForm.customerEmail || undefined,
                             date: selectedDate,
                             time: appointmentTime,
-                            serviceId: course.serviceId,
-                            serviceName: course.serviceName,
+                            serviceId: firstService?.serviceId || '',
+                            serviceName: firstService?.serviceName || course.name,
                             therapistId: newAppointmentForm.therapistId,
                             therapist: selectedTherapist.name,
                             notesForTherapist: newAppointmentForm.notes || '',
                             status: 'upcoming' as const,
                             treatmentCourseId: course.id,
+                            roomId: newAppointmentForm.roomId || undefined,
                         });
                     }
                 }
@@ -584,6 +743,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 serviceId: '',
                 treatmentCourseId: '',
                 therapistId: '',
+                roomId: '',
                 notes: '',
             });
             setSelectedServices([]);
@@ -679,6 +839,8 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                     const dateKey = date.toISOString().split('T')[0];
                     const dayAppointments = appointmentsByDate.get(dateKey) || [];
                     const isToday = date.toDateString() === new Date().toDateString();
+                    const isExpanded = expandedDates.has(dateKey);
+                    const maxDisplay = isExpanded ? dayAppointments.length : 3;
 
                     return (
                         <div
@@ -690,7 +852,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                 {date.getDate()}
                             </div>
                             <div className="space-y-1">
-                                {dayAppointments.slice(0, 3).map(app => {
+                                {dayAppointments.slice(0, maxDisplay).map(app => {
                                     const client = localUsers.find(u => u.id === app.userId);
                                     return (
                                         <div
@@ -706,9 +868,15 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                     );
                                 })}
                                 {dayAppointments.length > 3 && (
-                                    <div className="text-xs text-gray-500 font-semibold text-center">
-                                        +{dayAppointments.length - 3} lịch khác
-                                    </div>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleDateExpand(dateKey);
+                                        }}
+                                        className="text-xs text-blue-600 hover:text-blue-800 font-semibold text-center w-full py-1 hover:bg-blue-50 rounded transition-colors"
+                                    >
+                                        {isExpanded ? 'Thu gọn' : `+${dayAppointments.length - 3} lịch khác`}
+                                    </button>
                                 )}
                             </div>
                         </div>
@@ -1193,6 +1361,9 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                         <p><strong>Thời gian:</strong> {selectedAppointment.time}, {new Date(selectedAppointment.date).toLocaleDateString('vi-VN')}</p>
                                         <p><strong>Kỹ thuật viên:</strong> {selectedAppointment.therapist || 'Chưa phân công'}</p>
                                         <p><strong>Trạng thái:</strong> <span className={`font-semibold ${STATUS_CONFIG[selectedAppointment.status].color}`}>{STATUS_CONFIG[selectedAppointment.status].text}</span></p>
+                                        <p><strong>Thanh toán:</strong> <span className={`font-semibold ${selectedAppointment.paymentStatus === 'Paid' ? 'text-green-600' : 'text-yellow-600'}`}>
+                                            {selectedAppointment.paymentStatus === 'Paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                                        </span></p>
                                         {selectedAppointment.notesForTherapist && (
                                             <p><strong>Ghi chú:</strong> {selectedAppointment.notesForTherapist}</p>
                                         )}
@@ -1201,6 +1372,14 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                             })()}
                         </div>
                         <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
+                            {selectedAppointment.paymentStatus === 'Unpaid' && (
+                                <button 
+                                    onClick={() => handleConfirmPayment(selectedAppointment)} 
+                                    className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm font-semibold"
+                                >
+                                    Xác nhận thanh toán
+                                </button>
+                            )}
                             {selectedAppointment.status === 'pending' && (
                                 <>
                                     <button onClick={() => handleAction(selectedAppointment, 'upcoming')} className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 text-sm font-semibold">Xác nhận</button>
@@ -1209,7 +1388,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                             )}
                             {selectedAppointment.status === 'upcoming' && (
                                 <>
-                                    <button onClick={() => handleAction(selectedAppointment, 'in-progress')} className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm font-semibold">Bắt đầu</button>
+                                    <button onClick={() => handleAction(selectedAppointment, 'completed')} className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 text-sm font-semibold">Hoàn thành</button>
                                     <button onClick={() => { setAppointmentToCancel(selectedAppointment); setSelectedAppointment(null); }} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold">Hủy lịch</button>
                                 </>
                             )}
@@ -1640,7 +1819,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                         <option value="" disabled>Đang tải liệu trình...</option>
                                                     ) : treatmentCourses.length > 0 ? (
                                                         treatmentCourses.map(course => (
-                                                            <option key={course.id} value={course.id}>{course.serviceName}</option>
+                                                            <option key={course.id} value={course.id}>{course.name}</option>
                                                         ))
                                                     ) : (
                                                         <option value="" disabled>Không có liệu trình</option>
@@ -1690,6 +1869,29 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                         <option value="" disabled>Không có nhân viên</option>
                                                     )
                                                 )}
+                                            </select>
+                                            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                                                <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Room Selection */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Chọn phòng <span className="text-red-500">*</span>
+                                        </label>
+                                        <div className="relative">
+                                            <select
+                                                value={newAppointmentForm.roomId}
+                                                onChange={(e) => setNewAppointmentForm(prev => ({ ...prev, roomId: e.target.value }))}
+                                                className="w-full p-2 pr-8 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white cursor-pointer"
+                                                required
+                                            >
+                                                <option value="">-- Chọn phòng --</option>
+                                                {allRooms.filter(r => r.isActive).map(room => (
+                                                    <option key={room.id} value={room.id}>{room.name}</option>
+                                                ))}
                                             </select>
                                             <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
                                                 <ChevronDownIcon className="w-5 h-5 text-gray-400" />
@@ -1845,6 +2047,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                         serviceId: '',
                                         treatmentCourseId: '',
                                         therapistId: '',
+                                        roomId: '',
                                         notes: '',
                                     });
                                 }}
@@ -2022,6 +2225,47 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                     )}
                 </div>
             </div>
+
+            {/* Rejection Modal */}
+            {appointmentToCancel && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                        <h2 className="text-xl font-bold text-gray-800 mb-4">Hủy lịch hẹn</h2>
+                        <p className="text-gray-600 mb-4">
+                            Bạn có chắc muốn hủy lịch hẹn của <strong>{appointmentToCancel.userName}</strong>?
+                        </p>
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Lý do hủy <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                                value={rejectionReason}
+                                onChange={(e) => setRejectionReason(e.target.value)}
+                                rows={3}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+                                placeholder="Nhập lý do hủy lịch..."
+                            />
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => {
+                                    setAppointmentToCancel(null);
+                                    setRejectionReason('');
+                                }}
+                                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                            >
+                                Đóng
+                            </button>
+                            <button
+                                onClick={handleRejectConfirm}
+                                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                            >
+                                Xác nhận hủy
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

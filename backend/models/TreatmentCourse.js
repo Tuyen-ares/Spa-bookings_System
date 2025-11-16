@@ -8,17 +8,43 @@ module.exports = (sequelize, DataTypes) => {
       primaryKey: true,
       allowNull: false,
     },
-    serviceId: {
+    templateId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'ID của template liệu trình (nếu course này được tạo từ template)',
+    },
+    name: {
       type: DataTypes.STRING,
       allowNull: false,
+      comment: 'Tên gói liệu trình (VD: Liệu trình làm sáng da)',
+    },
+    price: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      comment: 'Giá của gói liệu trình',
+    },
+    packageId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      references: {
+        model: 'treatment_packages',
+        key: 'id',
+      },
+      comment: 'ID của gói liệu trình mẫu (nếu khách đăng ký từ package)',
+    },
+    serviceId: {
+      type: DataTypes.STRING,
+      allowNull: true, // Changed to nullable for backward compatibility
       references: {
         model: 'services',
         key: 'id',
       },
+      comment: 'DEPRECATED: Use treatment_course_services table instead',
     },
     serviceName: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true, // Changed to nullable
+      comment: 'DEPRECATED: Use treatment_course_services table instead',
     },
     totalSessions: {
       type: DataTypes.INTEGER,
@@ -90,9 +116,10 @@ module.exports = (sequelize, DataTypes) => {
       onDelete: 'SET NULL',
     },
     status: {
-      type: DataTypes.ENUM('active', 'completed', 'paused'),
+      type: DataTypes.ENUM('draft', 'active', 'paused', 'completed', 'expired', 'cancelled'),
       allowNull: false,
       defaultValue: 'active',
+      comment: 'Trạng thái liệu trình',
     },
     expiryDate: {
       type: DataTypes.DATEONLY,
@@ -104,9 +131,94 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       comment: 'Ngày hẹn tiếp theo (để nhắc nhở)',
     },
+    // Phase 1 additions
+    progressPercentage: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+      comment: 'Phần trăm hoàn thành (0-100), tính từ sessions completed',
+    },
+    completedSessions: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+      comment: 'Số buổi đã hoàn thành',
+    },
+    lastCompletedDate: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Ngày hoàn thành buổi cuối cùng',
+    },
+    treatmentGoals: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: 'Mục tiêu điều trị (VD: Giảm mụn 80%, se khít lỗ chân lông)',
+    },
+    initialSkinCondition: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: 'Tình trạng da ban đầu',
+    },
+    consultantId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'ID chuyên viên tư vấn',
+    },
+    consultantName: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'Tên chuyên viên tư vấn',
+    },
+    isPaused: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: 'Liệu trình có đang tạm dừng không',
+    },
+    pauseReason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: 'Lý do tạm dừng',
+    },
+    pausedDate: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Ngày bắt đầu tạm dừng',
+    },
+    resumedDate: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Ngày tiếp tục sau khi tạm dừng',
+    },
+    startDate: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      comment: 'Ngày bắt đầu liệu trình',
+    },
+    actualCompletionDate: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Ngày hoàn thành thực tế',
+    },
+    remindersSent: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: [],
+      comment: 'Lịch sử các reminder đã gửi [{type, date, status}]',
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+    },
   }, {
     tableName: 'treatment_courses',
-    timestamps: false,
+    timestamps: true,
   });
 
   return TreatmentCourse;

@@ -1,7 +1,4 @@
 
-
-
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
 
@@ -16,19 +13,18 @@ import type { User, Wallet, Tier, Promotion, Service, Appointment, Review, Treat
 // Client Pages
 import { HomePage } from './client/pages/HomePage';
 import { ServicesListPage } from './client/pages/ServicesListPage';
-import TreatmentCoursesPage from './client/pages/TreatmentCoursesPage';
-import TreatmentCourseDetailPage from './client/pages/TreatmentCourseDetailPage';
+import TreatmentPackagesPage from './client/pages/TreatmentPackagesPage';
+import TreatmentPackageDetailPage from './client/pages/TreatmentPackageDetailPage';
 import ServiceDetailPage from './client/pages/ServiceDetailPage';
 import { BookingPage } from './client/pages/BookingPage';
 import { AppointmentsPage } from './client/pages/AppointmentsPage';
+import TreatmentCourseDetailPage from './client/pages/TreatmentCourseDetailPage';
 import ProfilePage from './client/pages/ProfilePage';
 import LoginPage from './client/pages/LoginPage';
 import RegisterPage from './client/pages/RegisterPage';
-import QAPage from './client/pages/QAPage';
-import ContactPage from './client/pages/ContactPage';
 import ForgotPasswordPage from './client/pages/ForgotPasswordPage';
 import { PromotionsPage } from './client/pages/PromotionsPage';
-import PolicyPage from './client/pages/PolicyPage'; // Import the new PolicyPage
+import PolicyPage from './client/pages/PolicyPage';
 import PaymentSuccessPage from './client/pages/PaymentSuccessPage';
 import PaymentFailedPage from './client/pages/PaymentFailedPage';
 
@@ -41,30 +37,19 @@ import AdminAppointmentsPage from './admin/pages/AppointmentsPage';
 import PaymentsPage from './admin/pages/PaymentsPage';
 import StaffPage from './admin/pages/StaffPage';
 import { AdminPromotionsPage } from './admin/pages/PromotionsPage';
-import { LoyaltyShopPage } from './admin/pages/LoyaltyShopPage';
-import PlaceholderPage from './admin/pages/PlaceholderPage';
-import ReportsPage from './admin/pages/ReportsPage';
-import { MarketingPage } from './admin/pages/MarketingPage';
-import SettingsPage from './admin/pages/SettingsPage';
-import ContentPage from './admin/pages/ContentPage'; // Import the new ContentPage
 import JobManagementPage from './admin/pages/JobManagementPage'; // New: Job Management
 import RoomsPage from './admin/pages/RoomsPage'; // New: Rooms Management
+import AdminTreatmentCoursesPage from './admin/pages/TreatmentCoursesPage'; // New: Treatment Courses
+import AdminTreatmentCourseDetailPage from './admin/pages/AdminTreatmentCourseDetailPage';
+import AdminProfilePage from './admin/pages/AdminProfilePage';
+import ChangePasswordPage from './admin/pages/ChangePasswordPage';
 
 // Staff Pages
 import StaffLayout from './staff/components/StaffLayout';
 import StaffDashboardPage from './staff/pages/StaffDashboardPage';
 import StaffSchedulePage from './staff/pages/StaffSchedulePage';
 import { StaffAppointmentsPage } from './staff/pages/StaffAppointmentsPage';
-import StaffTreatmentProgressPage from './staff/pages/StaffTreatmentProgressPage';
-import StaffCustomerInteractionPage from './staff/pages/StaffCustomerInteractionPage';
-import StaffRewardsPage from './staff/pages/StaffRewardsPage';
-import { StaffUpsellingPage } from './staff/pages/StaffUpsellingPage';
-import StaffPersonalReportsPage from './staff/pages/StaffPersonalReportsPage';
-import { StaffNotificationsPage } from './staff/pages/StaffNotificationsPage';
 import StaffProfilePage from './staff/pages/StaffProfilePage';
-import { StaffTransactionHistoryPage } from './staff/pages/StaffTransactionHistoryPage';
-import MyTasksPage from './staff/pages/MyTasksPage'; // New: Staff Tasks
-import MyClientsPage from './staff/pages/MyClientsPage'; // New: Staff Clients page
 
 
 const AppContent: React.FC = () => {
@@ -82,7 +67,6 @@ const AppContent: React.FC = () => {
     });
 
     const [wallet, setWallet] = useState<Wallet | null>(null);
-    const [userVouchers, setUserVouchers] = useState<Promotion[]>([]);
 
     // Global data states
     const [allTiers, setAllTiers] = useState<Tier[]>([]);
@@ -111,7 +95,7 @@ const AppContent: React.FC = () => {
                 apiService.getAppointments(),
                 apiService.getReviews({}),
                 apiService.getPromotions(),
-                apiService.getTreatmentCourses(false), // Get all courses (including client-specific) for App.tsx
+                apiService.getTreatmentCourses({}), // Get all courses (including client-specific) for App.tsx
                 apiService.getInternalNotifications('all'), // Fetch for all initially
                 apiService.getInternalNews(),
                 apiService.getPayments(),
@@ -156,6 +140,22 @@ const AppContent: React.FC = () => {
         fetchData();
     }, [fetchData]);
 
+    // Listen for refresh-treatment-courses event (e.g., after registration)
+    useEffect(() => {
+        const handleRefreshTreatmentCourses = async () => {
+            try {
+                console.log('Refreshing treatment courses after registration...');
+                const courses = await apiService.getTreatmentCourses({});
+                setAllTreatmentCourses(courses);
+                console.log('Treatment courses refreshed:', courses.length);
+            } catch (error) {
+                console.error('Failed to refresh treatment courses:', error);
+            }
+        };
+        window.addEventListener('refresh-treatment-courses', handleRefreshTreatmentCourses);
+        return () => window.removeEventListener('refresh-treatment-courses', handleRefreshTreatmentCourses);
+    }, []);
+
     // Listen for refresh-appointments event (e.g., after payment success)
     useEffect(() => {
         const handleRefreshAppointments = async () => {
@@ -169,9 +169,19 @@ const AppContent: React.FC = () => {
             }
         };
 
+        const handleAppointmentsUpdated = (event: any) => {
+            console.log('Received appointments-updated event:', event.detail);
+            if (event.detail?.appointments) {
+                setAllAppointments(event.detail.appointments);
+            }
+        };
+
         window.addEventListener('refresh-appointments', handleRefreshAppointments);
+        window.addEventListener('appointments-updated', handleAppointmentsUpdated);
+        
         return () => {
             window.removeEventListener('refresh-appointments', handleRefreshAppointments);
+            window.removeEventListener('appointments-updated', handleAppointmentsUpdated);
         };
     }, []);
 
@@ -190,7 +200,6 @@ const AppContent: React.FC = () => {
                 }
             } else {
                 setWallet(null);
-                setUserVouchers([]);
             }
         };
         fetchUserData();
@@ -214,22 +223,8 @@ const AppContent: React.FC = () => {
             // Check if redirectPath is for a different role (prevent staff from accessing admin routes)
             if (redirectPath) {
                 const isAdminRoute = redirectPath.startsWith('/admin');
-                const isStaffRoute = redirectPath.startsWith('/staff');
-                
                 // Only redirect if the route matches the user's role
                 if (isAdminRoute && normalizedRole !== 'admin') {
-                    sessionStorage.removeItem('redirectPath');
-                    // Redirect based on role instead
-                    if (normalizedRole === 'staff') {
-                        console.log('Redirecting staff from admin route to /staff');
-                        navigate('/staff', { replace: true });
-                    } else {
-                        navigate('/', { replace: true });
-                    }
-                    return;
-                }
-                
-                if (isStaffRoute && !['admin', 'staff'].includes(normalizedRole)) {
                     sessionStorage.removeItem('redirectPath');
                     navigate('/', { replace: true });
                     return;
@@ -255,11 +250,11 @@ const AppContent: React.FC = () => {
             }
             
             // Define public routes that all users can access
-            const isPublicRoute = ['/', '/services', '/treatment-courses', '/contact', '/qa', '/policy'].includes(location.pathname) || 
+            const isPublicRoute = ['/', '/services', '/promotions', '/treatment-packages', '/policy'].includes(location.pathname) || 
                                  location.pathname.startsWith('/service/') || 
-                                 location.pathname.startsWith('/treatment-course/');
+                                 location.pathname.startsWith('/treatment-packages/');
             
-            // CRITICAL: Redirect staff to /staff/dashboard if they're on ANY client route (except public routes)
+            // Redirect staff to /staff/dashboard if they're on client routes (except public routes)
             if (normalizedRole === 'staff') {
                 if (!location.pathname.startsWith('/staff') && !location.pathname.startsWith('/admin')) {
                     if (!isPublicRoute) {
@@ -270,13 +265,12 @@ const AppContent: React.FC = () => {
                 }
             }
             
-            // Redirect admin to /admin if they're on client protected routes
+            // CRITICAL: Redirect admin to /admin if they're on ANY route outside admin panel
             if (normalizedRole === 'admin') {
                 if (!location.pathname.startsWith('/admin')) {
-                    if (!isPublicRoute) {
-                        navigate('/admin', { replace: true });
-                        return;
-                    }
+                    console.log('Admin user on non-admin route, redirecting to /admin:', location.pathname);
+                    navigate('/admin', { replace: true });
+                    return;
                 }
             }
 
@@ -366,12 +360,10 @@ const AppContent: React.FC = () => {
                     {/* Client Routes */}
                     <Route path="/" element={<HomePage allServices={allServices} allPromotions={allPromotions} isLoading={isLoading} />} />
                     <Route path="/services" element={<ServicesListPage allServices={allServices} />} />
-                    <Route path="/treatment-courses/:id" element={<TreatmentCourseDetailPage currentUser={currentUser} allTreatmentCourses={allTreatmentCourses} />} />
-                    <Route path="/treatment-courses" element={<TreatmentCoursesPage currentUser={currentUser} allTreatmentCourses={allTreatmentCourses} />} />
                     <Route path="/service/:id" element={<ServiceDetailPage allServices={allServices} currentUser={currentUser} allPromotions={allPromotions} setAllReviews={setAllReviews} setAllAppointments={setAllAppointments} />} />
-                    <Route path="/promotions" element={<PromotionsPage currentUser={currentUser} wallet={wallet!} setWallet={setWallet} userVouchers={userVouchers} setUserVouchers={setUserVouchers} allTiers={allTiers} />} />
-                    <Route path="/qa" element={<QAPage />} />
-                    <Route path="/contact" element={<ContactPage />} />
+                    <Route path="/promotions" element={<PromotionsPage currentUser={currentUser} wallet={wallet} setWallet={setWallet} userVouchers={[]} setUserVouchers={() => {}} allTiers={allTiers} />} />
+                    <Route path="/treatment-packages" element={<TreatmentPackagesPage currentUser={currentUser} />} />
+                    <Route path="/treatment-packages/:id" element={<TreatmentPackageDetailPage currentUser={currentUser} />} />
                     <Route path="/policy" element={<PolicyPage />} />
 
                     {/* Payment Result Routes */}
@@ -406,7 +398,7 @@ const AppContent: React.FC = () => {
                     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
                     {/* Protected Client Routes */}
-                    <Route path="/booking" element={<ProtectedRoute user={currentUser}><BookingPage currentUser={currentUser} allAppointments={allAppointments} /></ProtectedRoute>} />
+                    <Route path="/booking" element={<ProtectedRoute user={currentUser}><BookingPage currentUser={currentUser} /></ProtectedRoute>} />
                     <Route path="/appointments" element={
                         <ProtectedRoute user={currentUser}>
                             <AppointmentsPage
@@ -416,6 +408,11 @@ const AppContent: React.FC = () => {
                                 allAppointments={allAppointments}
                                 allTreatmentCourses={allTreatmentCourses}
                             />
+                        </ProtectedRoute>
+                    } />
+                    <Route path="/treatment-course/:id" element={
+                        <ProtectedRoute user={currentUser}>
+                            <TreatmentCourseDetailPage currentUser={currentUser!} allServices={allServices} />
                         </ProtectedRoute>
                     } />
                     <Route
@@ -454,22 +451,20 @@ const AppContent: React.FC = () => {
                         <Route index element={<Navigate to="/admin/overview" replace />} />
                         <Route path="overview" element={<OverviewPage allServices={allServices} allAppointments={allAppointments} allUsers={allUsers} allReviews={allReviews} allPromotions={allPromotions} allInternalNotifications={allInternalNotifications} allPayments={allPayments} />} />
                         <Route path="users" element={<UsersPage allUsers={allUsers} allTiers={allTiers} />} />
-                        <Route path="services" element={<ServicesPage allServices={allServices} />} />
+                        <Route path="services" element={<ServicesPage />} />
                         <Route path="appointments" element={<AdminAppointmentsPage allUsers={allUsers} allServices={allServices} allAppointments={allAppointments} />} />
                         <Route path="payments" element={<PaymentsPage allUsers={allUsers} />} />
                         <Route path="staff" element={<StaffPage allUsers={allUsers} allServices={allServices} allAppointments={allAppointments} />} />
                         <Route path="jobs" element={<JobManagementPage allUsers={allUsers} allServices={allServices} allAppointments={allAppointments} />} />
                         <Route path="rooms" element={<RoomsPage />} />
+                        <Route path="treatment-courses" element={<AdminTreatmentCoursesPage allUsers={allUsers} allServices={allServices} />} />
+                        <Route path="treatment-courses/:id" element={<AdminTreatmentCourseDetailPage />} />
                         <Route path="promotions" element={<AdminPromotionsPage allServices={allServices} allTiers={allTiers} allUsers={allUsers} allAppointments={allAppointments} allReviews={allReviews} />} />
-                        <Route path="loyalty-shop" element={<LoyaltyShopPage allTiers={allTiers} allServices={allServices} />} />
-                        <Route path="marketing" element={<MarketingPage />} />
-                        <Route path="content" element={<ContentPage currentUser={currentUser!} allInternalNews={allInternalNews} setAllInternalNews={setAllInternalNews} allUsers={allUsers} />} />
-                        <Route path="reports" element={<ReportsPage allAppointments={allAppointments} allServices={allServices} allUsers={allUsers} allTiers={allTiers} />} />
-                        <Route path="settings" element={<SettingsPage />} />
-                        <Route path="security" element={<PlaceholderPage />} />
+                        <Route path="profile" element={<AdminProfilePage currentUser={currentUser!} onUpdateUser={handleUpdateUser} />} />
+                        <Route path="change-password" element={<ChangePasswordPage currentUser={currentUser!} />} />
                     </Route>
 
-                    {/* Staff Routes */}
+                    {/* Staff Routes - Chỉ giữ Tổng quan, Lịch hẹn, Quản lý công việc */}
                     <Route
                         path="/staff"
                         element={
@@ -482,16 +477,7 @@ const AppContent: React.FC = () => {
                         <Route path="dashboard" element={<StaffDashboardPage currentUser={currentUser!} allServices={allServices} allUsers={allUsers} allAppointments={allAppointments} allInternalNotifications={allInternalNotifications} allSales={allSales} />} />
                         <Route path="schedule" element={<StaffSchedulePage currentUser={currentUser!} />} />
                         <Route path="appointments" element={<StaffAppointmentsPage currentUser={currentUser!} allAppointments={allAppointments} allServices={allServices} allUsers={allUsers} allProducts={allProducts} allSales={allSales} />} />
-                        <Route path="my-tasks" element={<MyTasksPage currentUser={currentUser!} />} />
-                        <Route path="my-clients" element={<MyClientsPage currentUser={currentUser!} allUsers={allUsers} allAppointments={allAppointments} allServices={allServices} allProducts={allProducts} allSales={allSales} />} />
-                        <Route path="treatment-progress" element={<StaffTreatmentProgressPage currentUser={currentUser!} allServices={allServices} allUsers={allUsers} allTreatmentCourses={allTreatmentCourses} />} />
-                        <Route path="customer-interaction" element={<StaffCustomerInteractionPage currentUser={currentUser!} allUsers={allUsers} allAppointments={allAppointments} allReviews={allReviews} />} />
-                        <Route path="rewards" element={<StaffRewardsPage currentUser={currentUser!} allServices={allServices} allUsers={allUsers} allAppointments={allAppointments} />} />
-                        <Route path="upselling" element={<StaffUpsellingPage currentUser={currentUser!} allServices={allServices} allUsers={allUsers} allAppointments={allAppointments} allProducts={allProducts} />} />
-                        <Route path="personal-reports" element={<StaffPersonalReportsPage currentUser={currentUser!} allServices={allServices} allUsers={allUsers} allAppointments={allAppointments} />} />
-                        <Route path="notifications" element={<StaffNotificationsPage currentUser={currentUser!} allUsers={allUsers} allInternalNotifications={allInternalNotifications} allInternalNews={allInternalNews} />} />
                         <Route path="profile" element={<StaffProfilePage currentUser={currentUser!} onUpdateUser={handleUpdateUser} />} />
-                        <Route path="transaction-history" element={<StaffTransactionHistoryPage currentUser={currentUser!} allServices={allServices} allUsers={allUsers} allAppointments={allAppointments} allPayments={allPayments} />} />
                     </Route>
 
                     {/* Fallback Route */}
