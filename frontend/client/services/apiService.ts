@@ -247,6 +247,15 @@ export const resumeTreatmentCourse = (id: string, extendExpiryDays?: number) =>
     body: JSON.stringify({ extendExpiryDays })
   }).then(handleResponse);
 
+// Confirm payment for a treatment course
+export const confirmTreatmentCoursePayment = async (id: string): Promise<TreatmentCourse> => {
+    const response = await fetch(`${API_BASE_URL}/treatment-courses/${id}/confirm-payment`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+};
+
 export const getTreatmentCourseProgress = (id: string) =>
   fetch(`${API_BASE_URL}/treatment-courses/${id}/progress`).then(handleResponse);
 

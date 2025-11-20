@@ -22,6 +22,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
 }) => {
     const navigate = useNavigate();
     const [localAppointments, setLocalAppointments] = useState<Appointment[]>([]);
+    const [localTreatmentCourses, setLocalTreatmentCourses] = useState<TreatmentCourse[]>(allTreatmentCourses);
     const [isLoadingAppointments, setIsLoadingAppointments] = useState(true);
     const [activeTab, setActiveTab] = useState<'upcoming' | 'history' | 'courses'>('upcoming');
     const [viewingAppointment, setViewingAppointment] = useState<(Appointment & { dateTime: Date }) | null>(null);
@@ -39,7 +40,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
     const [historyFilterStatus, setHistoryFilterStatus] = useState('all');
     
     // Treatment Courses Filter States
-    const [coursesFilterTime, setCoursesFilterTime] = useState('all');
+    const [coursesFilterStatus, setCoursesFilterStatus] = useState<'active' | 'completed'>('active');
 
     // Fetch appointments from API to ensure we have the latest data
     useEffect(() => {
@@ -78,6 +79,67 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
             window.removeEventListener('refresh-appointments', handleRefresh);
         };
     }, [currentUser.id, allAppointments]);
+
+    // Update local treatment courses when prop changes
+    useEffect(() => {
+        console.log('📊 allTreatmentCourses prop updated:', {
+            count: allTreatmentCourses.length,
+            courses: allTreatmentCourses.map(c => ({
+                id: c.id,
+                name: c.serviceName || c.name,
+                clientId: c.clientId,
+                status: c.status,
+                sessionsCount: c.sessions?.length || c.TreatmentSessions?.length || 0
+            }))
+        });
+        setLocalTreatmentCourses(allTreatmentCourses);
+    }, [allTreatmentCourses]);
+
+    // Fetch treatment courses from API to ensure we have latest data with sessions
+    useEffect(() => {
+        const fetchTreatmentCourses = async () => {
+            try {
+                // Fetch treatment courses for this client
+                const clientCourses = await apiService.getTreatmentCourses({ clientId: currentUser.id });
+                console.log('📊 Fetched treatment courses for client:', {
+                    clientId: currentUser.id,
+                    coursesCount: clientCourses.length,
+                    courses: clientCourses.map(c => ({
+                        id: c.id,
+                        name: c.serviceName || c.name,
+                        status: c.status,
+                        clientId: c.clientId,
+                        sessionsCount: c.sessions?.length || c.TreatmentSessions?.length || 0,
+                        sessions: c.sessions || c.TreatmentSessions
+                    }))
+                });
+                
+                // Update local state with fetched courses
+                setLocalTreatmentCourses(clientCourses);
+            } catch (error) {
+                console.error("Failed to fetch treatment courses:", error);
+            }
+        };
+        
+        // Fetch immediately on mount
+        fetchTreatmentCourses();
+        
+        // Set up polling every 30 seconds to auto-update
+        const interval = setInterval(() => {
+            fetchTreatmentCourses();
+        }, 30000); // 30 seconds
+        
+        // Listen for refresh event
+        const handleRefresh = () => {
+            fetchTreatmentCourses();
+        };
+        window.addEventListener('refresh-treatment-courses', handleRefresh);
+        
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('refresh-treatment-courses', handleRefresh);
+        };
+    }, [currentUser.id]);
 
     // Also update when allAppointments changes (e.g., after booking)
     useEffect(() => {
@@ -140,10 +202,30 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 return isCompletedOrCancelled || (isPastDate && !['upcoming', 'pending', 'in-progress'].includes(app.status));
             });
 
-        const courses = allTreatmentCourses.filter(course => course.clientId === currentUser.id);
+        const courses = localTreatmentCourses.filter(course => {
+            const matches = course.clientId === currentUser.id;
+            if (matches) {
+                console.log('✅ Found course for client:', {
+                    courseId: course.id,
+                    courseName: course.serviceName || course.name,
+                    clientId: course.clientId,
+                    status: course.status,
+                    sessionsCount: course.sessions?.length || 0,
+                    hasSessions: !!course.sessions
+                });
+            }
+            return matches;
+        });
+        
+        console.log('📊 Treatment courses filter result:', {
+            totalCourses: localTreatmentCourses.length,
+            myCourses: courses.length,
+            currentUserId: currentUser.id,
+            courses: courses.map(c => ({ id: c.id, name: c.serviceName || c.name, status: c.status, clientId: c.clientId, sessionsCount: c.sessions?.length || 0 }))
+        });
         
         return { myUpcomingAppointments: upcoming, myHistoryAppointments: history, myTreatmentCourses: courses };
-    }, [localAppointments, allTreatmentCourses, currentUser.id]);
+    }, [localAppointments, localTreatmentCourses, currentUser.id]);
 
     const reminders = useMemo(() => {
         const twentyFourHoursFromNow = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -208,7 +290,20 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
         }
     };
     
-    // Filter treatment courses by time based on sessions or nextAppointmentDate
+    // Filter treatment courses by status (active or completed)
+    const filterCoursesByStatus = (courses: TreatmentCourse[], statusFilter: 'active' | 'completed') => {
+        if (statusFilter === 'active') {
+            // Show active, pending courses (courses that are not completed or expired)
+            return courses.filter(course => 
+                course.status === 'active' || course.status === 'pending'
+            );
+        } else {
+            // Show completed courses
+            return courses.filter(course => course.status === 'completed');
+        }
+    };
+    
+    // Legacy function - kept for compatibility but not used
     const filterCoursesByTime = (courses: TreatmentCourse[], timeFilter: string) => {
         if (timeFilter === 'all') return courses;
         
@@ -305,10 +400,10 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
     const uniqueServiceIds = useMemo(() => [...new Set(myUpcomingAppointments.map(a => a.serviceId).concat(myHistoryAppointments.map(a => a.serviceId)))], [myUpcomingAppointments, myHistoryAppointments]);
     const serviceFilterOptions = allServices.filter(s => uniqueServiceIds.includes(s.id));
     
-    // Filter treatment courses by time
+    // Filter treatment courses by status
     const displayCourses = useMemo(() => {
-        return filterCoursesByTime(myTreatmentCourses, coursesFilterTime);
-    }, [myTreatmentCourses, coursesFilterTime]);
+        return filterCoursesByStatus(myTreatmentCourses, coursesFilterStatus);
+    }, [myTreatmentCourses, coursesFilterStatus]);
 
     // --- Render Functions for Cards ---
 
@@ -379,19 +474,32 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
         const pendingSessions = sessions.filter(s => s.status === 'pending').length;
         const scheduledSessions = sessions.filter(s => s.status === 'scheduled').length;
         
+        // Find current session (next uncompleted session)
+        const currentSession = sessions
+            .sort((a, b) => a.sessionNumber - b.sessionNumber)
+            .find(s => s.status !== 'completed');
+        
+        // Find previous completed session to get admin notes
+        const previousSession = sessions
+            .filter(s => s.status === 'completed')
+            .sort((a, b) => b.sessionNumber - a.sessionNumber)[0]; // Get most recent completed session
+        
+        // Get admin notes from current session or previous session
+        const adminNotes = currentSession?.adminNotes || previousSession?.adminNotes;
+        const customerStatusNotes = currentSession?.customerStatusNotes || previousSession?.customerStatusNotes;
+        
         return (
             <div 
-                className={`bg-white p-6 rounded-lg shadow-lg border-2 transition-all hover:shadow-xl cursor-pointer ${
+                className={`bg-white p-6 rounded-lg shadow-lg border-2 transition-all hover:shadow-xl ${
                     isCompleted 
                         ? 'border-green-400 bg-green-50' 
                         : 'border-brand-primary hover:border-brand-dark'
                 }`}
-                onClick={() => navigate(`/treatment-course/${course.id}`)}
             >
                 <div className="flex justify-between items-start mb-4">
                     <div className="flex-1">
-                        <h4 className="text-xl font-bold font-serif text-brand-text mb-2">{course.name}</h4>
-                        <div className="flex flex-wrap gap-2 text-sm">
+                        <h4 className="text-xl font-bold font-serif text-brand-text mb-2">{course.serviceName || course.name}</h4>
+                        <div className="flex flex-wrap gap-2 text-sm mb-3">
                             <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full font-semibold">
                                 {course.totalSessions} buổi
                             </span>
@@ -411,8 +519,43 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                 </span>
                             )}
                         </div>
+                        
+                        {/* Current Session Info */}
+                        {!isCompleted && currentSession && (
+                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-lg font-bold text-purple-800">📌 Buổi hiện tại: Buổi {currentSession.sessionNumber}</span>
+                                </div>
+                                {currentSession.sessionDate && (
+                                    <p className="text-sm text-gray-700 mb-1">
+                                        <strong>Ngày:</strong> {new Date(currentSession.sessionDate).toLocaleDateString('vi-VN')}
+                                        {currentSession.sessionTime && ` - ${currentSession.sessionTime}`}
+                                    </p>
+                                )}
+                                {currentSession.staffId && (
+                                    <p className="text-sm text-gray-700">
+                                        <strong>Kỹ thuật viên:</strong> Đã được phân công
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                        
+                        {/* Admin Notes Section - Only show customer status notes to client */}
+                        {customerStatusNotes && (
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
+                                <p className="text-sm font-semibold text-yellow-800 mb-2">
+                                    📝 Ghi chú từ admin {currentSession ? `(Buổi ${currentSession.sessionNumber})` : previousSession ? `(Buổi ${previousSession.sessionNumber})` : ''}
+                                </p>
+                                <div>
+                                    <p className="text-xs text-gray-600 mb-1">
+                                        <span className="text-gray-600">[Khách hàng]</span> Ghi chú tình trạng:
+                                    </p>
+                                    <p className="text-sm text-gray-800 bg-white p-2 rounded border whitespace-pre-wrap">{customerStatusNotes}</p>
+                                </div>
+                            </div>
+                        )}
                     </div>
-                    <div className="text-right">
+                    <div className="text-right ml-4">
                         <div className="text-3xl font-bold text-brand-primary">{Math.round(progress)}%</div>
                         <div className="text-xs text-gray-500">Tiến độ</div>
                     </div>
@@ -432,23 +575,6 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                         </p>
                     </div>
                 )}
-                
-                <div className="flex justify-end items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                    <button 
-                        onClick={() => navigate(`/treatment-course/${course.id}`)} 
-                        className="px-4 py-2 text-sm font-semibold bg-brand-primary text-white rounded-md hover:bg-brand-dark transition-colors"
-                    >
-                        📋 Xem chi tiết & Đặt lịch
-                    </button>
-                    {isCompleted && (
-                        <button 
-                            onClick={() => navigate(`/payment?courseId=${course.id}`)} 
-                            className="px-4 py-2 text-sm font-semibold bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-                        >
-                            💳 Thanh toán
-                        </button>
-                    )}
-                </div>
             </div>
         );
     };
@@ -572,11 +698,28 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                     
                     {activeTab === 'courses' && (
                         <div className="space-y-6">
-                            <div className="bg-white p-4 rounded-lg shadow-md flex items-center justify-center gap-2">
-                                {['all', 'today', 'this-week', 'this-month'].map(filter => {
-                                    const labels: Record<string, string> = {all: 'Tất cả', today: 'Hôm nay', 'this-week': 'Tuần này', 'this-month': 'Tháng này'};
-                                    return <button key={filter} onClick={() => setCoursesFilterTime(filter)} className={`px-3 py-1.5 text-sm font-semibold rounded-full ${coursesFilterTime === filter ? 'bg-brand-primary text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>{labels[filter]}</button>
-                                })}
+                            {/* Status Tabs */}
+                            <div className="bg-white p-4 rounded-lg shadow-md flex items-center justify-center gap-2 border-b-2 border-gray-200">
+                                <button 
+                                    onClick={() => setCoursesFilterStatus('active')} 
+                                    className={`px-6 py-3 text-base font-semibold rounded-lg transition-colors ${
+                                        coursesFilterStatus === 'active' 
+                                            ? 'bg-brand-primary text-white border-2 border-brand-primary' 
+                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-2 border-transparent'
+                                    }`}
+                                >
+                                    Liệu trình đang thực hiện
+                                </button>
+                                <button 
+                                    onClick={() => setCoursesFilterStatus('completed')} 
+                                    className={`px-6 py-3 text-base font-semibold rounded-lg transition-colors ${
+                                        coursesFilterStatus === 'completed' 
+                                            ? 'bg-brand-primary text-white border-2 border-brand-primary' 
+                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-2 border-transparent'
+                                    }`}
+                                >
+                                    Liệu trình đã xong
+                                </button>
                             </div>
                             
                             {displayCourses.length > 0 ? (
@@ -584,9 +727,9 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                             ) : (
                                 <div className="text-center py-10 bg-white rounded-lg shadow-md">
                                     <p className="text-lg text-gray-500">
-                                        {myTreatmentCourses.length > 0 
-                                            ? 'Không có liệu trình nào trong khoảng thời gian đã chọn.' 
-                                            : 'Bạn chưa đăng ký liệu trình nào.'}
+                                        {coursesFilterStatus === 'active' 
+                                            ? 'Bạn chưa có liệu trình đang thực hiện nào.' 
+                                            : 'Bạn chưa có liệu trình đã hoàn thành nào.'}
                                     </p>
                                 </div>
                             )}

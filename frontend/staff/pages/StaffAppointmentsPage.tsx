@@ -22,15 +22,52 @@ export const StaffAppointmentsPage: React.FC<AppointmentsPageProps> = ({ current
     const [appointmentToCancel, setAppointmentToCancel] = useState<Appointment | null>(null);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const [viewingClient, setViewingClient] = useState<User | null>(null);
+    const [isLoadingAppointments, setIsLoadingAppointments] = useState(false);
 
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
     const [filterService, setFilterService] = useState('all');
     const [filterClient, setFilterClient] = useState('all');
 
+    // Fetch appointments from API to ensure we have the latest data (including appointments where staff is therapist)
     useEffect(() => {
-        setAppointments(allAppointments);
-    }, [allAppointments]);
+        const fetchAppointments = async () => {
+            try {
+                setIsLoadingAppointments(true);
+                // Fetch user-specific appointments (includes appointments where user is client OR therapist)
+                const userAppointments = await apiService.getUserAppointments(currentUser.id);
+                setAppointments(userAppointments);
+                console.log(`✅ StaffAppointmentsPage: Fetched ${userAppointments.length} appointments for staff ${currentUser.id}`);
+            } catch (error) {
+                console.error("Failed to fetch appointments:", error);
+                // Fallback to allAppointments from props if API call fails
+                setAppointments(allAppointments);
+            } finally {
+                setIsLoadingAppointments(false);
+            }
+        };
+        
+        // Fetch immediately on mount
+        fetchAppointments();
+        
+        // Set up polling every 30 seconds to auto-update appointments
+        const interval = setInterval(() => {
+            fetchAppointments();
+        }, 30000); // 30 seconds
+        
+        // Also listen for refresh event
+        const handleRefresh = () => {
+            fetchAppointments();
+        };
+        window.addEventListener('refresh-appointments', handleRefresh);
+        window.addEventListener('appointments-updated', handleRefresh);
+        
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('refresh-appointments', handleRefresh);
+            window.removeEventListener('appointments-updated', handleRefresh);
+        };
+    }, [currentUser.id, allAppointments]);
 
     const today = new Date().toISOString().split('T')[0];
 

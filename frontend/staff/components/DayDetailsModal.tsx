@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { User, StaffShift } from '../../types';
-import { PlusIcon, EditIcon, TrashIcon, XCircleIcon, CheckCircleIcon, PendingIcon } from '../../shared/icons';
+import type { User, StaffShift, Appointment } from '../../types';
+import { PlusIcon, EditIcon, TrashIcon, XCircleIcon, CheckCircleIcon, PendingIcon, ClockIcon } from '../../shared/icons';
 
 interface DayDetailsModalProps {
     currentUser: User;
@@ -8,11 +8,14 @@ interface DayDetailsModalProps {
         dateString: string;
         dayOfMonth: number;
         shifts: StaffShift[];
+        appointments?: Appointment[];
     };
     onClose: () => void;
     onSaveShiftRequest: (shift: StaffShift) => void;
     onUpdateShiftRequest: (shift: StaffShift) => void;
     onDeleteShiftRequest: (shiftId: string) => void;
+    onAppointmentClick?: (appointment: Appointment) => void;
+    allUsers?: User[];
 }
 
 const DayDetailsModal: React.FC<DayDetailsModalProps> = ({
@@ -22,6 +25,8 @@ const DayDetailsModal: React.FC<DayDetailsModalProps> = ({
     onSaveShiftRequest,
     onUpdateShiftRequest,
     onDeleteShiftRequest,
+    onAppointmentClick,
+    allUsers = [],
 }) => {
     const [isFormVisible, setIsFormVisible] = useState(false);
     const [editingShift, setEditingShift] = useState<StaffShift | null>(null);
@@ -133,25 +138,69 @@ const DayDetailsModal: React.FC<DayDetailsModalProps> = ({
                     </div>
                     <p className="text-gray-600 mb-4">Ngày: <strong className="text-brand-dark">{new Date(dayInfo.dateString).toLocaleDateString('vi-VN')}</strong></p>
                     
-                    {!isFormVisible && dayInfo.shifts.length > 0 && (
-                        <div className="space-y-4 max-h-60 overflow-y-auto pr-2">
-                            {dayInfo.shifts.map(shift => (
-                                <div key={shift.id} className="p-3 rounded-md border flex justify-between items-center">
-                                    <div>
-                                        <p className="font-semibold text-gray-800">{getShiftTypeDisplay(shift.shiftType)}</p>
-                                        {shift.notes && <p className="text-xs text-gray-500 italic">Ghi chú: {shift.notes}</p>}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        {getShiftStatusBadge(shift.status)}
-                                        {shift.status === 'pending' && !isPastDate && (
-                                            <>
-                                                <button onClick={() => handleEditClick(shift)} className="p-1.5 rounded-full hover:bg-gray-100"><EditIcon className="w-4 h-4" /></button>
-                                                <button onClick={() => handleConfirmDelete(shift)} className="p-1.5 rounded-full text-red-600 hover:bg-red-100"><TrashIcon className="w-4 h-4" /></button>
-                                            </>
-                                        )}
-                                    </div>
+                    {!isFormVisible && (dayInfo.shifts.length > 0 || (dayInfo.appointments && dayInfo.appointments.length > 0)) && (
+                        <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+                            {/* Appointments Section */}
+                            {dayInfo.appointments && dayInfo.appointments.length > 0 && (
+                                <div className="space-y-2">
+                                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Lịch hẹn ({dayInfo.appointments.length})</h3>
+                                    {dayInfo.appointments.map(appointment => {
+                                        const client = allUsers.find(u => u.id === appointment.userId);
+                                        const session = (appointment as any).TreatmentSession;
+                                        return (
+                                            <div 
+                                                key={appointment.id} 
+                                                className="p-3 rounded-md border border-purple-200 bg-purple-50 cursor-pointer hover:bg-purple-100 transition-colors"
+                                                onClick={() => onAppointmentClick && onAppointmentClick(appointment)}
+                                            >
+                                                <div className="flex items-start justify-between">
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <ClockIcon className="w-4 h-4 text-purple-600" />
+                                                            <span className="font-semibold text-purple-800">{appointment.time}</span>
+                                                        </div>
+                                                        <p className="font-medium text-gray-800 text-sm">{appointment.serviceName}</p>
+                                                        {client && (
+                                                            <p className="text-xs text-gray-600 mt-1">
+                                                                {client.name} {client.phone ? `- ${client.phone}` : ''}
+                                                            </p>
+                                                        )}
+                                                        {session && (
+                                                            <p className="text-xs text-purple-600 mt-1 font-medium">
+                                                                Buổi {session.sessionNumber}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
-                            ))}
+                            )}
+                            
+                            {/* Shifts Section */}
+                            {dayInfo.shifts.length > 0 && (
+                                <div className="space-y-2">
+                                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Ca làm việc ({dayInfo.shifts.length})</h3>
+                                    {dayInfo.shifts.map(shift => (
+                                        <div key={shift.id} className="p-3 rounded-md border flex justify-between items-center">
+                                            <div>
+                                                <p className="font-semibold text-gray-800">{getShiftTypeDisplay(shift.shiftType)}</p>
+                                                {shift.notes && <p className="text-xs text-gray-500 italic">Ghi chú: {shift.notes}</p>}
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {getShiftStatusBadge(shift.status)}
+                                                {shift.status === 'pending' && !isPastDate && (
+                                                    <>
+                                                        <button onClick={() => handleEditClick(shift)} className="p-1.5 rounded-full hover:bg-gray-100"><EditIcon className="w-4 h-4" /></button>
+                                                        <button onClick={() => handleConfirmDelete(shift)} className="p-1.5 rounded-full text-red-600 hover:bg-red-100"><TrashIcon className="w-4 h-4" /></button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
 

@@ -121,6 +121,18 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
         }
     };
 
+    const handleConfirmPayment = async () => {
+        if (!id) return;
+        try {
+            await apiService.confirmTreatmentCoursePayment(id);
+            alert('Đã xác nhận thanh toán thành công!');
+            loadCourseDetail(); // Reload to refresh data
+        } catch (error) {
+            console.error('Error confirming payment:', error);
+            alert('Không thể xác nhận thanh toán');
+        }
+    };
+
     const handleUpdateCourse = async (e: React.FormEvent) => {
         e.preventDefault();
         
@@ -395,6 +407,30 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                             <div className="font-medium">{(course as any).completedSessions || 0} / {course.totalSessions}</div>
                         </div>
                         <div className="pt-2 border-t border-gray-100">
+                            <div className="text-sm text-gray-600">Trạng thái thanh toán:</div>
+                            <div className="flex items-center gap-2">
+                                <span className={`px-3 py-1 text-sm font-medium rounded-full ${
+                                    (course as any).paymentStatus === 'Paid' 
+                                        ? 'bg-green-100 text-green-800' 
+                                        : 'bg-yellow-100 text-yellow-800'
+                                }`}>
+                                    {(course as any).paymentStatus === 'Paid' ? '✓ Đã thanh toán' : 'Chưa thanh toán'}
+                                </span>
+                                {(course as any).paymentStatus !== 'Paid' && (
+                                    <button
+                                        onClick={() => {
+                                            if (window.confirm('Bạn có chắc chắn muốn xác nhận đã thanh toán cho liệu trình này?')) {
+                                                handleConfirmPayment();
+                                            }
+                                        }}
+                                        className="px-3 py-1 text-xs font-semibold bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
+                                    >
+                                        Xác nhận thanh toán
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        <div className="pt-2 border-t border-gray-100">
                             <div className="text-sm text-gray-600">Ngày bắt đầu:</div>
                             <div className="font-medium">{(course as any).startDate ? new Date((course as any).startDate).toLocaleDateString('vi-VN') : '-'}</div>
                         </div>
@@ -552,18 +588,17 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                                                         Hoàn thành
                                                     </button>
                                                 )}
-                                                {!session.Staff?.name && !session.Appointment?.Therapist?.name && (
-                                                    <button
-                                                        onClick={() => {
-                                                            setSelectedSession(session);
-                                                            setSelectedStaffId(session.staffId || '');
-                                                            setShowAssignStaffModal(true);
-                                                        }}
-                                                        className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
-                                                    >
-                                                        Phân công
-                                                    </button>
-                                                )}
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedSession(session);
+                                                        setSelectedStaffId(session.staffId || session.Appointment?.therapistId || '');
+                                                        setShowAssignStaffModal(true);
+                                                    }}
+                                                    className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                                                    title={session.Staff?.name || session.Appointment?.Therapist?.name ? "Sửa nhân viên" : "Phân công nhân viên"}
+                                                >
+                                                    {session.Staff?.name || session.Appointment?.Therapist?.name ? "Sửa" : "Phân công"}
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -640,8 +675,15 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                     <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
                         <div className="p-6 border-b border-gray-200">
                             <h2 className="text-xl font-bold text-gray-900">
-                                Phân công nhân viên cho buổi {selectedSession.sessionNumber}
+                                {selectedSession.Staff?.name || selectedSession.Appointment?.Therapist?.name 
+                                    ? `Sửa nhân viên cho buổi ${selectedSession.sessionNumber}`
+                                    : `Phân công nhân viên cho buổi ${selectedSession.sessionNumber}`}
                             </h2>
+                            {(selectedSession.Staff?.name || selectedSession.Appointment?.Therapist?.name) && (
+                                <p className="text-sm text-gray-600 mt-1">
+                                    Nhân viên hiện tại: <span className="font-medium">{selectedSession.Staff?.name || selectedSession.Appointment?.Therapist?.name}</span>
+                                </p>
+                            )}
                         </div>
                         <div className="p-6">
                             <label className="block text-sm font-medium text-gray-700 mb-2">

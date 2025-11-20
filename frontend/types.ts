@@ -219,7 +219,8 @@ export interface TreatmentCourse {
   sessions?: TreatmentSession[];
   
   // Trạng thái
-  status: 'draft' | 'active' | 'paused' | 'completed' | 'expired' | 'cancelled';
+  status: 'draft' | 'active' | 'paused' | 'completed' | 'expired' | 'cancelled' | 'pending';
+  paymentStatus?: 'Paid' | 'Unpaid';
   
   // Thời gian
   startDate?: string;

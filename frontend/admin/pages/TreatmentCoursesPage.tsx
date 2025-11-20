@@ -10,10 +10,14 @@ interface TreatmentCoursesPageProps {
 
 const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, allServices }) => {
     const navigate = useNavigate();
-    const [courses, setCourses] = useState<TreatmentCourse[]>([]);
+    const [allCourses, setAllCourses] = useState<TreatmentCourse[]>([]); // All courses from API
+    const [courses, setCourses] = useState<TreatmentCourse[]>([]); // Filtered courses for current tab
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [filteredCourses, setFilteredCourses] = useState<TreatmentCourse[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+
+    // Tab state
+    const [activeTab, setActiveTab] = useState<'active' | 'pending'>('active');
 
     // Filters
     const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -30,6 +34,23 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
     }, []);
 
     useEffect(() => {
+        // Filter courses based on active tab
+        if (activeTab === 'active') {
+            // Show active, completed, expired courses
+            const activeCourses = allCourses.filter(course => 
+                ['active', 'completed', 'expired'].includes(course.status)
+            );
+            setCourses(activeCourses);
+        } else {
+            // Show pending courses
+            const pendingCourses = allCourses.filter(course => 
+                course.status === 'pending'
+            );
+            setCourses(pendingCourses);
+        }
+    }, [allCourses, activeTab]);
+
+    useEffect(() => {
         applyFilters();
     }, [courses, statusFilter, clientFilter, serviceFilter, searchTerm]);
 
@@ -42,28 +63,15 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                 apiService.getAppointments()
             ]);
 
-            // Filter courses based on course status, not appointment status
-            // A course should be shown if:
-            // 1. It has status 'active' (not completed, expired, or cancelled)
-            // 2. OR it has completedSessions < totalSessions (still has sessions to complete)
-            // This ensures courses remain visible even when some appointments are completed
-            const activeCourses = coursesData.filter(course => {
-                // Show active courses
-                if (course.status === 'active') {
-                    return true;
-                }
-                // Show courses that are not fully completed (completedSessions < totalSessions)
-                if (course.completedSessions < course.totalSessions) {
-                    return true;
-                }
-                // Also show completed courses (for viewing history)
-                if (course.status === 'completed') {
-                    return true;
-                }
-                return false;
+            // Store all courses - will be filtered by tab
+            console.log('📊 Loaded treatment courses:', coursesData.length, coursesData);
+            console.log('📊 Courses by status:', {
+                pending: coursesData.filter(c => c.status === 'pending').length,
+                active: coursesData.filter(c => c.status === 'active').length,
+                completed: coursesData.filter(c => c.status === 'completed').length,
+                expired: coursesData.filter(c => c.status === 'expired').length,
             });
-
-            setCourses(activeCourses);
+            setAllCourses(coursesData);
             setAppointments(appointmentsData);
         } catch (error) {
             console.error('Error loading data:', error);
@@ -112,6 +120,7 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
 
     const getStatusBadge = (status: string) => {
         const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
+            pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Đang chờ xác nhận lịch hẹn' },
             active: { bg: 'bg-green-100', text: 'text-green-800', label: 'Đang hoạt động' },
             paused: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Tạm dừng' },
             completed: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Hoàn thành' },
@@ -178,20 +187,21 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
     const startIndex = (currentPage - 1) * itemsPerPage;
     const paginatedCourses = filteredCourses.slice(startIndex, startIndex + itemsPerPage);
 
-    // Stats
+    // Stats - calculate based on allCourses, not filtered courses
     const stats = useMemo(() => {
         return {
-            total: courses.length,
-            active: courses.filter(c => c.status === 'active').length,
-            completed: courses.filter(c => c.status === 'completed').length,
-            expired: courses.filter(c => c.status === 'expired' || (c.expiryDate && new Date(c.expiryDate) < new Date())).length,
-            expiringSoon: courses.filter(c => {
+            total: allCourses.length,
+            active: allCourses.filter(c => c.status === 'active').length,
+            completed: allCourses.filter(c => c.status === 'completed').length,
+            expired: allCourses.filter(c => c.status === 'expired' || (c.expiryDate && new Date(c.expiryDate) < new Date())).length,
+            expiringSoon: allCourses.filter(c => {
                 if (!c.expiryDate) return false;
                 const days = getDaysUntilExpiry(c.expiryDate);
                 return days > 0 && days <= 7;
-            }).length
+            }).length,
+            pending: allCourses.filter(c => c.status === 'pending').length
         };
-    }, [courses]);
+    }, [allCourses]);
 
     if (isLoading) {
         return (
@@ -210,7 +220,7 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
                 <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                     <div className="text-sm text-gray-600">Tổng số</div>
                     <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
@@ -218,6 +228,10 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                 <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                     <div className="text-sm text-gray-600">Đang hoạt động</div>
                     <div className="text-2xl font-bold text-green-600">{stats.active}</div>
+                </div>
+                <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                    <div className="text-sm text-gray-600">Chờ xác nhận</div>
+                    <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                     <div className="text-sm text-gray-600">Hoàn thành</div>
@@ -230,6 +244,34 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                 <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                     <div className="text-sm text-gray-600">Sắp hết hạn</div>
                     <div className="text-2xl font-bold text-orange-600">{stats.expiringSoon}</div>
+                </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+                <div className="border-b border-gray-200">
+                    <nav className="flex -mb-px">
+                        <button
+                            onClick={() => setActiveTab('active')}
+                            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                                activeTab === 'active'
+                                    ? 'border-brand-primary text-brand-primary'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            }`}
+                        >
+                            Liệu trình bình thường ({stats.active + stats.completed + stats.expired})
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('pending')}
+                            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                                activeTab === 'pending'
+                                    ? 'border-brand-primary text-brand-primary'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            }`}
+                        >
+                            Liệu trình chờ xác nhận lịch hẹn ({stats.pending})
+                        </button>
+                    </nav>
                 </div>
             </div>
 

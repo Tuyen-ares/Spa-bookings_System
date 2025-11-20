@@ -24,16 +24,20 @@ const StaffSchedulePage: React.FC<StaffSchedulePageProps> = ({ currentUser }) =>
     } | null>(null);
     const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
     const [filterStatus, setFilterStatus] = useState<'all' | 'approved' | 'pending' | 'rejected'>('all');
+    const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+    const [allUsers, setAllUsers] = useState<User[]>([]);
 
     useEffect(() => {
         const fetchMyData = async () => {
             setIsLoading(true);
             try {
-                const [shifts, appointments] = await Promise.all([
+                const [shifts, appointments, users] = await Promise.all([
                     apiService.getStaffShifts(currentUser.id),
-                    apiService.getUserAppointments(currentUser.id)
+                    apiService.getUserAppointments(currentUser.id),
+                    apiService.getUsers()
                 ]);
                 setMyShifts(shifts);
+                setAllUsers(users);
                 // Filter appointments where this staff is the therapist
                 setMyAppointments(appointments.filter(apt => apt.therapistId === currentUser.id));
             } catch (e) {
@@ -43,6 +47,24 @@ const StaffSchedulePage: React.FC<StaffSchedulePageProps> = ({ currentUser }) =>
             }
         };
         fetchMyData();
+        
+        // Set up polling every 30 seconds to auto-update appointments
+        const interval = setInterval(() => {
+            fetchMyData();
+        }, 30000);
+        
+        // Listen for refresh events
+        const handleRefresh = () => {
+            fetchMyData();
+        };
+        window.addEventListener('refresh-appointments', handleRefresh);
+        window.addEventListener('appointments-updated', handleRefresh);
+        
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('refresh-appointments', handleRefresh);
+            window.removeEventListener('appointments-updated', handleRefresh);
+        };
     }, [currentUser.id]);
 
     const daysInMonth = useMemo(() => {
@@ -387,6 +409,20 @@ const StaffSchedulePage: React.FC<StaffSchedulePageProps> = ({ currentUser }) =>
                     onSaveShiftRequest={handleSaveShiftRequest}
                     onUpdateShiftRequest={handleUpdateShiftRequest}
                     onDeleteShiftRequest={handleDeleteShiftRequest}
+                    onAppointmentClick={(appointment) => {
+                        setSelectedAppointment(appointment);
+                        setIsDayModalOpen(false);
+                    }}
+                    allUsers={allUsers}
+                />
+            )}
+
+            {/* Appointment Detail Modal */}
+            {selectedAppointment && (
+                <AppointmentDetailModal
+                    appointment={selectedAppointment}
+                    allUsers={allUsers}
+                    onClose={() => setSelectedAppointment(null)}
                 />
             )}
         </div>
