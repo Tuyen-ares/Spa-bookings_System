@@ -647,12 +647,12 @@ const AppointmentsTab: React.FC<{
         }).filter(Boolean));
 
         const suggestionFromNewCategory = allServices.find(
-            s => s.isHot && s.isActive && !usedCategories.has(s.category) && !usedServiceIds.has(s.id)
+            s => s.isActive && !usedCategories.has(s.category) && !usedServiceIds.has(s.id)
         );
         if (suggestionFromNewCategory) return suggestionFromNewCategory;
 
         const popularUnusedService = allServices.find(
-            s => s.isHot && s.isActive && !usedServiceIds.has(s.id)
+            s => s.isActive && !usedServiceIds.has(s.id)
         );
         if(popularUnusedService) return popularUnusedService;
 

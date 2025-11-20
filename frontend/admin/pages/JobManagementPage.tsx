@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { User, StaffShift, Appointment, Service, Room } from '../../types';
+import type { User, StaffShift, Appointment, Service } from '../../types';
 import * as apiService from '../../client/services/apiService';
 import AssignScheduleModal from '../components/AssignScheduleModal';
 import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon, UsersIcon, CheckCircleIcon, ChartBarIcon, PlusIcon, XCircleIcon, CheckIcon } from '../../shared/icons';
@@ -30,7 +30,6 @@ interface JobManagementPageProps {
 
 const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServices, allAppointments }) => {
     const [staffShifts, setStaffShifts] = useState<StaffShift[]>([]);
-    const [rooms, setRooms] = useState<Room[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [filteredStaffId, setFilteredStaffId] = useState('all');
@@ -65,23 +64,18 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
         fetchUsersIfNeeded();
     }, [allUsers]);
 
-    // Initial data fetch for shifts and rooms
+    // Initial data fetch for shifts
     useEffect(() => {
         const fetchInitialData = async () => {
             setIsLoading(true);
             try {
-                const [shifts, roomsData] = await Promise.all([
-                    apiService.getAllStaffShifts(),
-                    apiService.getRooms()
-                ]);
+                const shifts = await apiService.getAllStaffShifts();
                 
                 console.log('JobManagementPage: Fetched initial data:', {
-                    shiftsCount: shifts.length,
-                    roomsCount: roomsData.length
+                    shiftsCount: shifts.length
                 });
                 
                 setStaffShifts(shifts);
-                setRooms(roomsData);
                 
                 const pending = shifts.filter(s => 
                     s.status === 'pending' || 
@@ -193,15 +187,13 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
         };
     }, [staffShifts, allAppointments]);
 
-    // Calculate available slots (staff with shift + available room)
+    // Calculate available slots (staff with shift)
     const calculateAvailableSlots = useMemo(() => {
-        const slots: { date: string; staffId: string; roomId: string; time: string }[] = [];
-        const activeRooms = rooms.filter(r => r?.isActive);
+        const slots: { date: string; staffId: string; time: string }[] = [];
         
         weekDays.forEach(day => {
             const dateStr = day.toISOString().split('T')[0];
             const shiftsForDay = staffShifts.filter(s => s.date === dateStr && s.shiftType !== 'leave' && s.status === 'approved');
-            const appointmentsForDay = allAppointments.filter(a => a.date === dateStr && a.status !== 'cancelled');
             
             shiftsForDay.forEach(shift => {
                 // Safe check for shiftHours
@@ -210,33 +202,19 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                 }
                 
                 const shiftStart = shift.shiftHours.start;
-                const shiftEnd = shift.shiftHours.end;
                 
-                // Find available rooms for this shift
-                activeRooms.forEach(room => {
-                    const roomAppointments = appointmentsForDay.filter(a => a.roomId === room.id);
-                    // Check if room is available at shift time
-                    const isRoomAvailable = !roomAppointments.some(apt => {
-                        const aptTime = apt.time || '09:00';
-                        return aptTime >= shiftStart && aptTime < shiftEnd;
-                    });
-                    
-                    if (isRoomAvailable) {
-                        slots.push({
-                            date: dateStr,
-                            staffId: shift.staffId,
-                            roomId: room.id,
-                            time: shiftStart
-                        });
-                    }
+                slots.push({
+                    date: dateStr,
+                    staffId: shift.staffId,
+                    time: shiftStart
                 });
             });
         });
         
         return slots;
-    }, [weekDays, staffShifts, rooms, allAppointments]);
+    }, [weekDays, staffShifts]);
 
-    // Detect conflicts (overlapping appointments without enough staff/rooms)
+    // Detect conflicts (overlapping appointments without enough staff)
     const detectConflicts = useMemo(() => {
         const conflicts: { date: string; time: string; reason: string }[] = [];
         
@@ -244,7 +222,6 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
             const dateStr = day.toISOString().split('T')[0];
             const appointmentsForDay = allAppointments.filter(a => a.date === dateStr && a.status !== 'cancelled');
             const shiftsForDay = staffShifts.filter(s => s.date === dateStr && s.shiftType !== 'leave' && s.status === 'approved');
-            const activeRooms = rooms.filter(r => r?.isActive);
             
             // Group appointments by time
             const appointmentsByTime = new Map<string, Appointment[]>();
@@ -275,27 +252,11 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                         reason: `Thiếu nhân viên: ${apts.length} lịch hẹn nhưng chỉ có ${availableStaff.length} nhân viên`
                     });
                 }
-                
-                // Check if enough rooms available
-                const usedRooms = new Set(apts.map(a => a.roomId).filter(Boolean));
-                if (apts.length > activeRooms.length) {
-                    conflicts.push({
-                        date: dateStr,
-                        time,
-                        reason: `Thiếu phòng: ${apts.length} lịch hẹn nhưng chỉ có ${activeRooms.length} phòng`
-                    });
-                } else if (usedRooms.size >= activeRooms.length && apts.length > usedRooms.size) {
-                    conflicts.push({
-                        date: dateStr,
-                        time,
-                        reason: `Thiếu phòng: ${apts.length} lịch hẹn nhưng chỉ có ${activeRooms.length} phòng trống`
-                    });
-                }
             });
         });
         
         return conflicts;
-    }, [weekDays, allAppointments, staffShifts, rooms]);
+    }, [weekDays, allAppointments, staffShifts]);
 
     const handleCellClick = (staff: User, date: Date, shift?: StaffShift) => {
         // Format date to YYYY-MM-DD in local timezone to avoid date shift
@@ -565,7 +526,6 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                     onSave={handleSaveShift} 
                     onDelete={handleDeleteShift} 
                     allAppointments={allAppointments}
-                    allRooms={rooms}
                     existingShifts={staffShifts}
                 />
             )}

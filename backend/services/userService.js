@@ -72,12 +72,10 @@ class UserService {
         // Create wallet for clients
         if (user.role === 'Client') {
             await db.Wallet.create({
+                id: require('uuid').v4(),
                 userId: user.id,
-                balance: 0,
                 points: 0,
-                totalEarned: 0,
-                totalSpent: 0,
-                pointsHistory: []
+                totalSpent: 0.00
             });
         }
 

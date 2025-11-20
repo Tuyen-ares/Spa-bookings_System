@@ -64,15 +64,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.ENUM('pending_approval', 'approved', 'rejected'),
       allowNull: true,
     },
-    roomId: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      references: {
-        model: 'rooms',
-        key: 'id',
-      },
-      onDelete: 'SET NULL',
-    },
   }, {
     tableName: 'staff_shifts',
     timestamps: false,

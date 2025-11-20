@@ -12,15 +12,6 @@ module.exports = {
         type: Sequelize.STRING,
         allowNull: true,
       },
-      bookingId: {
-        type: Sequelize.STRING,
-        allowNull: true,
-        references: {
-          model: 'appointments',
-          key: 'id',
-        },
-        onDelete: 'SET NULL',
-      },
       userId: {
         type: Sequelize.STRING,
         allowNull: false,

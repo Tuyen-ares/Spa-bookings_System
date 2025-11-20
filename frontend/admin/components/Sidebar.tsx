@@ -5,7 +5,7 @@ import { NavLink, Link } from 'react-router-dom';
 import {
     ChartBarIcon, UsersIcon, ServicesIcon, AppointmentsIcon, PaymentsIcon, StaffIcon,
     PromotionsIcon, LoyaltyIcon, MegaphoneIcon, ReportsIcon, SettingsIcon,
-    ChevronDownIcon, LogoIcon, NewspaperIcon, ClipboardListIcon, RoomIcon
+    ChevronDownIcon, LogoIcon, NewspaperIcon, ClipboardListIcon, BellIcon
 } from '../../shared/icons';
 
 interface SidebarProps {
@@ -27,9 +27,9 @@ const navGroups = [
             { name: 'Thanh toán', path: '/admin/payments', icon: <PaymentsIcon className="w-5 h-5"/> },
             { name: 'Nhân viên', path: '/admin/staff', icon: <StaffIcon className="w-5 h-5"/> },
             { name: 'Quản lý Công việc', path: '/admin/jobs', icon: <ClipboardListIcon className="w-5 h-5"/> },
-            { name: 'Quản lý phòng', path: '/admin/rooms', icon: <RoomIcon className="w-5 h-5"/> },
             { name: 'Khuyến mãi', path: '/admin/promotions', icon: <PromotionsIcon className="w-5 h-5"/> },
             { name: 'Báo cáo', path: '/admin/reports', icon: <ReportsIcon className="w-5 h-5"/> },
+            { name: 'Thông báo', path: '/admin/notifications', icon: <BellIcon className="w-5 h-5"/> },
         ]
     },
 ];

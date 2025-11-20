@@ -467,7 +467,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
 
     return (
         <div className="space-y-8">
-            <h1 className="text-3xl font-bold text-gray-800 animate-fadeInDown">Dashboard Tổng Quan (AI-Driven)</h1>
+            <h1 className="text-3xl font-bold text-gray-800 animate-fadeInDown">Dashboard Tổng Quan</h1>
 
             {/* Revenue Period Selector */}
             <div className="bg-white p-4 rounded-lg shadow-md flex items-center gap-4">

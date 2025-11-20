@@ -55,19 +55,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DATE,
       allowNull: true,
     },
-    loginHistory: {
-      type: DataTypes.JSON,
-      allowNull: true,
-    },
-    roomId: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      references: {
-        model: 'rooms',
-        key: 'id',
-      },
-      onDelete: 'SET NULL',
-    },
   }, {
     tableName: 'users',
     timestamps: false,

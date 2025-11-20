@@ -22,12 +22,18 @@ const ServiceCard: React.FC<ServiceCardProps> = ({ service }) => {
     <div 
         className="bg-white rounded-lg shadow-soft-lg overflow-hidden flex flex-col group transition-all duration-300 hover:shadow-soft-xl hover:-translate-y-1 border border-gray-200/50"
     >
-      <div className="relative overflow-hidden">
+      <div className="relative overflow-hidden bg-gray-100">
         <img 
-            className="w-full h-44 object-cover transform group-hover:scale-110 transition-transform duration-500 ease-out" 
-            src={service.imageUrl} 
+            className="w-full h-32 object-contain object-center transform group-hover:scale-110 transition-transform duration-500 ease-out" 
+            src={service.imageUrl || 'https://via.placeholder.com/400x300?text=No+Image'} 
             alt={service.name} 
             loading="lazy"
+            style={{ 
+                objectFit: 'contain',
+                objectPosition: 'center',
+                width: '100%',
+                height: '100%'
+            }}
         />
         <div className="absolute top-3 left-3 flex flex-col gap-2">
             {service.discountPrice && (
@@ -35,25 +41,15 @@ const ServiceCard: React.FC<ServiceCardProps> = ({ service }) => {
                     ƯU ĐÃI -{discountPercent}%
                 </span>
             )}
-            {service.isHot && (
-                 <span className="bg-yellow-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md">
-                    NỔI BẬT
-                </span>
-            )}
-             {service.isNew && (
-                 <span className="bg-blue-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md">
-                    MỚI
-                </span>
-            )}
         </div>
       </div>
-      <div className="p-4 flex flex-col flex-grow">
-        <h3 className="text-lg font-bold font-serif text-brand-text mb-4 line-clamp-2 min-h-[56px]">
+      <div className="p-3 flex flex-col flex-grow">
+        <h3 className="text-base font-bold font-serif text-brand-text mb-3 line-clamp-2 min-h-[48px]">
             {service.name}
         </h3>
         
         <div className="mt-auto">
-             <div className="flex justify-between items-start mb-4 text-sm">
+             <div className="flex justify-between items-start mb-3 text-sm">
                 {/* Left Column: Price and Rating */}
                 <div className="flex flex-col gap-1">
                     <span className="text-brand-text">
@@ -81,11 +77,11 @@ const ServiceCard: React.FC<ServiceCardProps> = ({ service }) => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Link to={`/service/${service.id}`} className="text-center block bg-brand-secondary text-brand-text font-semibold py-2 px-4 rounded-lg hover:bg-brand-primary hover:text-white transition-colors duration-300 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Link to={`/service/${service.id}`} className="text-center block bg-brand-secondary text-brand-text font-semibold py-1.5 px-3 rounded-lg hover:bg-brand-primary hover:text-white transition-colors duration-300 text-xs">
                     Đọc thêm
                 </Link>
-                <Link to={`/booking?serviceId=${service.id}`} className="text-center block bg-brand-dark text-white font-semibold py-2 px-4 rounded-lg hover:bg-brand-primary transition-colors duration-300 text-sm">
+                <Link to={`/booking?serviceId=${service.id}`} className="text-center block bg-brand-dark text-white font-semibold py-1.5 px-3 rounded-lg hover:bg-brand-primary transition-colors duration-300 text-xs">
                     Đặt ngay
                 </Link>
             </div>

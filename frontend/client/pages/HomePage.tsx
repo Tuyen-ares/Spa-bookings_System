@@ -175,9 +175,7 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
             .filter(s => {
                 // Check isActive (default to true if undefined)
                 const isActive = toBoolean(s.isActive, true);
-                // Check isHot (handle boolean, number, or string from database)
-                const isHot = toBoolean(s.isHot, false);
-                return isActive && isHot;
+                return isActive;
             })
             .sort((a, b) => {
                 // Handle both string and number ratings

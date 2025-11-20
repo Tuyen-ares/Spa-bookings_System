@@ -44,8 +44,7 @@ module.exports = {
       targetAudience: {
         type: Sequelize.ENUM(
           'All', 'New Clients', 'Birthday', 'Group', 'VIP',
-          'Tier Level 1', 'Tier Level 2', 'Tier Level 3', 'Tier Level 4',
-          'Tier Level 5', 'Tier Level 6', 'Tier Level 7', 'Tier Level 8'
+          'Tier Level 1', 'Tier Level 2', 'Tier Level 3'
         ),
         allowNull: true,
         defaultValue: 'All',
@@ -69,16 +68,10 @@ module.exports = {
         allowNull: true,
         comment: 'NULL = không giới hạn',
       },
-      pointsRequired: {
+      stock: {
         type: Sequelize.INTEGER,
         allowNull: true,
-        defaultValue: 0,
-        comment: 'Điểm cần để đổi (0 = không cần, >0 = voucher đổi điểm)',
-      },
-      isVoucher: {
-        type: Sequelize.BOOLEAN,
-        allowNull: true,
-        defaultValue: false,
+        comment: 'Số lượng voucher còn lại (NULL = không giới hạn)',
       },
       isActive: {
         type: Sequelize.BOOLEAN,

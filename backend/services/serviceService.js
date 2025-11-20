@@ -12,7 +12,10 @@ class ServiceService {
                 model: db.ServiceCategory,
                 attributes: ['id', 'name', 'description']
             }],
-            order: [['isHot', 'DESC'], ['rating', 'DESC']]
+            attributes: {
+                include: ['imageUrl'] // Explicitly include imageUrl
+            },
+            order: [['rating', 'DESC']]
         });
 
         return services;
@@ -48,12 +51,21 @@ class ServiceService {
             }
         }
 
+        // Validate service ID if provided
+        if (serviceData.id) {
+            // Check if ID already exists
+            const existingService = await db.Service.findByPk(serviceData.id);
+            if (existingService) {
+                throw new Error('Mã dịch vụ đã tồn tại. Vui lòng chọn mã khác.');
+            }
+        } else {
+            // If no ID provided, generate UUID
+            serviceData.id = uuidv4();
+        }
+
         const service = await db.Service.create({
-            id: uuidv4(),
             rating: 0,
             reviewCount: 0,
-            isHot: false,
-            isNew: true,
             isActive: true,
             ...serviceData
         });
@@ -78,7 +90,10 @@ class ServiceService {
             }
         }
 
-        await service.update(serviceData);
+        // Remove ID from update data (ID cannot be changed)
+        const { id: _, ...updateData } = serviceData;
+
+        await service.update(updateData);
         return service;
     }
 
@@ -100,7 +115,7 @@ class ServiceService {
      */
     async getAllCategories() {
         const categories = await db.ServiceCategory.findAll({
-            order: [['order', 'ASC'], ['name', 'ASC']]
+            order: [['displayOrder', 'ASC'], ['name', 'ASC']]
         });
 
         return categories;
@@ -155,7 +170,7 @@ class ServiceService {
     async getServicesByCategory(categoryId) {
         const services = await db.Service.findAll({
             where: { categoryId, isActive: true },
-            order: [['isHot', 'DESC'], ['rating', 'DESC']]
+            order: [['rating', 'DESC']]
         });
 
         return services;

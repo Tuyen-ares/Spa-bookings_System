@@ -30,11 +30,6 @@ module.exports = {
         },
         onDelete: 'CASCADE',
       },
-      userName: {
-        type: Sequelize.STRING,
-        allowNull: true,
-        comment: 'Tên khách hàng (để hiển thị trên lịch)',
-      },
       date: {
         type: Sequelize.DATEONLY,
         allowNull: false,
@@ -44,7 +39,7 @@ module.exports = {
         allowNull: false,
       },
       status: {
-        type: Sequelize.ENUM('upcoming', 'completed', 'cancelled', 'pending', 'in-progress'),
+        type: Sequelize.ENUM('upcoming', 'completed', 'cancelled', 'pending', 'in-progress', 'scheduled'),
         allowNull: false,
         defaultValue: 'pending',
       },
@@ -52,10 +47,6 @@ module.exports = {
         type: Sequelize.ENUM('Paid', 'Unpaid'),
         allowNull: true,
         defaultValue: 'Unpaid',
-      },
-      therapist: {
-        type: Sequelize.STRING,
-        allowNull: true,
       },
       therapistId: {
         type: Sequelize.STRING,
@@ -74,20 +65,6 @@ module.exports = {
         type: Sequelize.TEXT,
         allowNull: true,
       },
-      isStarted: {
-        type: Sequelize.BOOLEAN,
-        allowNull: true,
-        defaultValue: false,
-      },
-      isCompleted: {
-        type: Sequelize.BOOLEAN,
-        allowNull: true,
-        defaultValue: false,
-      },
-      reviewRating: {
-        type: Sequelize.INTEGER,
-        allowNull: true,
-      },
       rejectionReason: {
         type: Sequelize.TEXT,
         allowNull: true,
@@ -95,15 +72,6 @@ module.exports = {
       bookingGroupId: {
         type: Sequelize.STRING,
         allowNull: true,
-      },
-      roomId: {
-        type: Sequelize.STRING,
-        allowNull: true,
-        references: {
-          model: 'rooms',
-          key: 'id',
-        },
-        onDelete: 'SET NULL',
       },
     });
   },

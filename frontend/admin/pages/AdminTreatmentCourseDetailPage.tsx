@@ -23,6 +23,15 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
     const [showPauseModal, setShowPauseModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [pauseReason, setPauseReason] = useState('');
+    const [showCompleteModal, setShowCompleteModal] = useState(false);
+    const [showAssignStaffModal, setShowAssignStaffModal] = useState(false);
+    const [selectedSession, setSelectedSession] = useState<any>(null);
+    const [completeForm, setCompleteForm] = useState({
+        customerStatusNotes: '',
+        adminNotes: ''
+    });
+    const [selectedStaffId, setSelectedStaffId] = useState<string>('');
+    const [allStaff, setAllStaff] = useState<User[]>([]);
 
     const [editForm, setEditForm] = useState({
         treatmentGoals: '',
@@ -37,6 +46,20 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
             loadCourseDetail();
         }
     }, [id]);
+
+    useEffect(() => {
+        // Load staff list for assignment
+        const loadStaff = async () => {
+            try {
+                const users = await apiService.getUsers();
+                const staff = users.filter(u => u.role === 'Staff' && u.status === 'Active');
+                setAllStaff(staff);
+            } catch (error) {
+                console.error('Error loading staff:', error);
+            }
+        };
+        loadStaff();
+    }, []);
 
     const loadCourseDetail = async () => {
         setIsLoading(true);
@@ -124,6 +147,71 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
         } catch (error) {
             console.error('Error deleting course:', error);
             alert('Không thể xóa liệu trình');
+        }
+    };
+
+    const handleCompleteSession = async () => {
+        if (!selectedSession) return;
+
+        try {
+            const response = await fetch(`http://localhost:3001/api/treatment-courses/${id}/complete-session`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({
+                    sessionNumber: selectedSession.sessionNumber,
+                    customerStatusNotes: completeForm.customerStatusNotes,
+                    adminNotes: completeForm.adminNotes
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Không thể hoàn thành buổi điều trị');
+            }
+
+            alert('Đã xác nhận hoàn thành buổi điều trị!');
+            setShowCompleteModal(false);
+            setSelectedSession(null);
+            setCompleteForm({ customerStatusNotes: '', adminNotes: '' });
+            loadCourseDetail(); // Reload to refresh data
+        } catch (error) {
+            console.error('Error completing session:', error);
+            alert('Không thể hoàn thành buổi điều trị');
+        }
+    };
+
+    const handleAssignStaff = async () => {
+        if (!selectedSession || !selectedStaffId) {
+            alert('Vui lòng chọn nhân viên');
+            return;
+        }
+
+        try {
+            const response = await fetch(`http://localhost:3001/api/treatment-sessions/${selectedSession.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({
+                    staffId: selectedStaffId
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Không thể phân công nhân viên');
+            }
+
+            alert('Đã phân công nhân viên thành công!');
+            setShowAssignStaffModal(false);
+            setSelectedSession(null);
+            setSelectedStaffId('');
+            loadCourseDetail(); // Reload to refresh data
+        } catch (error) {
+            console.error('Error assigning staff:', error);
+            alert('Không thể phân công nhân viên');
         }
     };
 
@@ -276,16 +364,16 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
             {/* Overview Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Thông tin gói liệu trình</h3>
-                    <div className="space-y-2">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Thông tin liệu trình</h3>
+                    <div className="space-y-3">
                         <div>
-                            <div className="text-sm text-gray-600">Tên gói:</div>
-                            <div className="font-medium">{course.name || 'N/A'}</div>
+                            <div className="text-sm text-gray-600">Dịch vụ:</div>
+                            <div className="font-medium text-gray-900">{(course as any).serviceName || (course as any).Service?.name || 'N/A'}</div>
                         </div>
                         <div className="pt-2 border-t border-gray-100">
-                            <div className="text-sm text-gray-600">Giá gói:</div>
+                            <div className="text-sm text-gray-600">Giá dịch vụ:</div>
                             <div className="font-medium text-brand-primary text-xl">
-                                {course.price ? `${Number(course.price).toLocaleString('vi-VN')} ₫` : '-'}
+                                {(course as any).Service?.price ? `${Number((course as any).Service.price).toLocaleString('vi-VN')} ₫` : '-'}
                             </div>
                         </div>
                         <div className="pt-2 border-t border-gray-100">
@@ -293,35 +381,306 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                             <div className="font-medium">{course.totalSessions} buổi</div>
                         </div>
                         <div className="pt-2 border-t border-gray-100">
-                            <div className="text-sm text-gray-600">Chuyên viên tư vấn:</div>
-                            <div className="font-medium">{course.consultantName || '-'}</div>
+                            <div className="text-sm text-gray-600">Tổng tiền:</div>
+                            <div className="font-medium text-brand-primary text-xl">
+                                {(() => {
+                                    const servicePrice = (course as any).Service?.price ? Number((course as any).Service.price) : 0;
+                                    const totalPrice = servicePrice * course.totalSessions;
+                                    return totalPrice > 0 ? `${totalPrice.toLocaleString('vi-VN')} ₫` : '-';
+                                })()}
+                            </div>
+                        </div>
+                        <div className="pt-2 border-t border-gray-100">
+                            <div className="text-sm text-gray-600">Số buổi đã hoàn thành:</div>
+                            <div className="font-medium">{(course as any).completedSessions || 0} / {course.totalSessions}</div>
+                        </div>
+                        <div className="pt-2 border-t border-gray-100">
+                            <div className="text-sm text-gray-600">Ngày bắt đầu:</div>
+                            <div className="font-medium">{(course as any).startDate ? new Date((course as any).startDate).toLocaleDateString('vi-VN') : '-'}</div>
+                        </div>
+                        <div className="pt-2 border-t border-gray-100">
+                            <div className="text-sm text-gray-600">Hạn sử dụng:</div>
+                            <div className="font-medium">{(course as any).expiryDate ? new Date((course as any).expiryDate).toLocaleDateString('vi-VN') : '-'}</div>
+                        </div>
+                        <div className="pt-2 border-t border-gray-100">
+                            <div className="text-sm text-gray-600">Thời gian (tuần):</div>
+                            <div className="font-medium">{(course as any).durationWeeks ? `${(course as any).durationWeeks} tuần` : '-'}</div>
+                        </div>
+                        {(course as any).frequencyType && (course as any).frequencyValue && (
+                            <div className="pt-2 border-t border-gray-100">
+                                <div className="text-sm text-gray-600">Tần suất:</div>
+                                <div className="font-medium">
+                                    {(course as any).frequencyType === 'sessions_per_week' 
+                                        ? `${(course as any).frequencyValue} lần/tuần`
+                                        : `${(course as any).frequencyValue} tuần/lần`}
+                                </div>
+                            </div>
+                        )}
+                        <div className="pt-2 border-t border-gray-100">
+                            <div className="text-sm text-gray-600">Chuyên viên phụ trách:</div>
+                            <div className="font-medium">{(course as any).Therapist?.name || '-'}</div>
                         </div>
                     </div>
                 </div>
 
                 <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Dịch vụ bao gồm</h3>
-                    {course.services && course.services.length > 0 ? (
-                        <ul className="space-y-3">
-                            {course.services.sort((a, b) => (a.order || 0) - (b.order || 0)).map((service) => (
-                                <li key={service.serviceId} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0">
-                                    <span className="flex-shrink-0 w-6 h-6 bg-brand-primary text-white rounded-full flex items-center justify-center text-sm font-semibold">
-                                        {service.order}
-                                    </span>
-                                    <div className="flex-1">
-                                        <div className="font-medium text-gray-900">{service.serviceName}</div>
-                                        <div className="text-sm text-gray-500 mt-1">
-                                            {service.price?.toLocaleString('vi-VN')} đ • {service.duration} phút
-                                        </div>
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : (
-                        <div className="text-sm text-gray-500">Chưa có dịch vụ</div>
-                    )}
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Thông tin khách hàng</h3>
+                    <div className="space-y-3">
+                        <div>
+                            <div className="text-sm text-gray-600">Tên khách hàng:</div>
+                            <div className="font-medium text-gray-900">{(course as any).Client?.name || 'N/A'}</div>
+                        </div>
+                        {(course as any).Client?.phone && (
+                            <div className="pt-2 border-t border-gray-100">
+                                <div className="text-sm text-gray-600">Số điện thoại:</div>
+                                <div className="font-medium flex items-center gap-2">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                    </svg>
+                                    {(course as any).Client.phone}
+                                </div>
+                            </div>
+                        )}
+                        {(course as any).Client?.email && (
+                            <div className="pt-2 border-t border-gray-100">
+                                <div className="text-sm text-gray-600">Email:</div>
+                                <div className="font-medium">{(course as any).Client.email}</div>
+                            </div>
+                        )}
+                        {(course as any).Service && (
+                            <div className="pt-2 border-t border-gray-100">
+                                <div className="text-sm text-gray-600">Thời gian dịch vụ:</div>
+                                <div className="font-medium">{(course as any).Service.duration} phút</div>
+                            </div>
+                        )}
+                        {(course as any).notes && (
+                            <div className="pt-2 border-t border-gray-100">
+                                <div className="text-sm text-gray-600">Ghi chú:</div>
+                                <div className="font-medium text-gray-700">{(course as any).notes}</div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
+
+            {/* Treatment Sessions List */}
+            {(course as any).TreatmentSessions && (course as any).TreatmentSessions.length > 0 && (
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                        Danh sách các buổi điều trị ({((course as any).TreatmentSessions || []).length} buổi)
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                        Danh sách tất cả các buổi điều trị trong liệu trình này. Mỗi buổi có thể được đặt lịch, hoàn thành, hoặc hủy.
+                    </p>
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead>
+                                <tr className="border-b border-gray-200 bg-gray-50">
+                                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">STT</th>
+                                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Ngày</th>
+                                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Giờ</th>
+                                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Nhân viên</th>
+                                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Lịch hẹn</th>
+                                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Trạng thái</th>
+                                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Ghi chú</th>
+                                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Hành động</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {[...((course as any).TreatmentSessions || [])]
+                                    .sort((a: any, b: any) => (a.sessionNumber || 0) - (b.sessionNumber || 0))
+                                    .map((session: any) => (
+                                    <tr key={session.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                        <td className="py-3 px-4 text-sm font-medium">{session.sessionNumber}</td>
+                                        <td className="py-3 px-4 text-sm">
+                                            {session.sessionDate ? new Date(session.sessionDate).toLocaleDateString('vi-VN') : '-'}
+                                        </td>
+                                        <td className="py-3 px-4 text-sm">{session.sessionTime || '-'}</td>
+                                        <td className="py-3 px-4 text-sm">
+                                            {session.Staff?.name || 
+                                             (session.Appointment?.Therapist?.name) ||
+                                             (session.staffId ? 'Chưa phân công' : '-')}
+                                        </td>
+                                        <td className="py-3 px-4 text-sm">
+                                            {session.Appointment ? (
+                                                <span className="text-blue-600">
+                                                    Có lịch hẹn
+                                                    {session.Appointment.Therapist && (
+                                                        <span className="text-xs text-gray-500 block mt-1">
+                                                            ({session.Appointment.Therapist.name})
+                                                        </span>
+                                                    )}
+                                                </span>
+                                            ) : (
+                                                <span className="text-gray-400">Chưa có</span>
+                                            )}
+                                        </td>
+                                        <td className="py-3 px-4 text-sm">
+                                            {getSessionStatusBadge(session.status)}
+                                        </td>
+                                        <td className="py-3 px-4 text-sm text-gray-600 max-w-xs">
+                                            <div className="space-y-1">
+                                                {session.customerStatusNotes && (
+                                                    <div className="truncate" title={session.customerStatusNotes}>
+                                                        <span className="text-xs text-gray-500">[Khách hàng]</span> {session.customerStatusNotes}
+                                                    </div>
+                                                )}
+                                                {session.adminNotes && (
+                                                    <div className="truncate text-blue-600" title={session.adminNotes}>
+                                                        <span className="text-xs text-blue-500">[Nội bộ]</span> {session.adminNotes}
+                                                    </div>
+                                                )}
+                                                {!session.customerStatusNotes && !session.adminNotes && (
+                                                    <span className="text-gray-400">-</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="py-3 px-4 text-sm">
+                                            <div className="flex gap-2">
+                                                {session.status !== 'completed' && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedSession(session);
+                                                            setCompleteForm({
+                                                                customerStatusNotes: session.customerStatusNotes || '',
+                                                                adminNotes: session.adminNotes || ''
+                                                            });
+                                                            setShowCompleteModal(true);
+                                                        }}
+                                                        className="px-3 py-1 text-xs bg-green-500 text-white rounded hover:bg-green-600"
+                                                    >
+                                                        Hoàn thành
+                                                    </button>
+                                                )}
+                                                {!session.Staff?.name && !session.Appointment?.Therapist?.name && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedSession(session);
+                                                            setSelectedStaffId(session.staffId || '');
+                                                            setShowAssignStaffModal(true);
+                                                        }}
+                                                        className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                                                    >
+                                                        Phân công
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Complete Session Modal */}
+            {showCompleteModal && selectedSession && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full">
+                        <div className="p-6 border-b border-gray-200">
+                            <h2 className="text-xl font-bold text-gray-900">
+                                Xác nhận hoàn thành buổi {selectedSession.sessionNumber}
+                            </h2>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Ghi chú tình trạng khách hàng (Khách hàng sẽ thấy ghi chú này)
+                                </label>
+                                <textarea
+                                    value={completeForm.customerStatusNotes}
+                                    onChange={(e) => setCompleteForm({...completeForm, customerStatusNotes: e.target.value})}
+                                    placeholder="Ví dụ: Khách ổn, da sáng hơn, không có kích ứng..."
+                                    rows={4}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Ghi chú nội bộ (Chỉ admin và staff thấy)
+                                </label>
+                                <textarea
+                                    value={completeForm.adminNotes}
+                                    onChange={(e) => setCompleteForm({...completeForm, adminNotes: e.target.value})}
+                                    placeholder="Ghi chú nội bộ cho admin và staff (khách hàng không thấy)..."
+                                    rows={3}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                                />
+                                <p className="mt-1 text-xs text-gray-500">
+                                    Ghi chú này chỉ được xem bởi Admin và Staff, khách hàng không thể thấy.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+                            <button
+                                onClick={() => {
+                                    setShowCompleteModal(false);
+                                    setSelectedSession(null);
+                                    setCompleteForm({ customerStatusNotes: '', adminNotes: '' });
+                                }}
+                                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                            >
+                                Hủy
+                            </button>
+                            <button
+                                onClick={handleCompleteSession}
+                                className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
+                            >
+                                Xác nhận hoàn thành
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Assign Staff Modal */}
+            {showAssignStaffModal && selectedSession && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+                        <div className="p-6 border-b border-gray-200">
+                            <h2 className="text-xl font-bold text-gray-900">
+                                Phân công nhân viên cho buổi {selectedSession.sessionNumber}
+                            </h2>
+                        </div>
+                        <div className="p-6">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Chọn nhân viên
+                            </label>
+                            <select
+                                value={selectedStaffId}
+                                onChange={(e) => setSelectedStaffId(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                            >
+                                <option value="">-- Chọn nhân viên --</option>
+                                {allStaff.map(staff => (
+                                    <option key={staff.id} value={staff.id}>
+                                        {staff.name} {staff.phone ? `(${staff.phone})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+                            <button
+                                onClick={() => {
+                                    setShowAssignStaffModal(false);
+                                    setSelectedSession(null);
+                                    setSelectedStaffId('');
+                                }}
+                                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                            >
+                                Hủy
+                            </button>
+                            <button
+                                onClick={handleAssignStaff}
+                                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                            >
+                                Phân công
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Pause Modal */}
             {showPauseModal && (

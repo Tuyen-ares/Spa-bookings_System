@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import type { Service } from '../../types';
+import type { Service, ServiceCategory } from '../../types';
 import AddEditServiceModal from '../components/AddEditServiceModal';
 import { PlusIcon, SearchIcon, GridIcon, ListIcon, EditIcon, TrashIcon } from '../../shared/icons';
 import * as apiService from '../../client/services/apiService';
@@ -12,7 +12,7 @@ type ServiceWithStatus = Service & { isActive: boolean };
 const ServicesPage: React.FC = () => {
     const location = useLocation(); // Track route changes
     const [localServices, setLocalServices] = useState<ServiceWithStatus[]>([]);
-    const [categories, setCategories] = useState<string[]>([]);
+    const [categories, setCategories] = useState<ServiceCategory[]>([]);
     const [isLoadingServices, setIsLoadingServices] = useState(true);
     const [errorServices, setErrorServices] = useState<string | null>(null);
 
@@ -31,16 +31,26 @@ const ServicesPage: React.FC = () => {
             setIsLoadingServices(true);
             setErrorServices(null);
             const fetchedServices = await apiService.getServices();
+            // Debug: Log first service to check imageUrl
+            if (fetchedServices.length > 0) {
+                const firstService = fetchedServices[0];
+                console.log('First service:', {
+                    id: firstService.id,
+                    name: firstService.name,
+                    hasImageUrl: !!firstService.imageUrl,
+                    imageUrlLength: firstService.imageUrl?.length || 0,
+                    imageUrlPreview: firstService.imageUrl ? `${firstService.imageUrl.substring(0, 100)}...` : 'null/undefined',
+                    imageUrlStartsWith: firstService.imageUrl ? firstService.imageUrl.substring(0, 20) : 'N/A'
+                });
+            }
             setLocalServices(fetchedServices.map(s => ({ ...s, isActive: s.isActive ?? true })));
             const fetchedCategories = await apiService.getServiceCategories();
-            // fetchedCategories is ServiceCategory[], extract names
-            const categoryNames = fetchedCategories.map(cat => cat.name || String(cat));
-            setCategories(['All', ...categoryNames.sort()]);
+            setCategories(fetchedCategories.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0) || a.name.localeCompare(b.name)));
         } catch (err: any) {
             console.error("Error fetching services:", err);
             setErrorServices(err.message || "Không thể tải danh sách dịch vụ.");
             setLocalServices([]);
-            setCategories(['All']);
+            setCategories([]);
         } finally {
             setIsLoadingServices(false);
         }
@@ -53,21 +63,30 @@ const ServicesPage: React.FC = () => {
     const filteredServices = useMemo(() => {
         return localServices
             .filter(service => service.name.toLowerCase().includes(searchTerm.toLowerCase()) || service.description.toLowerCase().includes(searchTerm.toLowerCase()))
-            .filter(service => filterCategory === 'All' || service.category === filterCategory)
+            .filter(service => {
+                if (filterCategory === 'All') return true;
+                const category = categories.find(c => c.id === service.categoryId);
+                return category && category.name === filterCategory;
+            })
             .filter(service => filterStatus === 'All' || (filterStatus === 'Active' && service.isActive) || (filterStatus === 'Inactive' && !service.isActive));
-    }, [localServices, searchTerm, filterCategory, filterStatus]);
+    }, [localServices, searchTerm, filterCategory, filterStatus, categories]);
 
     const groupedServices: Record<string, ServiceWithStatus[]> = useMemo(() => {
         const groups: Record<string, ServiceWithStatus[]> = {};
-        const sortedServices = [...filteredServices].sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+        const sortedServices = [...filteredServices].sort((a, b) => {
+            const categoryA = categories.find(c => c.id === a.categoryId)?.name || '';
+            const categoryB = categories.find(c => c.id === b.categoryId)?.name || '';
+            return categoryA.localeCompare(categoryB) || a.name.localeCompare(b.name);
+        });
         for (const service of sortedServices) {
-            if (!groups[service.category]) {
-                groups[service.category] = [];
+            const categoryName = categories.find(c => c.id === service.categoryId)?.name || 'Không phân loại';
+            if (!groups[categoryName]) {
+                groups[categoryName] = [];
             }
-            groups[service.category].push(service);
+            groups[categoryName].push(service);
         }
         return groups;
-    }, [filteredServices]);
+    }, [filteredServices, categories]);
 
 
     const handleAddService = () => {
@@ -126,9 +145,6 @@ const ServicesPage: React.FC = () => {
         }
     };
 
-    const handleUpdateCategories = (newCategoryList: string[]) => {
-        setCategories(['All', ...newCategoryList.sort()]);
-    };
 
     return (
         <div>
@@ -137,8 +153,11 @@ const ServicesPage: React.FC = () => {
                     service={editingService}
                     onClose={() => setIsAddEditModalOpen(false)}
                     onSave={handleSaveService}
-                    categories={categories.filter(c => c !== 'All')}
-                    onUpdateCategories={handleUpdateCategories}
+                    categories={categories}
+                    onUpdateCategories={(newCategories) => {
+                        setCategories(newCategories);
+                        fetchServiceData(); // Refresh to get updated categories
+                    }}
                 />
             )}
 
@@ -167,7 +186,8 @@ const ServicesPage: React.FC = () => {
                     <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 </div>
                 <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="p-3 border border-gray-300 rounded-lg bg-white">
-                    {categories.map(c => <option key={c} value={c}>{c === 'All' ? 'Tất cả danh mục' : c}</option>)}
+                    <option value="All">Tất cả danh mục</option>
+                    {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
                 <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as 'All' | 'Active' | 'Inactive')} className="p-3 border border-gray-300 rounded-lg bg-white">
                     <option value="All">Tất cả trạng thái</option>
@@ -199,7 +219,45 @@ const ServicesPage: React.FC = () => {
                                     {servicesInCategory.map(service => (
                                         <div key={service.id} className={`bg-white rounded-lg shadow-md flex flex-col ${!service.isActive ? 'opacity-70 grayscale' : ''}`}>
                                             <div className="relative">
-                                                <img src={service.imageUrl} alt={service.name} className="w-full h-40 object-cover rounded-t-lg" />
+                                                {service.imageUrl && service.imageUrl.trim() !== '' ? (
+                                                    <div className="w-full h-48 bg-gray-100 rounded-t-lg overflow-hidden relative flex items-center justify-center">
+                                                        <img 
+                                                            src={service.imageUrl} 
+                                                            alt={service.name} 
+                                                            className="w-full h-full object-contain object-center"
+                                                            style={{ 
+                                                                objectFit: 'contain',
+                                                                objectPosition: 'center',
+                                                                width: '100%',
+                                                                height: '100%'
+                                                            }}
+                                                            onLoad={(e) => {
+                                                                // Image loaded successfully
+                                                                const target = e.target as HTMLImageElement;
+                                                                target.style.display = 'block';
+                                                            }}
+                                                            onError={(e) => {
+                                                                const target = e.target as HTMLImageElement;
+                                                                target.style.display = 'none';
+                                                                const parent = target.parentElement;
+                                                                if (parent) {
+                                                                    const existingPlaceholder = parent.querySelector('.image-placeholder');
+                                                                    if (!existingPlaceholder) {
+                                                                        const placeholder = document.createElement('div');
+                                                                        placeholder.className = 'w-full h-full bg-gray-200 flex items-center justify-center image-placeholder absolute inset-0';
+                                                                        placeholder.innerHTML = '<span class="text-gray-400 text-sm">Lỗi tải ảnh</span>';
+                                                                        parent.appendChild(placeholder);
+                                                                    }
+                                                                }
+                                                                console.error('Image load error for service:', service.id, 'imageUrl length:', service.imageUrl?.length);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-full h-48 bg-gray-200 rounded-t-lg flex items-center justify-center">
+                                                        <span className="text-gray-400 text-sm">Không có hình ảnh</span>
+                                                    </div>
+                                                )}
                                                 {!service.isActive && (
                                                     <span className="absolute top-2 right-2 px-2 py-1 text-xs font-bold rounded-full bg-red-600 text-white">
                                                         Không hoạt động
@@ -246,7 +304,32 @@ const ServicesPage: React.FC = () => {
                                             {servicesInCategory.map(service => (
                                                 <tr key={service.id} className="border-b border-gray-200 hover:bg-gray-50">
                                                     <td className="p-4 flex items-center gap-3">
-                                                        <img src={service.imageUrl} alt={service.name} className="w-10 h-10 object-cover rounded-md" />
+                                                        {service.imageUrl && service.imageUrl.trim() !== '' ? (
+                                                            <img 
+                                                                src={service.imageUrl} 
+                                                                alt={service.name} 
+                                                                className="w-10 h-10 object-contain object-center rounded-md"
+                                                                style={{ 
+                                                                    objectFit: 'contain',
+                                                                    objectPosition: 'center'
+                                                                }}
+                                                                onError={(e) => {
+                                                                    const target = e.target as HTMLImageElement;
+                                                                    target.style.display = 'none';
+                                                                    const parent = target.parentElement;
+                                                                    if (parent && !parent.querySelector('.image-placeholder-small')) {
+                                                                        const placeholder = document.createElement('div');
+                                                                        placeholder.className = 'w-10 h-10 bg-gray-200 rounded-md flex items-center justify-center image-placeholder-small';
+                                                                        placeholder.innerHTML = '<span class="text-gray-400 text-xs">N/A</span>';
+                                                                        parent.appendChild(placeholder);
+                                                                    }
+                                                                }}
+                                                            />
+                                                        ) : (
+                                                            <div className="w-10 h-10 bg-gray-200 rounded-md flex items-center justify-center">
+                                                                <span className="text-gray-400 text-xs">N/A</span>
+                                                            </div>
+                                                        )}
                                                         <div>
                                                             <p className="font-semibold text-gray-800">{service.name}</p>
                                                             <p className="text-sm text-gray-500 line-clamp-1">{service.description}</p>

@@ -16,10 +16,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: false,
     },
-    longDescription: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
     price: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
@@ -38,6 +34,15 @@ module.exports = (sequelize, DataTypes) => {
         max: 100
       }
     },
+    categoryId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'service_categories',
+        key: 'id'
+      },
+      onDelete: 'SET NULL',
+    },
     discountPrice: {
       type: DataTypes.VIRTUAL,
       get() {
@@ -53,22 +58,8 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER, // in minutes
       allowNull: false,
     },
-    category: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      comment: 'Tên danh mục (để hiển thị)',
-    },
-    categoryId: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      references: {
-        model: 'service_categories',
-        key: 'id'
-      },
-      onDelete: 'SET NULL',
-    },
     imageUrl: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT('long'),
       allowNull: true,
     },
     rating: {
@@ -80,20 +71,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
-    },
-    isHot: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true,
-      defaultValue: false,
-    },
-    isNew: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true,
-      defaultValue: false,
-    },
-    promoExpiryDate: {
-      type: DataTypes.DATEONLY,
-      allowNull: true,
     },
     isActive: { 
       type: DataTypes.BOOLEAN,

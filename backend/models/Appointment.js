@@ -28,11 +28,6 @@ module.exports = (sequelize, DataTypes) => {
         key: 'id',
       },
     },
-    userName: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      comment: 'Tên khách hàng (để hiển thị trên lịch)',
-    },
     date: {
       type: DataTypes.DATEONLY, // YYYY-MM-DD
       allowNull: false,
@@ -51,10 +46,6 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: 'Unpaid',
     },
-    therapist: { // Name of the therapist
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
     therapistId: { // ID of the therapist (User.id where role is Technician)
       type: DataTypes.STRING,
       allowNull: true,
@@ -71,20 +62,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: true, // This can also serve as a customer's review comment
     },
-    isStarted: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true,
-      defaultValue: false,
-    },
-    isCompleted: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true,
-      defaultValue: false,
-    },
-    reviewRating: {
-      type: DataTypes.INTEGER,
-      allowNull: true
-    },
     rejectionReason: {
         type: DataTypes.TEXT,
         allowNull: true,
@@ -93,24 +70,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true,
     },
-    roomId: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      references: {
-        model: 'rooms',
-        key: 'id',
-      },
-    },
-    treatmentCourseId: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      comment: 'Link to treatment course if this appointment is part of a course',
-    },
-    treatmentSessionId: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      comment: 'Link to specific session in treatment course',
-    }
   }, {
     tableName: 'appointments',
     timestamps: false,

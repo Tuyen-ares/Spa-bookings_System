@@ -141,15 +141,13 @@ class PaymentService {
         const payment = await db.Payment.create({
             id: uuidv4(),
             appointmentId: appointmentId,
-            bookingId: appointmentId, // For backward compatibility
             userId: finalUserId,
             serviceName: appointment.serviceName,
             amount: amount,
             method: method || 'Pay at Counter',
             status: 'Pending', // All payments start as Pending (Cash requires admin confirmation, VNPay requires callback)
             date: new Date(),
-            transactionId: `TXN-${Date.now()}`,
-            therapistId: appointment.therapistId
+            transactionId: `TXN-${Date.now()}`
         });
 
         // Update appointment payment status

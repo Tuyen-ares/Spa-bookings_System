@@ -12,15 +12,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true,
     },
-    bookingId: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      references: {
-        model: 'appointments',
-        key: 'id',
-      },
-      onDelete: 'SET NULL',
-    },
     userId: {
       type: DataTypes.STRING,
       allowNull: false,

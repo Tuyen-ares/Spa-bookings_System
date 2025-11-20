@@ -45,11 +45,13 @@ class AuthController {
             res.status(201).json(result);
         } catch (error) {
             console.error('Error registering user:', error);
+            console.error('Error stack:', error.stack);
             if (error.message === 'Email already registered') {
                 res.status(409).json({ message: 'Email đã tồn tại' });
             } else {
                 res.status(500).json({
-                    message: 'Internal server error'
+                    message: 'Internal server error',
+                    error: process.env.NODE_ENV === 'development' ? error.message : undefined
                 });
             }
         }

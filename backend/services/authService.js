@@ -25,6 +25,19 @@ class AuthService {
         const t = await db.sequelize.transaction();
 
         try {
+            // Format birthday to YYYY-MM-DD if provided
+            let formattedBirthday = null;
+            if (birthday) {
+                try {
+                    const birthDate = new Date(birthday);
+                    if (!isNaN(birthDate.getTime())) {
+                        formattedBirthday = birthDate.toISOString().split('T')[0]; // YYYY-MM-DD
+                    }
+                } catch (e) {
+                    console.warn('Invalid birthday format:', birthday);
+                }
+            }
+
             // Create user
             const user = await db.User.create({
                 id: userId,
@@ -34,22 +47,20 @@ class AuthService {
                 phone: phone ? phone.trim() : null,
                 profilePictureUrl: `https://picsum.photos/seed/${userId}/200`,
                 joinDate: new Date().toISOString().split('T')[0],
-                birthday: birthday || null,
+                birthday: formattedBirthday,
                 gender: gender || null,
                 role,
                 status: 'Active',
-                lastLogin: new Date().toISOString()
+                lastLogin: null // Don't set lastLogin on registration
             }, { transaction: t });
 
             // Create wallet for client
             if (role === 'Client') {
                 await db.Wallet.create({
+                    id: `wallet-${uuidv4()}`,
                     userId: user.id,
-                    balance: 0,
                     points: 0,
-                    totalEarned: 0,
-                    totalSpent: 0,
-                    pointsHistory: []
+                    totalSpent: 0.00
                 }, { transaction: t });
             }
 
@@ -93,18 +104,9 @@ class AuthService {
             throw new Error('Account is inactive or locked');
         }
 
-        // Update last login and login history
-        const loginHistory = user.loginHistory || [];
-        loginHistory.unshift({
-            date: new Date().toISOString()
-        });
-        
-        // Keep only last 10 login records
-        const trimmedHistory = loginHistory.slice(0, 10);
-        
+        // Update last login
         await user.update({
-            lastLogin: new Date(),
-            loginHistory: trimmedHistory
+            lastLogin: new Date()
         });
 
         // Generate token

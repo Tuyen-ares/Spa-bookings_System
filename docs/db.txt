@@ -2,7 +2,7 @@
 -- Database Schema for Anh Thơ Spa Booking System
 -- Hệ thống đặt lịch và quản lý dịch vụ làm đẹp
 -- =====================================================
--- Tối ưu: 12 bảng - Đủ chức năng quản lý lịch làm việc
+-- Tối ưu: 11 bảng - Đủ chức năng quản lý lịch làm việc
 -- Admin phê duyệt lịch hẹn, Admin/Staff xem lịch từ appointments
 -- Chỉ sử dụng bảng users cơ bản (không tách customers, staff)
 -- =====================================================
@@ -19,11 +19,11 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- =====================================================
 -- 3. Drop existing tables in reverse order
 -- =====================================================
-DROP TABLE IF EXISTS `staff_tasks`;
 DROP TABLE IF EXISTS `staff_shifts`;
-DROP TABLE IF EXISTS `staff_availability`;
 DROP TABLE IF EXISTS `reviews`;
+DROP TABLE IF EXISTS `treatment_sessions`;
 DROP TABLE IF EXISTS `treatment_courses`;
+DROP TABLE IF EXISTS `notifications`;
 DROP TABLE IF EXISTS `payments`;
 DROP TABLE IF EXISTS `appointments`;
 DROP TABLE IF EXISTS `promotions`;
@@ -50,7 +50,6 @@ CREATE TABLE `users` (
   `role` enum('Admin','Staff','Client') NOT NULL DEFAULT 'Client',
   `status` enum('Active','Inactive','Locked') NOT NULL DEFAULT 'Active',
   `lastLogin` datetime DEFAULT NULL,
-  `loginHistory` json DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -60,8 +59,7 @@ CREATE TABLE `service_categories` (
   `id` int NOT NULL AUTO_INCREMENT,
   `name` varchar(255) NOT NULL,
   `description` text DEFAULT NULL,
-  `iconUrl` varchar(500) DEFAULT NULL,
-  `order` int DEFAULT 0,
+  `displayOrder` int DEFAULT 0 COMMENT 'Thứ tự hiển thị (số nhỏ hiển thị trước)',
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -70,19 +68,14 @@ CREATE TABLE `service_categories` (
 CREATE TABLE `services` (
   `id` varchar(255) NOT NULL,
   `name` varchar(255) NOT NULL,
-  `description` text,
-  `longDescription` text,
-  `duration` int NOT NULL COMMENT 'Duration in minutes',
+  `description` text NOT NULL,
+  `duration` int NOT NULL COMMENT 'Thời gian dịch vụ (phút)',
   `price` decimal(10,2) NOT NULL,
-  `discountPrice` decimal(10,2) DEFAULT NULL,
-  `imageUrl` varchar(500) DEFAULT NULL,
-  `category` varchar(255) DEFAULT NULL,
+  `discountPercent` int DEFAULT 0 COMMENT 'Phần trăm giảm giá (0-100)',
   `categoryId` int DEFAULT NULL,
-  `rating` decimal(3,2) DEFAULT 0.00,
+  `imageUrl` LONGTEXT DEFAULT NULL,
+  `rating` float DEFAULT 0.00,
   `reviewCount` int DEFAULT 0,
-  `isHot` tinyint(1) DEFAULT 0,
-  `isNew` tinyint(1) DEFAULT 0,
-  `promoExpiryDate` date DEFAULT NULL,
   `isActive` tinyint(1) DEFAULT 1,
   PRIMARY KEY (`id`),
   KEY `categoryId` (`categoryId`),
@@ -90,14 +83,16 @@ CREATE TABLE `services` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 4.4. Create the 'wallets' table (Gộp points_history logic vào đây)
+-- Note: Model sử dụng userId làm primary key, nhưng migration có id riêng
+-- Giữ nguyên cấu trúc migration để khớp với database thực tế
 CREATE TABLE `wallets` (
+  `id` varchar(255) NOT NULL,
   `userId` varchar(255) NOT NULL,
-  `balance` decimal(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Số dư tiền mặt',
   `points` int NOT NULL DEFAULT 0 COMMENT 'Điểm tích lũy hiện tại',
-  `totalEarned` int NOT NULL DEFAULT 0 COMMENT 'Tổng điểm đã tích',
-  `totalSpent` int NOT NULL DEFAULT 0 COMMENT 'Tổng điểm đã dùng',
-  `pointsHistory` json DEFAULT NULL COMMENT 'Lịch sử điểm: [{date, pointsChange, type, source, description}]',
-  PRIMARY KEY (`userId`),
+  `totalSpent` decimal(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Tổng số tiền đã chi tiêu',
+  `lastUpdated` datetime DEFAULT CURRENT_TIMESTAMP COMMENT 'Lần cập nhật cuối cùng',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `userId` (`userId`),
   CONSTRAINT `wallets_fk_user` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -111,18 +106,13 @@ CREATE TABLE `appointments` (
   `serviceId` varchar(255) NOT NULL,
   `serviceName` varchar(255) NOT NULL,
   `userId` varchar(255) NOT NULL COMMENT 'ID khách hàng',
-  `userName` varchar(255) DEFAULT NULL COMMENT 'Tên khách hàng (để hiển thị trên lịch)',
   `date` date NOT NULL COMMENT 'Ngày hẹn (YYYY-MM-DD)',
   `time` varchar(10) NOT NULL COMMENT 'Giờ hẹn (HH:MM)',
-  `status` enum('upcoming','completed','cancelled','pending','in-progress') NOT NULL DEFAULT 'pending' COMMENT 'pending=chờ duyệt, upcoming=đã duyệt, in-progress=đang thực hiện, completed=hoàn thành, cancelled=đã hủy',
+  `status` enum('upcoming','completed','cancelled','pending','in-progress','scheduled') NOT NULL DEFAULT 'pending' COMMENT 'pending=chờ duyệt, scheduled=đã lên lịch, upcoming=đã duyệt, in-progress=đang thực hiện, completed=hoàn thành, cancelled=đã hủy',
   `paymentStatus` enum('Paid','Unpaid') DEFAULT 'Unpaid',
-  `therapist` varchar(255) DEFAULT NULL COMMENT 'Tên nhân viên (để hiển thị trên lịch)',
   `therapistId` varchar(255) DEFAULT NULL COMMENT 'ID nhân viên',
   `notesForTherapist` text,
   `staffNotesAfterSession` text,
-  `isStarted` tinyint(1) DEFAULT 0,
-  `isCompleted` tinyint(1) DEFAULT 0,
-  `reviewRating` int DEFAULT NULL COMMENT 'Đánh giá sau khi hoàn thành (1-5)',
   `rejectionReason` text COMMENT 'Lý do từ chối/hủy (Admin từ chối)',
   `bookingGroupId` varchar(255) DEFAULT NULL COMMENT 'Nhóm các booking cùng một lần đặt',
   PRIMARY KEY (`id`),
@@ -136,34 +126,56 @@ CREATE TABLE `appointments` (
   CONSTRAINT `appointments_fk_therapist` FOREIGN KEY (`therapistId`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 5.2. Create the 'treatment_courses' table (GIỮ LẠI - chức năng riêng)
+-- 5.2. Create the 'treatment_courses' table (Liệu trình gắn liền với dịch vụ)
 CREATE TABLE `treatment_courses` (
   `id` varchar(255) NOT NULL,
-  `serviceId` varchar(255) NOT NULL,
-  `serviceName` varchar(255) NOT NULL,
-  `totalSessions` int NOT NULL COMMENT 'Tổng số buổi trong liệu trình',
-  `sessionsPerWeek` int NOT NULL DEFAULT 1 COMMENT 'Số buổi mỗi tuần',
-  `weekDays` json DEFAULT NULL COMMENT 'Mảng các thứ trong tuần: [1,3,5] = Thứ 2, Thứ 4, Thứ 6',
-  `sessionDuration` int NOT NULL DEFAULT 60 COMMENT 'Thời gian mỗi buổi (phút)',
-  `sessionTime` varchar(10) DEFAULT NULL COMMENT 'Giờ cố định cho các buổi (ví dụ: "18:00")',
-  `description` text DEFAULT NULL COMMENT 'Mô tả liệu trình',
-  `imageUrl` varchar(500) DEFAULT NULL COMMENT 'URL hình ảnh liệu trình',
-  `sessions` json DEFAULT NULL COMMENT 'Mảng các buổi điều trị: [{date, therapist, notes, status}]',
-  `initialAppointmentId` varchar(255) DEFAULT NULL COMMENT 'ID appointment đầu tiên (để lấy userId)',
-  `clientId` varchar(255) DEFAULT NULL COMMENT 'ID khách hàng (NULL cho template)',
-  `therapistId` varchar(255) DEFAULT NULL,
-  `status` enum('active','completed','paused') NOT NULL DEFAULT 'active',
-  `expiryDate` date DEFAULT NULL COMMENT 'Hạn sử dụng liệu trình',
-  `nextAppointmentDate` date DEFAULT NULL COMMENT 'Ngày hẹn tiếp theo (để nhắc nhở)',
+  `serviceId` varchar(255) NOT NULL COMMENT 'ID dịch vụ (liệu trình gắn liền với dịch vụ)',
+  `serviceName` varchar(255) NOT NULL COMMENT 'Tên dịch vụ',
+  `clientId` varchar(255) NOT NULL COMMENT 'ID khách hàng',
+  `totalSessions` int NOT NULL COMMENT 'Tổng số buổi (dựa trên số lượng khách chọn khi đặt lịch)',
+  `completedSessions` int NOT NULL DEFAULT 0 COMMENT 'Số buổi đã hoàn thành',
+  `startDate` date NOT NULL COMMENT 'Ngày bắt đầu (từ ngày đặt lịch)',
+  `durationWeeks` int NOT NULL COMMENT 'Số tuần (mặc định: số dịch vụ + 1, admin có thể chỉnh)',
+  `expiryDate` date NOT NULL COMMENT 'Hạn sử dụng (startDate + durationWeeks)',
+  `frequencyType` enum('weeks_per_session','sessions_per_week') DEFAULT NULL COMMENT 'Loại tần suất: weeks_per_session = mấy tuần 1 lần, sessions_per_week = mấy lần 1 tuần',
+  `frequencyValue` int DEFAULT NULL COMMENT 'Giá trị tần suất (ví dụ: 2 tuần 1 lần hoặc 2 lần/tuần)',
+  `therapistId` varchar(255) DEFAULT NULL COMMENT 'ID nhân viên phụ trách',
+  `status` enum('active','completed','expired','cancelled') NOT NULL DEFAULT 'active' COMMENT 'Trạng thái liệu trình',
+  `notes` text DEFAULT NULL COMMENT 'Ghi chú tổng quan',
+  `createdAt` datetime DEFAULT CURRENT_TIMESTAMP COMMENT 'Ngày tạo',
   PRIMARY KEY (`id`),
   KEY `serviceId` (`serviceId`),
-  KEY `initialAppointmentId` (`initialAppointmentId`),
   KEY `clientId` (`clientId`),
   KEY `therapistId` (`therapistId`),
+  KEY `status` (`status`),
+  KEY `expiryDate` (`expiryDate`),
   CONSTRAINT `treatment_courses_fk_service` FOREIGN KEY (`serviceId`) REFERENCES `services` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `treatment_courses_fk_appointment` FOREIGN KEY (`initialAppointmentId`) REFERENCES `appointments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `treatment_courses_fk_client` FOREIGN KEY (`clientId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `treatment_courses_fk_therapist` FOREIGN KEY (`therapistId`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 5.3. Create the 'treatment_sessions' table (Các buổi điều trị trong liệu trình)
+CREATE TABLE `treatment_sessions` (
+  `id` varchar(255) NOT NULL,
+  `treatmentCourseId` varchar(255) NOT NULL COMMENT 'ID liệu trình',
+  `appointmentId` varchar(255) DEFAULT NULL COMMENT 'ID lịch hẹn (liên kết với appointments)',
+  `sessionNumber` int NOT NULL COMMENT 'Số thứ tự buổi (1, 2, 3, ...)',
+  `status` enum('scheduled','completed','cancelled','missed') NOT NULL DEFAULT 'scheduled' COMMENT 'Trạng thái buổi điều trị',
+  `sessionDate` date NOT NULL COMMENT 'Ngày thực hiện',
+  `sessionTime` varchar(10) NOT NULL COMMENT 'Giờ thực hiện (HH:MM)',
+  `staffId` varchar(255) DEFAULT NULL COMMENT 'ID nhân viên thực hiện',
+  `customerStatusNotes` text DEFAULT NULL COMMENT 'Ghi chú tình trạng khách (TEXT, không phải ENUM) - Ví dụ: "Khách ổn, da sáng hơn, không có kích ứng"',
+  `adminNotes` text DEFAULT NULL COMMENT 'Ghi chú của admin sau buổi',
+  `completedAt` datetime DEFAULT NULL COMMENT 'Ngày hoàn thành',
+  PRIMARY KEY (`id`),
+  KEY `treatmentCourseId` (`treatmentCourseId`),
+  KEY `appointmentId` (`appointmentId`),
+  KEY `staffId` (`staffId`),
+  KEY `sessionDate` (`sessionDate`),
+  KEY `status` (`status`),
+  CONSTRAINT `treatment_sessions_fk_course` FOREIGN KEY (`treatmentCourseId`) REFERENCES `treatment_courses` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `treatment_sessions_fk_appointment` FOREIGN KEY (`appointmentId`) REFERENCES `appointments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `treatment_sessions_fk_staff` FOREIGN KEY (`staffId`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
@@ -173,7 +185,7 @@ CREATE TABLE `treatment_courses` (
 -- 6.1. Create the 'payments' table
 CREATE TABLE `payments` (
   `id` varchar(255) NOT NULL,
-  `bookingId` varchar(255) DEFAULT NULL COMMENT 'ID đặt lịch',
+  `transactionId` varchar(255) DEFAULT NULL COMMENT 'Mã giao dịch từ payment gateway (VNPay, Momo, etc.)',
   `userId` varchar(255) NOT NULL,
   `appointmentId` varchar(255) DEFAULT NULL,
   `serviceName` varchar(255) DEFAULT NULL,
@@ -181,14 +193,9 @@ CREATE TABLE `payments` (
   `method` enum('Cash','Card','Momo','VNPay','ZaloPay') DEFAULT NULL,
   `status` enum('Completed','Pending','Refunded','Failed') DEFAULT 'Pending',
   `date` datetime NOT NULL,
-  `transactionId` varchar(255) DEFAULT NULL COMMENT 'Mã giao dịch từ hệ thống thanh toán',
-  `therapistId` varchar(255) DEFAULT NULL COMMENT 'ID nhân viên (để tính hoa hồng)',
   PRIMARY KEY (`id`),
-  KEY `bookingId` (`bookingId`),
   KEY `userId` (`userId`),
   KEY `appointmentId` (`appointmentId`),
-  KEY `therapistId` (`therapistId`),
-  CONSTRAINT `payments_fk_booking` FOREIGN KEY (`bookingId`) REFERENCES `appointments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `payments_fk_user` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `payments_fk_appointment` FOREIGN KEY (`appointmentId`) REFERENCES `appointments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -204,13 +211,11 @@ CREATE TABLE `promotions` (
   `discountType` enum('percentage','fixed') NOT NULL,
   `discountValue` decimal(10,2) NOT NULL,
   `termsAndConditions` text,
-  `targetAudience` enum('All','New Clients','Birthday','Group','VIP','Tier Level 1','Tier Level 2','Tier Level 3','Tier Level 4','Tier Level 5','Tier Level 6','Tier Level 7','Tier Level 8') DEFAULT 'All',
+  `targetAudience` enum('All','New Clients','Birthday','Group','VIP','Tier Level 1','Tier Level 2','Tier Level 3') DEFAULT 'All',
   `applicableServiceIds` json DEFAULT NULL COMMENT 'Mảng ID dịch vụ áp dụng (rỗng = tất cả)',
   `minOrderValue` decimal(10,2) DEFAULT 0.00,
   `usageCount` int DEFAULT 0,
   `usageLimit` int DEFAULT NULL COMMENT 'NULL = không giới hạn',
-  `pointsRequired` int DEFAULT 0 COMMENT 'Điểm cần để đổi (0 = không cần, >0 = voucher đổi điểm)',
-  `isVoucher` tinyint(1) DEFAULT 0 COMMENT '1 = voucher đổi điểm, 0 = khuyến mãi thông thường',
   `stock` int DEFAULT NULL COMMENT 'Số lượng voucher còn lại (NULL = không giới hạn)',
   `isActive` tinyint(1) DEFAULT 1,
   PRIMARY KEY (`id`),
@@ -218,24 +223,39 @@ CREATE TABLE `promotions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
--- 7. REVIEW & FEEDBACK TABLES
+-- 7. NOTIFICATION TABLES
 -- =====================================================
 
--- 7.1. Create the 'reviews' table
+-- 7.1. Create the 'notifications' table
+CREATE TABLE `notifications` (
+  `id` varchar(255) NOT NULL,
+  `userId` varchar(255) NOT NULL,
+  `type` enum('new_appointment','appointment_confirmed','appointment_cancelled','appointment_reminder','treatment_course_reminder','promotion','payment_success','payment_received','system') NOT NULL DEFAULT 'system',
+  `title` varchar(255) NOT NULL,
+  `message` text NOT NULL,
+  `relatedId` varchar(255) DEFAULT NULL COMMENT 'ID của appointment, treatment course, etc.',
+  `isRead` tinyint(1) NOT NULL DEFAULT 0,
+  `emailSent` tinyint(1) NOT NULL DEFAULT 0,
+  `createdAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `userId` (`userId`),
+  KEY `isRead` (`isRead`),
+  CONSTRAINT `notifications_fk_user` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- 8. REVIEW & FEEDBACK TABLES
+-- =====================================================
+
+-- 8.1. Create the 'reviews' table
 CREATE TABLE `reviews` (
   `id` varchar(255) NOT NULL,
   `userId` varchar(255) NOT NULL,
   `serviceId` varchar(255) NOT NULL,
-  `serviceName` varchar(255) DEFAULT NULL,
   `appointmentId` varchar(255) DEFAULT NULL,
-  `userName` varchar(255) NOT NULL,
-  `userImageUrl` varchar(255) DEFAULT NULL,
   `rating` int NOT NULL COMMENT 'Điểm đánh giá (1-5)',
-  `comment` text,
-  `images` json DEFAULT NULL COMMENT 'Mảng URL ảnh đánh giá: ["url1", "url2"]',
-  `date` datetime NOT NULL,
-  `managerReply` text COMMENT 'Phản hồi từ quản lý',
-  `isHidden` tinyint(1) NOT NULL DEFAULT 0,
+  `comment` text DEFAULT NULL,
+  `date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `appointmentId` (`appointmentId`),
   KEY `userId` (`userId`),
@@ -249,23 +269,7 @@ CREATE TABLE `reviews` (
 -- 9. STAFF MANAGEMENT TABLES - Bảng quản lý nhân viên
 -- =====================================================
 
--- 9.1. Create the 'staff_availability' table
-CREATE TABLE `staff_availability` (
-  `id` varchar(255) NOT NULL,
-  `staffId` varchar(255) NOT NULL,
-  `date` date DEFAULT NULL COMMENT 'Ngày cụ thể (NULL nếu là lịch định kỳ)',
-  `dayOfWeek` int DEFAULT NULL COMMENT 'Thứ trong tuần: 0=CN, 1=T2, ..., 6=T7 (NULL nếu là lịch cụ thể)',
-  `startTime` varchar(10) DEFAULT NULL COMMENT 'Giờ bắt đầu (HH:MM) cho lịch định kỳ',
-  `endTime` varchar(10) DEFAULT NULL COMMENT 'Giờ kết thúc (HH:MM) cho lịch định kỳ',
-  `isAvailable` tinyint(1) DEFAULT 1 COMMENT 'Có sẵn sàng không (cho lịch định kỳ)',
-  `timeSlots` json DEFAULT NULL COMMENT 'Mảng: [{time: "09:00", availableServiceIds: ["sv1", "sv2"]}] (cho lịch cụ thể)',
-  PRIMARY KEY (`id`),
-  KEY `staffId` (`staffId`),
-  KEY `staffId_date` (`staffId`,`date`),
-  CONSTRAINT `staff_availability_fk_staff` FOREIGN KEY (`staffId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 9.2. Create the 'staff_shifts' table
+-- 9.1. Create the 'staff_shifts' table
 CREATE TABLE `staff_shifts` (
   `id` varchar(255) NOT NULL,
   `staffId` varchar(255) NOT NULL,
@@ -273,7 +277,7 @@ CREATE TABLE `staff_shifts` (
   `shiftType` enum('morning','afternoon','evening','leave','custom') NOT NULL,
   `status` enum('approved','pending','rejected') NOT NULL DEFAULT 'pending',
   `requestedBy` varchar(255) DEFAULT NULL COMMENT 'ID nhân viên yêu cầu đổi ca',
-  `notes` text,
+  `notes` text DEFAULT NULL,
   `assignedManagerId` varchar(255) DEFAULT NULL,
   `shiftHours` json DEFAULT NULL COMMENT '{start: "09:00", end: "17:00"}',
   `isUpForSwap` tinyint(1) DEFAULT 0,
@@ -284,24 +288,6 @@ CREATE TABLE `staff_shifts` (
   KEY `assignedManagerId` (`assignedManagerId`),
   CONSTRAINT `staff_shifts_fk_staff` FOREIGN KEY (`staffId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `staff_shifts_fk_manager` FOREIGN KEY (`assignedManagerId`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 9.3. Create the 'staff_tasks' table
-CREATE TABLE `staff_tasks` (
-  `id` varchar(255) NOT NULL,
-  `title` varchar(255) NOT NULL,
-  `description` text,
-  `assignedToId` varchar(255) NOT NULL COMMENT 'ID nhân viên được giao',
-  `assignedById` varchar(255) NOT NULL COMMENT 'ID admin/manager giao việc',
-  `dueDate` date NOT NULL,
-  `status` enum('pending','in-progress','completed','overdue') NOT NULL DEFAULT 'pending',
-  `createdAt` datetime NOT NULL,
-  `completedAt` datetime DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  KEY `assignedToId` (`assignedToId`),
-  KEY `assignedById` (`assignedById`),
-  CONSTRAINT `staff_tasks_fk_assigned_to` FOREIGN KEY (`assignedToId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `staff_tasks_fk_assigned_by` FOREIGN KEY (`assignedById`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
@@ -322,58 +308,54 @@ INSERT INTO `service_categories` (`id`, `name`) VALUES
 (6, 'Nail');
 
 -- 11.2. Insert Users
-INSERT INTO `users` (`id`, `name`, `email`, `password`, `phone`, `profilePictureUrl`, `joinDate`, `birthday`, `gender`, `role`, `status`, `lastLogin`, `loginHistory`) VALUES
-('user-1', 'Thanh Hằng', 'admin@anhtho.com', '$2a$10$hashed_password_here', NULL, 'https://picsum.photos/seed/admin/40/40', CURDATE(), NULL, NULL, 'Admin', 'Active', NULL, NULL),
-('user-2', 'Trần Minh Anh', 'staff@anhtho.com', '$2a$10$hashed_password_here', '0987654321', 'https://picsum.photos/seed/staff2/100/100', CURDATE(), NULL, 'Nữ', 'Staff', 'Active', NULL, NULL),
-('user-3', 'Trần Thị Ngọc Ánh', 'customer@anhtho.com', '$2a$10$hashed_password_here', '0988776655', 'https://picsum.photos/seed/customer1/40/40', CURDATE(), '1990-05-15', 'Nữ', 'Client', 'Active', NULL, NULL),
-('user-4', 'Nguyễn Thuỳ Linh', 'staff1@anhtho.com', '$2a$10$hashed_password_here', '0912345678', 'https://picsum.photos/seed/staff1/100/100', CURDATE(), NULL, 'Nữ', 'Staff', 'Active', NULL, NULL);
+INSERT INTO `users` (`id`, `name`, `email`, `password`, `phone`, `profilePictureUrl`, `joinDate`, `birthday`, `gender`, `role`, `status`, `lastLogin`) VALUES
+('user-1', 'Thanh Hằng', 'admin@anhtho.com', '$2a$10$hashed_password_here', NULL, 'https://picsum.photos/seed/admin/40/40', CURDATE(), NULL, NULL, 'Admin', 'Active', NULL),
+('user-2', 'Trần Minh Anh', 'staff@anhtho.com', '$2a$10$hashed_password_here', '0987654321', 'https://picsum.photos/seed/staff2/100/100', CURDATE(), NULL, 'Nữ', 'Staff', 'Active', NULL),
+('user-3', 'Trần Thị Ngọc Ánh', 'customer@anhtho.com', '$2a$10$hashed_password_here', '0988776655', 'https://picsum.photos/seed/customer1/40/40', CURDATE(), '1990-05-15', 'Nữ', 'Client', 'Active', NULL),
+('user-4', 'Nguyễn Thuỳ Linh', 'staff1@anhtho.com', '$2a$10$hashed_password_here', '0912345678', 'https://picsum.photos/seed/staff1/100/100', CURDATE(), NULL, 'Nữ', 'Staff', 'Active', NULL);
 
 -- 11.3. Insert Wallets
-INSERT INTO `wallets` (`userId`, `balance`, `points`, `totalEarned`, `totalSpent`) VALUES
-('user-3', 0.00, 250, 250, 0);
+INSERT INTO `wallets` (`id`, `userId`, `points`, `totalSpent`) VALUES
+('wallet-1', 'user-3', 250, 0.00);
 
 -- 11.4. Insert Services
-INSERT INTO `services` (`id`, `name`, `description`, `longDescription`, `duration`, `price`, `discountPrice`, `imageUrl`, `category`, `categoryId`, `rating`, `reviewCount`, `isHot`, `isNew`, `promoExpiryDate`, `isActive`) VALUES
-('sv-1', 'Chăm sóc da mặt chuyên sâu', 'Liệu trình làm sạch, tẩy tế bào chết, massage và đắp mặt nạ dưỡng da.', 'Liệu trình chăm sóc da mặt toàn diện với các bước: làm sạch sâu, tẩy tế bào chết, massage thư giãn và đắp mặt nạ dưỡng ẩm chuyên sâu. Phù hợp cho mọi loại da.', 60, 500000.00, NULL, 'https://picsum.photos/seed/spa1/400/300', 'Chăm sóc da', 1, 4.50, 12, 1, 0, NULL, 1),
-('sv-2', 'Massage body thảo dược', 'Massage toàn thân với tinh dầu thảo dược giúp thư giãn, giảm căng thẳng.', 'Massage toàn thân với tinh dầu thảo dược tự nhiên, giúp thư giãn cơ bắp, giảm căng thẳng và mệt mỏi. Kỹ thuật massage chuyên nghiệp.', 90, 750000.00, NULL, 'https://picsum.photos/seed/spa2/400/300', 'Massage', 2, 4.80, 25, 1, 1, NULL, 1);
+INSERT INTO `services` (`id`, `name`, `description`, `duration`, `price`, `discountPercent`, `categoryId`, `imageUrl`, `rating`, `reviewCount`, `isActive`) VALUES
+('sv-1', 'Chăm sóc da mặt chuyên sâu', 'Liệu trình làm sạch, tẩy tế bào chết, massage và đắp mặt nạ dưỡng da. Liệu trình chăm sóc da mặt toàn diện với các bước: làm sạch sâu, tẩy tế bào chết, massage thư giãn và đắp mặt nạ dưỡng ẩm chuyên sâu. Phù hợp cho mọi loại da.', 60, 500000.00, 0, 1, 'https://picsum.photos/seed/spa1/400/300', 4.50, 12, 1),
+('sv-2', 'Massage body thảo dược', 'Massage toàn thân với tinh dầu thảo dược giúp thư giãn, giảm căng thẳng. Massage toàn thân với tinh dầu thảo dược tự nhiên, giúp thư giãn cơ bắp, giảm căng thẳng và mệt mỏi. Kỹ thuật massage chuyên nghiệp.', 90, 750000.00, 0, 2, 'https://picsum.photos/seed/spa2/400/300', 4.80, 25, 1);
 
 -- 11.5. Insert Appointments
-INSERT INTO `appointments` (`id`, `serviceId`, `serviceName`, `userId`, `userName`, `date`, `time`, `status`, `paymentStatus`, `therapist`, `therapistId`, `notesForTherapist`, `staffNotesAfterSession`, `isStarted`, `isCompleted`, `reviewRating`, `rejectionReason`, `bookingGroupId`) VALUES
-('apt-1', 'sv-1', 'Chăm sóc da mặt chuyên sâu', 'user-3', 'Trần Thị Ngọc Ánh', '2024-08-01', '09:00', 'pending', 'Unpaid', 'Trần Minh Anh', 'user-2', NULL, NULL, 0, 0, NULL, NULL, NULL),
-('apt-2', 'sv-2', 'Massage body thảo dược', 'user-3', 'Trần Thị Ngọc Ánh', '2024-08-01', '14:00', 'upcoming', 'Paid', 'Nguyễn Thuỳ Linh', 'user-4', NULL, NULL, 0, 0, NULL, NULL, NULL);
+INSERT INTO `appointments` (`id`, `serviceId`, `serviceName`, `userId`, `date`, `time`, `status`, `paymentStatus`, `therapistId`, `notesForTherapist`, `staffNotesAfterSession`, `rejectionReason`, `bookingGroupId`) VALUES
+('apt-1', 'sv-1', 'Chăm sóc da mặt chuyên sâu', 'user-3', '2024-08-01', '09:00', 'pending', 'Unpaid', 'user-2', NULL, NULL, NULL, NULL),
+('apt-2', 'sv-2', 'Massage body thảo dược', 'user-3', '2024-08-01', '14:00', 'upcoming', 'Paid', 'user-4', NULL, NULL, NULL, NULL);
 
 -- 11.6. Insert Treatment Courses
-INSERT INTO `treatment_courses` (`id`, `serviceId`, `serviceName`, `totalSessions`, `sessionsPerWeek`, `weekDays`, `sessionDuration`, `sessionTime`, `description`, `imageUrl`, `sessions`, `initialAppointmentId`, `clientId`, `therapistId`, `status`, `expiryDate`, `nextAppointmentDate`) VALUES
-('tc-template-1', 'sv-1', 'Chăm sóc da mặt chuyên sâu', 8, 2, '[1, 4]', 60, '10:00', 'Liệu trình chăm sóc da mặt toàn diện với 8 buổi, 2 buổi/tuần vào Thứ 2 và Thứ 5. Giúp da sáng mịn, giảm mụn và lỗ chân lông.', 'https://picsum.photos/seed/treatment1/400/300', '[]', NULL, NULL, NULL, 'active', NULL, NULL);
+INSERT INTO `treatment_courses` (`id`, `serviceId`, `serviceName`, `clientId`, `totalSessions`, `completedSessions`, `startDate`, `durationWeeks`, `expiryDate`, `frequencyType`, `frequencyValue`, `therapistId`, `status`, `notes`) VALUES
+('tc-1', 'sv-1', 'Chăm sóc da mặt chuyên sâu', 'user-3', 10, 0, '2024-08-01', 11, '2024-10-15', 'sessions_per_week', 2, 'user-2', 'active', 'Liệu trình chăm sóc da mặt toàn diện với 10 buổi, 2 lần/tuần. Giúp da sáng mịn, giảm mụn và lỗ chân lông.');
 
--- 11.7. Insert Staff Availability (Lịch khả dụng - để staff xem lịch)
-INSERT INTO `staff_availability` (`id`, `staffId`, `dayOfWeek`, `startTime`, `endTime`, `isAvailable`) VALUES
-('avail-1', 'user-2', 1, '09:00', '17:00', 1),
-('avail-2', 'user-2', 3, '09:00', '17:00', 1),
-('avail-3', 'user-2', 5, '09:00', '17:00', 1),
-('avail-4', 'user-4', 2, '14:00', '20:00', 1),
-('avail-5', 'user-4', 4, '14:00', '20:00', 1);
+-- 11.6.1. Insert Treatment Sessions (Các buổi điều trị)
+INSERT INTO `treatment_sessions` (`id`, `treatmentCourseId`, `appointmentId`, `sessionNumber`, `status`, `sessionDate`, `sessionTime`, `staffId`, `customerStatusNotes`, `adminNotes`) VALUES
+('ts-1', 'tc-1', 'apt-1', 1, 'scheduled', '2024-08-01', '09:00', 'user-2', NULL, NULL);
 
--- 11.8. Insert Staff Shifts (Ca làm việc - để admin quản lý, staff xem)
+-- 11.7. Insert Staff Shifts (Ca làm việc - để admin quản lý, staff xem)
 INSERT INTO `staff_shifts` (`id`, `staffId`, `date`, `shiftType`, `status`, `shiftHours`) VALUES
 ('shift-1', 'user-2', '2024-08-01', 'morning', 'approved', '{"start": "09:00", "end": "17:00"}'),
 ('shift-2', 'user-2', '2024-08-02', 'morning', 'approved', '{"start": "09:00", "end": "17:00"}'),
 ('shift-3', 'user-4', '2024-08-01', 'afternoon', 'approved', '{"start": "14:00", "end": "20:00"}');
 
 -- =====================================================
--- Tổng kết: Database với 12 bảng - Đủ chức năng quản lý lịch làm việc
+-- Tổng kết: Database với 12 bảng - Đủ chức năng quản lý lịch làm việc và liệu trình
 -- 1. users - Quản lý tài khoản (Admin, Staff, Client)
 -- 2. service_categories - Danh mục dịch vụ
 -- 3. services - Dịch vụ
--- 4. wallets (gộp points_history) - Ví điểm
+-- 4. wallets - Ví điểm và theo dõi chi tiêu
 -- 5. appointments - Đặt lịch (Admin phê duyệt, Admin/Staff xem lịch)
--- 6. treatment_courses - Liệu trình
--- 7. payments - Thanh toán
--- 8. promotions (gộp vouchers) - Khuyến mãi & Voucher
--- 9. reviews - Đánh giá
--- 10. staff_availability - Lịch khả dụng nhân viên (để staff xem lịch)
--- 11. staff_shifts - Ca làm việc nhân viên (để admin quản lý, staff xem)
--- 12. staff_tasks - Công việc nhân viên (để admin giao việc, staff xem)
+-- 6. treatment_courses - Liệu trình (gắn liền với dịch vụ)
+-- 7. treatment_sessions - Các buổi điều trị trong liệu trình
+-- 8. payments - Thanh toán
+-- 9. promotions (gộp vouchers) - Khuyến mãi & Voucher
+-- 10. notifications - Thông báo (hỗ trợ nhắc nhở liệu trình)
+-- 11. reviews - Đánh giá
+-- 12. staff_shifts - Ca làm việc nhân viên (để admin quản lý, staff xem)
 -- 
 -- Lưu ý về quản lý lịch:
 -- - Admin phê duyệt lịch hẹn: Khi khách đặt lịch, status = 'pending'
@@ -387,26 +369,41 @@ INSERT INTO `staff_shifts` (`id`, `staffId`, `date`, `shiftType`, `status`, `shi
 -- - Staff xem lịch của mình: WHERE therapistId = staffId
 -- - Admin xem tất cả lịch: Không cần filter theo therapistId
 -- =====================================================
--- 1. Tạo bảng rooms
-CREATE TABLE `rooms` (
-  `id` varchar(255) NOT NULL,
-  `name` varchar(255) NOT NULL,
-  `capacity` int DEFAULT 1,
-  `equipmentIds` json DEFAULT NULL,
-  `isActive` tinyint(1) DEFAULT 1,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 2. Thêm cột roomId vào appointments (nếu cần)
-ALTER TABLE `appointments` 
-ADD COLUMN `roomId` varchar(255) DEFAULT NULL,
-ADD KEY `roomId` (`roomId`),
-ADD CONSTRAINT `appointments_fk_room` 
-FOREIGN KEY (`roomId`) REFERENCES `rooms` (`id`) 
-ON DELETE SET NULL ON UPDATE CASCADE;
-
--- 3. Thêm dữ liệu mẫu (nếu cần)
-INSERT INTO `rooms` (`id`, `name`, `capacity`, `isActive`) VALUES
-('room1', 'Phòng 1', 1, 1),
-('room2', 'Phòng 2', 1, 1),
-('room3', 'Phòng 3', 1, 1);
+-- LƯU Ý VỀ QUẢN LÝ LIỆU TRÌNH
+-- =====================================================
+-- 
+-- 1. Liệu trình gắn liền với dịch vụ:
+--    - Mỗi liệu trình (treatment_courses) phải gắn với 1 dịch vụ (serviceId)
+--    - Khi khách đặt lịch, chọn dịch vụ + số lượng (số buổi) → Tạo liệu trình
+--
+-- 2. Admin quy định tần suất (linh hoạt):
+--    - frequencyType: 'weeks_per_session' = "Mấy tuần 1 lần" (ví dụ: 2 tuần 1 lần)
+--    - frequencyType: 'sessions_per_week' = "Mấy lần 1 tuần" (ví dụ: 2 lần/tuần)
+--    - frequencyValue: Giá trị tần suất (ví dụ: 2)
+--    - Admin tự chọn 1 trong 2 cách, tùy theo dịch vụ
+--
+-- 3. Thời gian quy định:
+--    - durationWeeks: Số tuần (mặc định: số dịch vụ + 1, admin có thể chỉnh)
+--    - startDate: Ngày bắt đầu (từ ngày đặt lịch)
+--    - expiryDate: Hạn sử dụng (startDate + durationWeeks)
+--    - Ví dụ: 10 dịch vụ → Mặc định 11 tuần, Admin có thể chỉnh thành 12 tuần
+--
+-- 4. Đánh giá tình trạng khách:
+--    - customerStatusNotes: TEXT field (ghi chú), không dùng ENUM
+--    - Ví dụ: "Khách ổn, da sáng hơn, không có kích ứng"
+--    - Ví dụ: "Khách hơi đỏ da, cần chăm sóc thêm"
+--    - Admin đọc ghi chú để đánh giá khách ổn không
+--
+-- 5. Các buổi điều trị (treatment_sessions):
+--    - Mỗi buổi = 1 treatment_session
+--    - Liên kết với appointment qua appointmentId
+--    - sessionNumber: Số thứ tự buổi (1, 2, 3, ...)
+--    - Sau mỗi buổi, Admin/Staff ghi chú vào customerStatusNotes, adminNotes
+--
+-- 6. Nhắc nhở:
+--    - Dùng bảng notifications đã có
+--    - Tự động nhắc nhở buổi tiếp theo (1-2 ngày trước)
+--    - type: 'treatment_course_reminder'
+--    - relatedId: treatmentCourseId hoặc treatmentSessionId
+--
+-- =====================================================

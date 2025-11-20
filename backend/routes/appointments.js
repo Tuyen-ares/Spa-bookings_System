@@ -56,7 +56,12 @@ const updateUserAndWalletAfterAppointment = async (userId, appointment) => { /* 
 
 const findBestTherapist = async (serviceId, userId, date, time) => {
     // 1. Get service and its category name (use association ServiceCategory)
-    const service = await db.Service.findByPk(serviceId, { include: [{ model: db.ServiceCategory }] });
+    const service = await db.Service.findByPk(serviceId, { 
+        include: [{ 
+            model: db.ServiceCategory,
+            attributes: ['id', 'name', 'description', 'displayOrder']
+        }] 
+    });
     const serviceCategory = service && service.ServiceCategory ? service.ServiceCategory.name : null;
     if (!service || !serviceCategory) {
         console.warn(`Smart assignment: Service or service category not found for serviceId: ${serviceId}`);
@@ -179,13 +184,9 @@ router.get('/', async (req, res) => {
             order: [['date', 'DESC'], ['time', 'ASC']]
         });
 
-        // Map appointments to ensure userName is included
+        // Map appointments to include client info
         const mappedAppointments = appointments.map(apt => {
             const appointmentData = apt.toJSON();
-            // Ensure userName is populated from Client association or from appointment field
-            if (!appointmentData.userName && appointmentData.Client && appointmentData.Client.name) {
-                appointmentData.userName = appointmentData.Client.name;
-            }
             // Ensure Client association is preserved
             if (appointmentData.Client) {
                 appointmentData.Client = {
@@ -202,7 +203,6 @@ router.get('/', async (req, res) => {
         if (mappedAppointments.length > 0) {
             console.log('Sample appointment:', {
                 id: mappedAppointments[0].id,
-                userName: mappedAppointments[0].userName,
                 hasClient: !!mappedAppointments[0].Client,
                 status: mappedAppointments[0].status
             });
@@ -236,11 +236,10 @@ router.post('/', async (req, res) => {
 
     try {
         let finalUserId = newAppointmentData.userId;
-        let finalUserName = newAppointmentData.userName;
 
         // If userId is empty or not provided, create a new user
         if (!finalUserId || finalUserId === '') {
-            if (!newAppointmentData.userName || !newAppointmentData.phone) {
+            if (!newAppointmentData.customerName || !newAppointmentData.phone) {
                 return res.status(400).json({ message: 'Missing customer information: name and phone are required' });
             }
 
@@ -251,7 +250,6 @@ router.post('/', async (req, res) => {
 
             if (existingUser) {
                 finalUserId = existingUser.id;
-                finalUserName = existingUser.name;
             } else {
                 // Create new user
                 // Generate a random password and hash it
@@ -260,7 +258,7 @@ router.post('/', async (req, res) => {
                 
                 const newUser = await db.User.create({
                     id: `user-${uuidv4()}`,
-                    name: newAppointmentData.userName,
+                    name: newAppointmentData.customerName,
                     phone: newAppointmentData.phone,
                     email: newAppointmentData.email || `client-${Date.now()}@temp.com`,
                     password: hashedPassword, // Hashed temporary password, user should change it
@@ -274,18 +272,18 @@ router.post('/', async (req, res) => {
                     userId: newUser.id,
                     points: 0,
                     totalSpent: 0,
-                    tierLevel: 1,
-                    pointsHistory: [],
                 });
 
                 finalUserId = newUser.id;
-                finalUserName = newUser.name;
                 console.log(`Created new user: ${finalUserId} for appointment`);
             }
         }
 
+        // Get user name for notification
+        const user = await db.User.findByPk(finalUserId);
+        const finalUserName = user ? user.name : newAppointmentData.customerName || 'Khách hàng';
+
         let finalTherapistId = newAppointmentData.therapistId;
-        let finalTherapistName = newAppointmentData.therapist;
 
         // Smart assignment logic (only if therapist not specified)
         if (!newAppointmentData.therapistId || newAppointmentData.therapistId === 'any') {
@@ -300,82 +298,124 @@ router.post('/', async (req, res) => {
             if (bestTherapist) {
                 console.log(`Smart assignment selected: ${bestTherapist.name}`);
                 finalTherapistId = bestTherapist.id;
-                finalTherapistName = bestTherapist.name;
             } else {
                 console.log('Smart assignment could not find an ideal therapist. Leaving unassigned.');
                 finalTherapistId = null; 
-                finalTherapistName = 'Sẽ được phân công';
-            }
-        } else {
-            // Get therapist name if ID is provided
-            const therapist = await db.User.findByPk(newAppointmentData.therapistId);
-            if (therapist) {
-                finalTherapistName = therapist.name;
             }
         }
         
         const service = await db.Service.findByPk(newAppointmentData.serviceId);
         if (!service) return res.status(404).json({ message: 'Service not found' });
 
-        // Get user name for userName field (if not already set)
-        if (!finalUserName) {
-            const user = await db.User.findByPk(finalUserId);
-            finalUserName = user ? user.name : newAppointmentData.userName;
-        }
-
         // Use provided status or default to 'pending' (admin-added appointments use 'upcoming')
         const appointmentStatus = newAppointmentData.status || 'pending';
 
+        // Check if this is a treatment course booking (quantity >= 1, meaning all bookings are treatment courses)
+        const quantity = newAppointmentData.quantity || 1;
+        let treatmentCourseId = null;
+
+        if (quantity >= 1) {
+            // Create treatment course
+            const startDate = newAppointmentData.date;
+            const durationWeeks = newAppointmentData.durationWeeks || (quantity + 1);
+            const frequencyType = newAppointmentData.frequencyType || null; // 'weeks_per_session' or 'sessions_per_week'
+            const frequencyValue = newAppointmentData.frequencyValue || null;
+
+            // Calculate expiry date
+            const expiryDate = new Date(startDate);
+            expiryDate.setDate(expiryDate.getDate() + (durationWeeks * 7));
+
+            const treatmentCourse = await db.TreatmentCourse.create({
+                id: `tc-${uuidv4()}`,
+                serviceId: newAppointmentData.serviceId,
+                serviceName: service.name,
+                clientId: finalUserId,
+                totalSessions: quantity,
+                completedSessions: 0,
+                startDate: startDate,
+                durationWeeks: durationWeeks,
+                expiryDate: expiryDate.toISOString().split('T')[0],
+                frequencyType: frequencyType,
+                frequencyValue: frequencyValue,
+                therapistId: finalTherapistId,
+                status: 'active',
+                notes: newAppointmentData.treatmentCourseNotes || null,
+                createdAt: new Date(),
+            });
+
+            treatmentCourseId = treatmentCourse.id;
+
+            // Create treatment sessions
+            const sessions = [];
+            const startDateObj = new Date(startDate);
+
+            for (let i = 1; i <= quantity; i++) {
+                let sessionDate = new Date(startDateObj);
+                
+                // Calculate session date based on frequency
+                if (frequencyType === 'sessions_per_week' && frequencyValue) {
+                    // e.g., 2 sessions per week = every 3-4 days
+                    const daysBetweenSessions = Math.floor(7 / frequencyValue);
+                    sessionDate.setDate(sessionDate.getDate() + ((i - 1) * daysBetweenSessions));
+                } else if (frequencyType === 'weeks_per_session' && frequencyValue) {
+                    // e.g., 2 weeks per session = every 14 days
+                    sessionDate.setDate(sessionDate.getDate() + ((i - 1) * frequencyValue * 7));
+                } else {
+                    // Default: spread evenly over durationWeeks
+                    const daysBetweenSessions = Math.floor((durationWeeks * 7) / quantity);
+                    sessionDate.setDate(sessionDate.getDate() + ((i - 1) * daysBetweenSessions));
+                }
+
+                sessions.push({
+                    id: `ts-${uuidv4()}`,
+                    treatmentCourseId: treatmentCourse.id,
+                    sessionNumber: i,
+                    status: i === 1 ? 'scheduled' : 'scheduled', // First session is scheduled, others can be updated later
+                    sessionDate: sessionDate.toISOString().split('T')[0],
+                    sessionTime: i === 1 ? newAppointmentData.time : '09:00', // First session uses appointment time
+                    staffId: finalTherapistId || null,
+                });
+            }
+
+            await db.TreatmentSession.bulkCreate(sessions);
+            console.log(`✅ Created treatment course ${treatmentCourse.id} with ${quantity} sessions`);
+        }
+
+        // Create appointment
         const createdAppointment = await db.Appointment.create({
             id: `apt-${uuidv4()}`,
             serviceName: service.name,
             status: appointmentStatus,
             userId: finalUserId,
-            userName: finalUserName,
             date: newAppointmentData.date,
             time: newAppointmentData.time,
             serviceId: newAppointmentData.serviceId,
             therapistId: finalTherapistId,
-            therapist: finalTherapistName,
             notesForTherapist: newAppointmentData.notesForTherapist || null,
-            treatmentCourseId: newAppointmentData.treatmentCourseId || null,
         });
 
-        // If this appointment is for a treatment course, create a treatment course instance
-        if (newAppointmentData.treatmentCourseId) {
-            try {
-                // Get the template treatment course
-                const templateCourse = await db.TreatmentCourse.findByPk(newAppointmentData.treatmentCourseId);
-                if (templateCourse) {
-                    // Create a new treatment course instance for this client
-                    const treatmentCourseInstance = await db.TreatmentCourse.create({
-                        id: `tc-${uuidv4()}`,
-                        serviceId: templateCourse.serviceId,
-                        serviceName: templateCourse.serviceName,
-                        clientId: newAppointmentData.userId,
-                        totalSessions: templateCourse.totalSessions,
-                        sessionsPerWeek: templateCourse.sessionsPerWeek,
-                        weekDays: templateCourse.weekDays,
-                        sessionDuration: templateCourse.sessionDuration,
-                        sessionTime: templateCourse.sessionTime,
-                        description: templateCourse.description,
-                        status: 'active',
-                        initialAppointmentId: createdAppointment.id,
-                        expiryDate: templateCourse.expiryDate,
-                        imageUrl: templateCourse.imageUrl,
-                        sessions: templateCourse.sessions || [],
-                        nextAppointmentDate: newAppointmentData.date,
-                    });
-                    console.log(`Treatment course instance created: ${treatmentCourseInstance.id} for user ${newAppointmentData.userId}`);
-                }
-            } catch (tcError) {
-                console.error('Error creating treatment course instance:', tcError);
-                // Don't fail the appointment creation if treatment course creation fails
-                // The appointment is already created, so we just log the error
+        // Link first treatment session to appointment if treatment course was created
+        if (treatmentCourseId) {
+            const firstSession = await db.TreatmentSession.findOne({
+                where: {
+                    treatmentCourseId: treatmentCourseId,
+                    sessionNumber: 1,
+                },
+            });
+
+            if (firstSession) {
+                await firstSession.update({
+                    appointmentId: createdAppointment.id,
+                    sessionDate: newAppointmentData.date,
+                    sessionTime: newAppointmentData.time,
+                });
             }
         }
 
-        res.status(201).json(createdAppointment);
+        res.status(201).json({
+            ...createdAppointment.toJSON(),
+            treatmentCourseId: treatmentCourseId,
+        });
 
         // Notify admins about new appointment (async, don't wait)
         notifyAdmins(
@@ -389,6 +429,44 @@ router.post('/', async (req, res) => {
         res.status(500).json({ message: 'Internal server error' });
     }
 });
+
+// Helper: Determine shift type based on time
+// Sáng: 9h-16h, Chiều: 16h-22h
+const getShiftTypeFromTime = (time) => {
+    const [hours] = time.split(':').map(Number);
+    if (hours >= 9 && hours < 16) return 'morning';  // Sáng: 9h-16h
+    if (hours >= 16 && hours < 22) return 'afternoon'; // Chiều: 16h-22h
+    if (hours >= 22 || hours < 9) return 'evening'; // Tối: 22h-9h (hoặc custom)
+    return 'custom'; // Fallback for other times
+};
+
+// Helper: Calculate shift hours based on time
+// Sáng: 9h-16h, Chiều: 16h-22h
+const getShiftHoursFromTime = (time) => {
+    const [hours, minutes] = time.split(':').map(Number);
+    let startHour = 9;
+    let endHour = 16;
+    
+    // Determine shift based on time
+    if (hours >= 9 && hours < 16) {
+        // Morning shift: 9:00 - 16:00
+        startHour = 9;
+        endHour = 16;
+    } else if (hours >= 16 && hours < 22) {
+        // Afternoon shift: 16:00 - 22:00
+        startHour = 16;
+        endHour = 22;
+    } else {
+        // Evening or custom: use appointment time as reference
+        startHour = Math.max(9, Math.min(hours, 22));
+        endHour = Math.min(22, startHour + 4);
+    }
+    
+    return {
+        start: `${String(startHour).padStart(2, '0')}:00`,
+        end: `${String(endHour).padStart(2, '0')}:00`
+    };
+};
 
 // PUT /api/appointments/:id
 router.put('/:id', async (req, res) => {
@@ -404,42 +482,145 @@ router.put('/:id', async (req, res) => {
         const oldStatus = appointment.status;
         await appointment.update(updatedData);
         
-        // If appointment is completed and linked to a treatment session, mark session as completed
-        if (updatedData.status === 'completed' && appointment.treatmentSessionId && appointment.treatmentCourseId) {
-            try {
-                const session = await db.TreatmentSession.findByPk(appointment.treatmentSessionId);
-                if (session && session.status !== 'completed') {
-                    await session.update({
-                        status: 'completed',
-                        completedDate: new Date()
+        // Auto-create staff shift if therapist is assigned and status is 'upcoming'
+        if (updatedData.therapistId && updatedData.status === 'upcoming') {
+            const therapistId = updatedData.therapistId;
+            const appointmentDate = appointment.date;
+            const appointmentTime = appointment.time;
+            
+            // Check if staff already has a shift for this date
+            const existingShift = await db.StaffShift.findOne({
+                where: {
+                    staffId: therapistId,
+                    date: appointmentDate,
+                    status: { [Op.in]: ['approved', 'pending'] }
+                }
+            });
+            
+            if (!existingShift) {
+                // Auto-create shift for the staff
+                const shiftType = getShiftTypeFromTime(appointmentTime);
+                const shiftHours = getShiftHoursFromTime(appointmentTime);
+                
+                try {
+                    await db.StaffShift.create({
+                        id: `shift-${uuidv4()}`,
+                        staffId: therapistId,
+                        date: appointmentDate,
+                        shiftType: shiftType,
+                        status: 'approved', // Auto-approved since admin assigned
+                        shiftHours: shiftHours,
+                        notes: `Tự động tạo khi phân công lịch hẹn ${appointment.serviceName}`
                     });
+                    console.log(`✅ Auto-created shift for staff ${therapistId} on ${appointmentDate} (${shiftType})`);
+                } catch (shiftError) {
+                    console.error('Error auto-creating staff shift:', shiftError);
+                    // Don't fail the appointment update if shift creation fails
+                }
+            } else {
+                // Staff already has a shift, check if we need to update it
+                const existingShiftType = existingShift.shiftType;
+                const requiredShiftType = getShiftTypeFromTime(appointmentTime);
+                const requiredHours = getShiftHoursFromTime(appointmentTime);
+                
+                // If appointment time doesn't match existing shift type, update shift
+                if (existingShiftType !== requiredShiftType) {
+                    // Check if existing shift hours cover the appointment time
+                    const existingHours = existingShift.shiftHours || {};
+                    const appointmentHour = parseInt(appointmentTime.split(':')[0]);
+                    const existingStart = existingHours.start ? parseInt(existingHours.start.split(':')[0]) : 9;
+                    const existingEnd = existingHours.end ? parseInt(existingHours.end.split(':')[0]) : 16;
                     
-                    // Update course progress
-                    const course = await db.TreatmentCourse.findByPk(appointment.treatmentCourseId);
-                    if (course) {
-                        const completedCount = await db.TreatmentSession.count({
+                    // If appointment time is outside existing shift hours, update shift
+                    if (appointmentHour < existingStart || appointmentHour >= existingEnd) {
+                        // Merge hours to cover both shifts
+                        const mergedHours = {
+                            start: Math.min(existingStart, parseInt(requiredHours.start.split(':')[0])),
+                            end: Math.max(existingEnd, parseInt(requiredHours.end.split(':')[0]))
+                        };
+                        
+                        try {
+                            await existingShift.update({
+                                shiftType: 'custom',
+                                shiftHours: {
+                                    start: `${String(mergedHours.start).padStart(2, '0')}:00`,
+                                    end: `${String(mergedHours.end).padStart(2, '0')}:00`
+                                },
+                                notes: existingShift.notes ? 
+                                    `${existingShift.notes}; Cập nhật để bao gồm lịch hẹn ${appointment.serviceName}` :
+                                    `Cập nhật để bao gồm lịch hẹn ${appointment.serviceName}`
+                            });
+                            console.log(`✅ Updated shift for staff ${therapistId} to include appointment time`);
+                        } catch (updateError) {
+                            console.error('Error updating staff shift:', updateError);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Update treatment session staffId when therapist is assigned
+        if (updatedData.therapistId) {
+            try {
+                // Find treatment session linked to this appointment
+                const linkedSession = await db.TreatmentSession.findOne({
+                    where: { appointmentId: id }
+                });
+                
+                if (linkedSession) {
+                    // Update the linked session's staffId
+                    await linkedSession.update({
+                        staffId: updatedData.therapistId
+                    });
+                    console.log(`✅ Updated treatment session ${linkedSession.id} with staffId: ${updatedData.therapistId}`);
+                    
+                    // Also update the treatment course's therapistId if this is the first session
+                    if (linkedSession.sessionNumber === 1) {
+                        const treatmentCourse = await db.TreatmentCourse.findByPk(linkedSession.treatmentCourseId);
+                        if (treatmentCourse && !treatmentCourse.therapistId) {
+                            await treatmentCourse.update({
+                                therapistId: updatedData.therapistId
+                            });
+                            console.log(`✅ Updated treatment course ${treatmentCourse.id} with therapistId: ${updatedData.therapistId}`);
+                        }
+                    }
+                } else {
+                    // If no session linked, try to find treatment course from appointment
+                    // and update all sessions in that course
+                    const appointment = await db.Appointment.findByPk(id);
+                    if (appointment) {
+                        // Find treatment course by serviceId and userId
+                        const treatmentCourse = await db.TreatmentCourse.findOne({
                             where: {
-                                treatmentCourseId: course.id,
-                                status: 'completed'
-                            }
+                                serviceId: appointment.serviceId,
+                                clientId: appointment.userId,
+                                status: 'active'
+                            },
+                            order: [['createdAt', 'DESC']] // Get the most recent one
                         });
                         
-                        const progressPercentage = course.totalSessions > 0
-                            ? Math.round((completedCount / course.totalSessions) * 100)
-                            : 0;
-                        
-                        await course.update({
-                            completedSessions: completedCount,
-                            progressPercentage,
-                            lastCompletedDate: new Date(),
-                            status: completedCount >= course.totalSessions ? 'completed' : course.status
-                        });
-                        
-                        console.log(`✅ Session ${session.sessionNumber} completed. Course progress: ${completedCount}/${course.totalSessions}`);
+                        if (treatmentCourse) {
+                            // Update treatment course therapistId
+                            await treatmentCourse.update({
+                                therapistId: updatedData.therapistId
+                            });
+                            
+                            // Update all sessions in the course that don't have staffId yet
+                            await db.TreatmentSession.update(
+                                { staffId: updatedData.therapistId },
+                                {
+                                    where: {
+                                        treatmentCourseId: treatmentCourse.id,
+                                        staffId: null
+                                    }
+                                }
+                            );
+                            console.log(`✅ Updated treatment course ${treatmentCourse.id} and sessions with therapistId: ${updatedData.therapistId}`);
+                        }
                     }
                 }
             } catch (sessionError) {
-                console.error('Error updating treatment session:', sessionError);
+                console.error('Error updating treatment session staffId:', sessionError);
                 // Don't fail the appointment update if session update fails
             }
         }
@@ -462,6 +643,53 @@ router.put('/:id', async (req, res) => {
                 notifType = 'appointment_completed';
                 notifTitle = 'Hoàn thành lịch hẹn';
                 notifMessage = `Lịch hẹn ${appointment.serviceName} đã hoàn thành`;
+                
+                // Update treatment session when appointment is completed
+                try {
+                    // Find treatment session linked to this appointment
+                    const linkedSession = await db.TreatmentSession.findOne({
+                        where: { appointmentId: id }
+                    });
+                    
+                    if (linkedSession) {
+                        // Update the session status to completed
+                        await linkedSession.update({
+                            status: 'completed',
+                            completedAt: new Date(),
+                        });
+                        console.log(`✅ Updated treatment session ${linkedSession.id} to completed`);
+                        
+                        // Update course progress
+                        const treatmentCourse = await db.TreatmentCourse.findByPk(linkedSession.treatmentCourseId);
+                        if (treatmentCourse) {
+                            // Count completed sessions
+                            const completedCount = await db.TreatmentSession.count({
+                                where: {
+                                    treatmentCourseId: treatmentCourse.id,
+                                    status: 'completed',
+                                },
+                            });
+                            
+                            // Update course completedSessions
+                            await treatmentCourse.update({
+                                completedSessions: completedCount,
+                            });
+                            
+                            // Only mark course as completed if all sessions are completed
+                            if (completedCount >= treatmentCourse.totalSessions) {
+                                await treatmentCourse.update({
+                                    status: 'completed',
+                                });
+                                console.log(`✅ Treatment course ${treatmentCourse.id} marked as completed`);
+                            }
+                            
+                            console.log(`✅ Updated treatment course ${treatmentCourse.id} progress: ${completedCount}/${treatmentCourse.totalSessions}`);
+                        }
+                    }
+                } catch (sessionError) {
+                    console.error('Error updating treatment session when appointment completed:', sessionError);
+                    // Don't fail the appointment update if session update fails
+                }
             }
             
             try {
@@ -511,50 +739,7 @@ router.put('/:id/confirm', async (req, res) => {
             status: 'scheduled'
         }, { transaction });
 
-        // Nếu appointment thuộc treatment course, update session và tiến độ course
-        if (appointment.treatmentSessionId && appointment.treatmentCourseId) {
-            const session = await db.TreatmentSession.findByPk(appointment.treatmentSessionId, { transaction });
-            if (session) {
-                await session.update({
-                    status: 'scheduled',
-                    scheduledDate: appointment.date,
-                    appointmentId: appointment.id,
-                    serviceId: appointment.serviceId,
-                    serviceName: appointment.serviceName,
-                    staffId: appointment.therapistId || null
-                }, { transaction });
-
-                // Update course progress (increment scheduled sessions count)
-                const course = await db.TreatmentCourse.findByPk(appointment.treatmentCourseId, { transaction });
-                if (course) {
-                    const scheduledCount = await db.TreatmentSession.count({
-                        where: {
-                            treatmentCourseId: course.id,
-                            status: 'scheduled'
-                        }
-                    });
-
-                    const completedCount = await db.TreatmentSession.count({
-                        where: {
-                            treatmentCourseId: course.id,
-                            status: 'completed'
-                        }
-                    });
-
-                    const totalScheduledOrCompleted = scheduledCount + completedCount;
-                    const progressPercentage = course.totalSessions > 0
-                        ? Math.round((totalScheduledOrCompleted / course.totalSessions) * 100)
-                        : 0;
-
-                    await course.update({
-                        progressPercentage: progressPercentage,
-                        status: totalScheduledOrCompleted >= course.totalSessions ? 'completed' : 'in-progress'
-                    }, { transaction });
-
-                    console.log(`✅ Appointment confirmed. Session ${session.sessionNumber} scheduled. Course progress: ${totalScheduledOrCompleted}/${course.totalSessions}`);
-                }
-            }
-        }
+        // Treatment course functionality removed
 
         await transaction.commit();
 

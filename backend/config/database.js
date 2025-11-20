@@ -32,12 +32,15 @@ console.log('DB_NAME:', process.env.DB_NAME || '❌ NOT SET');
 console.log('DB_USER:', process.env.DB_USER || '❌ NOT SET');
 console.log('DB_PASSWORD:', process.env.DB_PASSWORD ? '✅ SET (length: ' + process.env.DB_PASSWORD.length + ')' : '❌ NOT SET');
 
-// Validate required environment variables
-const requiredVars = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'];
+// Validate required environment variables (DB_PASSWORD is optional if MySQL has no password)
+const requiredVars = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER'];
 const missingVars = requiredVars.filter(v => !process.env[v]);
 if (missingVars.length > 0) {
   console.error('❌ Missing required environment variables:', missingVars.join(', '));
   console.error('Please check your backend/.env file');
+}
+if (!process.env.DB_PASSWORD) {
+  console.warn('⚠️  DB_PASSWORD not set - using empty password (OK if MySQL has no password)');
 }
 
 const sequelize = new Sequelize(
@@ -66,16 +69,11 @@ db.Wallet = require('../models/Wallet')(sequelize, DataTypes);
 db.Promotion = require('../models/Promotion')(sequelize, DataTypes);
 db.StaffAvailability = require('../models/StaffAvailability')(sequelize, DataTypes);
 db.StaffShift = require('../models/StaffShift')(sequelize, DataTypes);
-db.TreatmentCourse = require('../models/TreatmentCourse')(sequelize, DataTypes);
 db.Payment = require('../models/Payment')(sequelize, DataTypes);
 db.Review = require('../models/Review')(sequelize, DataTypes);
-db.StaffTask = require('../models/StaffTask')(sequelize, DataTypes);
-db.Room = require('../models/Room')(sequelize, DataTypes);
 db.Notification = require('../models/Notification')(sequelize, DataTypes);
+db.TreatmentCourse = require('../models/TreatmentCourse')(sequelize, DataTypes);
 db.TreatmentSession = require('../models/TreatmentSession')(sequelize, DataTypes);
-db.TreatmentCourseService = require('../models/TreatmentCourseService')(sequelize, DataTypes);
-db.TreatmentPackage = require('../models/TreatmentPackage')(sequelize, DataTypes);
-db.TreatmentPackageService = require('../models/TreatmentPackageService')(sequelize, DataTypes);
 
 
 // --- Define Associations ---
@@ -114,71 +112,22 @@ db.StaffAvailability.belongsTo(db.User, { foreignKey: 'staffId' });
 db.User.hasMany(db.StaffShift, { foreignKey: 'staffId', onDelete: 'CASCADE' });
 db.StaffShift.belongsTo(db.User, { foreignKey: 'staffId' });
 
-// User - StaffTask (Assigned To)
-db.User.hasMany(db.StaffTask, { foreignKey: 'assignedToId', as: 'TasksAssignedTo', onDelete: 'CASCADE' });
-db.StaffTask.belongsTo(db.User, { foreignKey: 'assignedToId', as: 'AssignedTo' });
-
-// User - StaffTask (Assigned By)
-db.User.hasMany(db.StaffTask, { foreignKey: 'assignedById', as: 'TasksAssignedBy', onDelete: 'CASCADE' });
-db.StaffTask.belongsTo(db.User, { foreignKey: 'assignedById', as: 'AssignedBy' });
-
 // Note: Product, Sale, InternalNotification, and InternalNews tables have been removed from database
-
-// TreatmentCourse - User (Client)
-db.User.hasMany(db.TreatmentCourse, { foreignKey: 'clientId', as: 'ClientCourses', onDelete: 'CASCADE' });
-db.TreatmentCourse.belongsTo(db.User, { foreignKey: 'clientId', as: 'Client' });
-
-// TreatmentCourse - User (Therapist)
-db.User.hasMany(db.TreatmentCourse, { foreignKey: 'therapistId', as: 'TherapistCourses', onDelete: 'SET NULL' });
-db.TreatmentCourse.belongsTo(db.User, { foreignKey: 'therapistId', as: 'Therapist' });
-
-// TreatmentCourse - Service (DEPRECATED - use TreatmentCourseService instead)
+// Treatment Course Associations
 db.Service.hasMany(db.TreatmentCourse, { foreignKey: 'serviceId', onDelete: 'CASCADE' });
 db.TreatmentCourse.belongsTo(db.Service, { foreignKey: 'serviceId' });
+db.User.hasMany(db.TreatmentCourse, { foreignKey: 'clientId', as: 'ClientTreatmentCourses', onDelete: 'CASCADE' });
+db.TreatmentCourse.belongsTo(db.User, { foreignKey: 'clientId', as: 'Client' });
+db.User.hasMany(db.TreatmentCourse, { foreignKey: 'therapistId', as: 'TherapistTreatmentCourses', onDelete: 'SET NULL' });
+db.TreatmentCourse.belongsTo(db.User, { foreignKey: 'therapistId', as: 'Therapist' });
 
-// TreatmentCourse - Services (Many-to-Many through TreatmentCourseService)
-db.TreatmentCourse.belongsToMany(db.Service, {
-  through: db.TreatmentCourseService,
-  foreignKey: 'treatmentCourseId',
-  otherKey: 'serviceId',
-  as: 'CourseServices'
-});
-db.Service.belongsToMany(db.TreatmentCourse, {
-  through: db.TreatmentCourseService,
-  foreignKey: 'serviceId',
-  otherKey: 'treatmentCourseId',
-  as: 'AssociatedCourses'
-});
-
-// TreatmentCourseService associations
-db.TreatmentCourseService.belongsTo(db.TreatmentCourse, { foreignKey: 'treatmentCourseId' });
-db.TreatmentCourseService.belongsTo(db.Service, { foreignKey: 'serviceId' });
-
-// TreatmentPackage - Service (many-to-many)
-db.TreatmentPackage.belongsToMany(db.Service, {
-  through: db.TreatmentPackageService,
-  foreignKey: 'treatmentPackageId',
-  otherKey: 'serviceId',
-  as: 'PackageServices'
-});
-db.Service.belongsToMany(db.TreatmentPackage, {
-  through: db.TreatmentPackageService,
-  foreignKey: 'serviceId',
-  otherKey: 'treatmentPackageId',
-  as: 'TreatmentPackages'
-});
-
-// TreatmentPackageService associations
-db.TreatmentPackageService.belongsTo(db.TreatmentPackage, { foreignKey: 'treatmentPackageId' });
-db.TreatmentPackageService.belongsTo(db.Service, { foreignKey: 'serviceId' });
-
-// TreatmentCourse - TreatmentPackage (when customer registers)
-db.TreatmentPackage.hasMany(db.TreatmentCourse, { foreignKey: 'packageId', as: 'EnrolledCourses' });
-db.TreatmentCourse.belongsTo(db.TreatmentPackage, { foreignKey: 'packageId', as: 'Package' });
-
-// TreatmentCourse - Appointment (initialAppointmentId)
-db.Appointment.hasMany(db.TreatmentCourse, { foreignKey: 'initialAppointmentId', as: 'InitialTreatmentCourses', onDelete: 'SET NULL' });
-db.TreatmentCourse.belongsTo(db.Appointment, { foreignKey: 'initialAppointmentId', as: 'InitialAppointment' });
+// Treatment Session Associations
+db.TreatmentCourse.hasMany(db.TreatmentSession, { foreignKey: 'treatmentCourseId', onDelete: 'CASCADE' });
+db.TreatmentSession.belongsTo(db.TreatmentCourse, { foreignKey: 'treatmentCourseId' });
+db.Appointment.hasOne(db.TreatmentSession, { foreignKey: 'appointmentId', onDelete: 'SET NULL' });
+db.TreatmentSession.belongsTo(db.Appointment, { foreignKey: 'appointmentId' });
+db.User.hasMany(db.TreatmentSession, { foreignKey: 'staffId', as: 'StaffTreatmentSessions', onDelete: 'SET NULL' });
+db.TreatmentSession.belongsTo(db.User, { foreignKey: 'staffId', as: 'Staff' });
 
 // Payment Associations
 db.User.hasMany(db.Payment, { foreignKey: 'userId', as: 'UserPayments', onDelete: 'CASCADE' });
@@ -186,8 +135,6 @@ db.Payment.belongsTo(db.User, { foreignKey: 'userId', as: 'ClientForPayment' });
 db.Appointment.hasOne(db.Payment, { foreignKey: 'appointmentId', onDelete: 'SET NULL' });
 db.Payment.belongsTo(db.Appointment, { foreignKey: 'appointmentId' });
 // Note: Product table removed, so productId foreign key removed from Payment
-db.User.hasMany(db.Payment, { foreignKey: 'therapistId', as: 'TherapistPayments', onDelete: 'SET NULL' });
-db.Payment.belongsTo(db.User, { foreignKey: 'therapistId', as: 'TherapistForPayment' });
 
 // Review Associations
 db.User.hasMany(db.Review, { foreignKey: 'userId', onDelete: 'CASCADE' });
@@ -196,10 +143,6 @@ db.Service.hasMany(db.Review, { foreignKey: 'serviceId', onDelete: 'CASCADE' });
 db.Review.belongsTo(db.Service, { foreignKey: 'serviceId' });
 db.Appointment.hasOne(db.Review, { foreignKey: 'appointmentId', onDelete: 'SET NULL' });
 db.Review.belongsTo(db.Appointment, { foreignKey: 'appointmentId' });
-
-// Room Associations
-db.Room.hasMany(db.Appointment, { foreignKey: 'roomId', onDelete: 'SET NULL' });
-db.Appointment.belongsTo(db.Room, { foreignKey: 'roomId' });
 
 // Notification Associations - Temporarily disabled to avoid FK conflicts
 // db.User.hasMany(db.Notification, { foreignKey: 'userId', onDelete: 'CASCADE', constraints: false });

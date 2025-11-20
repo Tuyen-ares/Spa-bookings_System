@@ -13,8 +13,6 @@ import type { User, Wallet, Tier, Promotion, Service, Appointment, Review, Treat
 // Client Pages
 import { HomePage } from './client/pages/HomePage';
 import { ServicesListPage } from './client/pages/ServicesListPage';
-import TreatmentPackagesPage from './client/pages/TreatmentPackagesPage';
-import TreatmentPackageDetailPage from './client/pages/TreatmentPackageDetailPage';
 import ServiceDetailPage from './client/pages/ServiceDetailPage';
 import { BookingPage } from './client/pages/BookingPage';
 import { AppointmentsPage } from './client/pages/AppointmentsPage';
@@ -38,11 +36,12 @@ import PaymentsPage from './admin/pages/PaymentsPage';
 import StaffPage from './admin/pages/StaffPage';
 import { AdminPromotionsPage } from './admin/pages/PromotionsPage';
 import JobManagementPage from './admin/pages/JobManagementPage'; // New: Job Management
-import RoomsPage from './admin/pages/RoomsPage'; // New: Rooms Management
 import AdminTreatmentCoursesPage from './admin/pages/TreatmentCoursesPage'; // New: Treatment Courses
 import AdminTreatmentCourseDetailPage from './admin/pages/AdminTreatmentCourseDetailPage';
 import AdminProfilePage from './admin/pages/AdminProfilePage';
 import ChangePasswordPage from './admin/pages/ChangePasswordPage';
+import ReportsPage from './admin/pages/ReportsPage';
+import NotificationsPage from './admin/pages/NotificationsPage';
 
 // Staff Pages
 import StaffLayout from './staff/components/StaffLayout';
@@ -362,8 +361,6 @@ const AppContent: React.FC = () => {
                     <Route path="/services" element={<ServicesListPage allServices={allServices} />} />
                     <Route path="/service/:id" element={<ServiceDetailPage allServices={allServices} currentUser={currentUser} allPromotions={allPromotions} setAllReviews={setAllReviews} setAllAppointments={setAllAppointments} />} />
                     <Route path="/promotions" element={<PromotionsPage currentUser={currentUser} wallet={wallet} setWallet={setWallet} userVouchers={[]} setUserVouchers={() => {}} allTiers={allTiers} />} />
-                    <Route path="/treatment-packages" element={<TreatmentPackagesPage currentUser={currentUser} />} />
-                    <Route path="/treatment-packages/:id" element={<TreatmentPackageDetailPage currentUser={currentUser} />} />
                     <Route path="/policy" element={<PolicyPage />} />
 
                     {/* Payment Result Routes */}
@@ -456,10 +453,11 @@ const AppContent: React.FC = () => {
                         <Route path="payments" element={<PaymentsPage allUsers={allUsers} />} />
                         <Route path="staff" element={<StaffPage allUsers={allUsers} allServices={allServices} allAppointments={allAppointments} />} />
                         <Route path="jobs" element={<JobManagementPage allUsers={allUsers} allServices={allServices} allAppointments={allAppointments} />} />
-                        <Route path="rooms" element={<RoomsPage />} />
                         <Route path="treatment-courses" element={<AdminTreatmentCoursesPage allUsers={allUsers} allServices={allServices} />} />
                         <Route path="treatment-courses/:id" element={<AdminTreatmentCourseDetailPage />} />
                         <Route path="promotions" element={<AdminPromotionsPage allServices={allServices} allTiers={allTiers} allUsers={allUsers} allAppointments={allAppointments} allReviews={allReviews} />} />
+                        <Route path="reports" element={<ReportsPage allServices={allServices} allAppointments={allAppointments} allUsers={allUsers} allPayments={allPayments} allReviews={allReviews} />} />
+                        <Route path="notifications" element={<NotificationsPage currentUser={currentUser!} />} />
                         <Route path="profile" element={<AdminProfilePage currentUser={currentUser!} onUpdateUser={handleUpdateUser} />} />
                         <Route path="change-password" element={<ChangePasswordPage currentUser={currentUser!} />} />
                     </Route>

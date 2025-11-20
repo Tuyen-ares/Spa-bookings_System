@@ -44,8 +44,7 @@ module.exports = (sequelize, DataTypes) => {
     targetAudience: {
       type: DataTypes.ENUM(
         'All', 'New Clients', 'Birthday', 'Group', 'VIP',
-        'Tier Level 1', 'Tier Level 2', 'Tier Level 3', 'Tier Level 4',
-        'Tier Level 5', 'Tier Level 6', 'Tier Level 7', 'Tier Level 8'
+        'Tier Level 1', 'Tier Level 2', 'Tier Level 3'
       ),
       allowNull: true,
       defaultValue: 'All',

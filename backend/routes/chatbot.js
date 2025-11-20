@@ -43,24 +43,18 @@ const formatServicesAndCourses = (services = [], treatmentCourses = []) => {
             const price = service.discountPrice ? service.discountPrice : service.price;
             const originalPrice = service.discountPrice ? service.price : null;
             info += `${index + 1}. ${service.name}\n`;
-            info += `   - Mô tả: ${service.description || service.longDescription || 'Không có mô tả'}\n`;
+            info += `   - Mô tả: ${service.description || 'Không có mô tả'}\n`;
             info += `   - Giá: ${price.toLocaleString('vi-VN')} VNĐ`;
             if (originalPrice) {
                 info += ` (Giảm từ ${originalPrice.toLocaleString('vi-VN')} VNĐ)`;
             }
             info += `\n`;
             info += `   - Thời gian: ${service.duration} phút\n`;
-            if (service.category) {
-                info += `   - Danh mục: ${service.category}\n`;
+            if (service.ServiceCategory) {
+                info += `   - Danh mục: ${service.ServiceCategory.name}\n`;
             }
             if (service.rating) {
                 info += `   - Đánh giá: ${service.rating}/5 (${service.reviewCount || 0} đánh giá)\n`;
-            }
-            if (service.isHot) {
-                info += `   - 🔥 Dịch vụ hot\n`;
-            }
-            if (service.isNew) {
-                info += `   - 🆕 Dịch vụ mới\n`;
             }
             info += '\n';
         });

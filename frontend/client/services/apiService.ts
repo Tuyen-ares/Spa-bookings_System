@@ -6,7 +6,7 @@ import type {
     Sale, InternalNotification, InternalNews,
     TreatmentCourse, Review, Payment, Mission, Prize, ServiceCategory, StaffTask, PaymentMethod,
     // FIX: Imported missing types to resolve compilation errors.
-    TreatmentSession, UserStatus, Room, Notification, TreatmentSessionDetail
+    TreatmentSession, UserStatus, Notification, TreatmentSessionDetail
 } from '../../types';
 
 const API_BASE_URL = 'http://localhost:3001/api'; // Point to the backend server
@@ -23,15 +23,30 @@ const getAuthHeaders = () => {
 // Helper to handle API responses
 const handleResponse = async (response: Response) => {
     if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: response.statusText }));
-        const errorMessage = errorData.message || errorData.error || 'An unknown error occurred';
-        console.error('API Error:', errorMessage, errorData);
+        let errorData;
+        try {
+            errorData = await response.json();
+        } catch {
+            errorData = { message: response.statusText, status: response.status };
+        }
+        const errorMessage = errorData.message || errorData.error || `HTTP ${response.status}: ${response.statusText}`;
+        console.error('API Error:', {
+            status: response.status,
+            statusText: response.statusText,
+            message: errorMessage,
+            data: errorData
+        });
         throw new Error(errorMessage);
     }
     if (response.status === 204) { // No Content
         return;
     }
-    return response.json();
+    try {
+        return await response.json();
+    } catch (error) {
+        console.error('Error parsing JSON response:', error);
+        throw new Error('Invalid response from server');
+    }
 };
 
 // --- AUTHENTICATION ---
@@ -264,12 +279,6 @@ export const updateTreatmentSession = (courseId: string, sessionIndex: number, d
 export const approveAppointment = (id: string): Promise<Appointment> => updateAppointment(id, { status: 'upcoming' });
 export const rejectAppointment = (id: string): Promise<Appointment> => updateAppointment(id, { status: 'cancelled' });
 
-// --- ROOMS ---
-export const getRooms = async (): Promise<Room[]> => fetch(`${API_BASE_URL}/rooms`).then(handleResponse);
-export const getRoomById = async (id: string): Promise<Room> => fetch(`${API_BASE_URL}/rooms/${id}`).then(handleResponse);
-export const createRoom = (data: Partial<Room>) => create<Room>(`${API_BASE_URL}/rooms`, data);
-export const updateRoom = (id: string, data: Partial<Room>) => update<Room>(`${API_BASE_URL}/rooms/${id}`, data);
-export const deleteRoom = (id: string) => remove(`${API_BASE_URL}/rooms/${id}`);
 
 // --- NOTIFICATIONS ---
 export const getNotifications = async (userId: string): Promise<Notification[]> => fetch(`${API_BASE_URL}/notifications/user/${userId}`).then(handleResponse);

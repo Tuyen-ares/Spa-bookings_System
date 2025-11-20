@@ -55,10 +55,6 @@ module.exports = {
         type: Sequelize.DATE,
         allowNull: true,
       },
-      loginHistory: {
-        type: Sequelize.JSON,
-        allowNull: true,
-      },
     });
   },
 

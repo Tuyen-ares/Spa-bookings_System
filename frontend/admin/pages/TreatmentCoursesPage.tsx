@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as apiService from '../../client/services/apiService';
-import type { TreatmentCourse, User, Service } from '../../types';
+import type { TreatmentCourse, User, Service, Appointment } from '../../types';
 
 interface TreatmentCoursesPageProps {
     allUsers: User[];
@@ -11,13 +11,13 @@ interface TreatmentCoursesPageProps {
 const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, allServices }) => {
     const navigate = useNavigate();
     const [courses, setCourses] = useState<TreatmentCourse[]>([]);
+    const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [filteredCourses, setFilteredCourses] = useState<TreatmentCourse[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [showCreateModal, setShowCreateModal] = useState(false);
 
     // Filters
     const [statusFilter, setStatusFilter] = useState<string>('all');
-    const [clientFilter, setClientFilter] = useState<string>('');
+    const [clientFilter, setClientFilter] = useState<string>('all');
     const [serviceFilter, setServiceFilter] = useState<string>('all');
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -25,41 +25,48 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
 
-    // New course form - Package template (not for specific client)
-    const [newCourse, setNewCourse] = useState({
-        name: '',
-        description: '',
-        consultantId: ''
-    });
-
-    const [selectedServices, setSelectedServices] = useState<{
-        serviceId: string; 
-        serviceName: string; 
-        order: number;
-        price: number;
-        duration: number;
-    }[]>([]);
-
-    // Calculate total price and sessions automatically
-    const calculatedPrice = selectedServices.reduce((sum, s) => sum + s.price, 0);
-    const calculatedSessions = selectedServices.length;
-
     useEffect(() => {
-        loadCourses();
+        loadData();
     }, []);
 
     useEffect(() => {
         applyFilters();
     }, [courses, statusFilter, clientFilter, serviceFilter, searchTerm]);
 
-    const loadCourses = async () => {
+    const loadData = async () => {
         setIsLoading(true);
         try {
-            // Chỉ lấy templates (courses không có clientId)
-            const data = await apiService.getTreatmentCourses({ templatesOnly: true });
-            setCourses(data);
+            // Load treatment courses, appointments, and treatment sessions
+            const [coursesData, appointmentsData] = await Promise.all([
+                apiService.getTreatmentCourses(),
+                apiService.getAppointments()
+            ]);
+
+            // Filter courses based on course status, not appointment status
+            // A course should be shown if:
+            // 1. It has status 'active' (not completed, expired, or cancelled)
+            // 2. OR it has completedSessions < totalSessions (still has sessions to complete)
+            // This ensures courses remain visible even when some appointments are completed
+            const activeCourses = coursesData.filter(course => {
+                // Show active courses
+                if (course.status === 'active') {
+                    return true;
+                }
+                // Show courses that are not fully completed (completedSessions < totalSessions)
+                if (course.completedSessions < course.totalSessions) {
+                    return true;
+                }
+                // Also show completed courses (for viewing history)
+                if (course.status === 'completed') {
+                    return true;
+                }
+                return false;
+            });
+
+            setCourses(activeCourses);
+            setAppointments(appointmentsData);
         } catch (error) {
-            console.error('Error loading courses:', error);
+            console.error('Error loading data:', error);
             alert('Không thể tải danh sách liệu trình');
         } finally {
             setIsLoading(false);
@@ -75,36 +82,26 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
         }
 
         // Client filter
-        if (clientFilter) {
+        if (clientFilter !== 'all') {
             filtered = filtered.filter(c => c.clientId === clientFilter);
         }
 
         // Service filter
         if (serviceFilter !== 'all') {
-            filtered = filtered.filter(c => {
-                // Check if course has this service in its services array
-                if (c.services && c.services.length > 0) {
-                    return c.services.some(s => s.serviceId === serviceFilter);
-                }
-                // Fallback to old serviceId field
-                return (c as any).serviceId === serviceFilter;
-            });
+            filtered = filtered.filter(c => c.serviceId === serviceFilter);
         }
 
         // Search term
         if (searchTerm) {
             filtered = filtered.filter(c => {
                 const client = allUsers.find(u => u.id === c.clientId);
-                const serviceName = c.services && c.services.length > 0
-                    ? c.services.map(s => s.serviceName).join(' ')
-                    : (c as any).serviceName || '';
+                const service = allServices.find(s => s.id === c.serviceId);
                 
                 return (
-                    c.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    c.serviceName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                     client?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                     client?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    serviceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    c.consultantName?.toLowerCase().includes(searchTerm.toLowerCase())
+                    service?.name?.toLowerCase().includes(searchTerm.toLowerCase())
                 );
             });
         }
@@ -113,55 +110,8 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
         setCurrentPage(1);
     };
 
-    const handleCreateCourse = async (e: React.FormEvent) => {
-        e.preventDefault();
-        
-        if (selectedServices.length === 0) {
-            alert('Vui lòng chọn ít nhất 1 dịch vụ');
-            return;
-        }
-
-        if (!newCourse.name) {
-            alert('Vui lòng nhập tên gói');
-            return;
-        }
-
-        const payload = {
-            name: newCourse.name,
-            description: newCourse.description,
-            price: calculatedPrice,
-            totalSessions: calculatedSessions,
-            sessionsPerWeek: 2, // Default value for backend
-            consultantId: newCourse.consultantId || undefined,
-            services: selectedServices.map(s => ({
-                serviceId: s.serviceId,
-                serviceName: s.serviceName,
-                order: s.order
-            }))
-        };
-        
-        console.log('Creating course with payload:', payload);
-
-        try {
-            await apiService.createTreatmentCourse(payload);
-            alert('Tạo liệu trình thành công!');
-            setShowCreateModal(false);
-            setNewCourse({
-                name: '',
-                description: '',
-                consultantId: ''
-            });
-            setSelectedServices([]);
-            loadCourses();
-        } catch (error) {
-            console.error('Error creating course:', error);
-            alert('Không thể tạo liệu trình');
-        }
-    };
-
     const getStatusBadge = (status: string) => {
         const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
-            draft: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Nháp' },
             active: { bg: 'bg-green-100', text: 'text-green-800', label: 'Đang hoạt động' },
             paused: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Tạm dừng' },
             completed: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Hoàn thành' },
@@ -169,7 +119,7 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
             cancelled: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Đã hủy' }
         };
 
-        const config = statusConfig[status] || statusConfig.draft;
+        const config = statusConfig[status] || statusConfig.active;
         return (
             <span className={`px-2 py-1 text-xs font-medium rounded-full ${config.bg} ${config.text}`}>
                 {config.label}
@@ -177,25 +127,71 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
         );
     };
 
-    const getProgressBar = (course: TreatmentCourse) => {
-        const percentage = course.progressPercentage || 0;
-        return (
-            <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                    className={`h-2 rounded-full transition-all ${
-                        percentage === 100 ? 'bg-green-500' : 
-                        percentage >= 50 ? 'bg-blue-500' : 'bg-yellow-500'
-                    }`}
-                    style={{ width: `${percentage}%` }}
-                />
-            </div>
+    const getProgressPercentage = (course: TreatmentCourse) => {
+        if (!course.totalSessions) return 0;
+        const completed = course.completedSessions || 0;
+        return Math.round((completed / course.totalSessions) * 100);
+    };
+
+    const getDaysUntilExpiry = (expiryDate: string) => {
+        const today = new Date();
+        const expiry = new Date(expiryDate);
+        const diffTime = expiry.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays;
+    };
+
+    const getNextSessionReminder = (course: TreatmentCourse) => {
+        // Find next scheduled session
+        const courseAppointments = appointments.filter(
+            apt => apt.serviceId === course.serviceId && apt.userId === course.clientId
         );
+        
+        if (courseAppointments.length === 0) return null;
+        
+        // Sort by date and find next upcoming appointment
+        const upcomingAppointments = courseAppointments
+            .filter(apt => apt.status === 'upcoming' || apt.status === 'scheduled')
+            .sort((a, b) => {
+                const dateA = new Date(`${a.date} ${a.time}`);
+                const dateB = new Date(`${b.date} ${b.time}`);
+                return dateA.getTime() - dateB.getTime();
+            });
+
+        if (upcomingAppointments.length === 0) return null;
+
+        const nextAppointment = upcomingAppointments[0];
+        const appointmentDate = new Date(`${nextAppointment.date} ${nextAppointment.time}`);
+        const today = new Date();
+        const diffTime = appointmentDate.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        return {
+            date: nextAppointment.date,
+            time: nextAppointment.time,
+            daysUntil: diffDays
+        };
     };
 
     // Pagination
     const totalPages = Math.ceil(filteredCourses.length / itemsPerPage);
     const startIndex = (currentPage - 1) * itemsPerPage;
     const paginatedCourses = filteredCourses.slice(startIndex, startIndex + itemsPerPage);
+
+    // Stats
+    const stats = useMemo(() => {
+        return {
+            total: courses.length,
+            active: courses.filter(c => c.status === 'active').length,
+            completed: courses.filter(c => c.status === 'completed').length,
+            expired: courses.filter(c => c.status === 'expired' || (c.expiryDate && new Date(c.expiryDate) < new Date())).length,
+            expiringSoon: courses.filter(c => {
+                if (!c.expiryDate) return false;
+                const days = getDaysUntilExpiry(c.expiryDate);
+                return days > 0 && days <= 7;
+            }).length
+        };
+    }, [courses]);
 
     if (isLoading) {
         return (
@@ -208,61 +204,45 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
     return (
         <div className="p-6 max-w-7xl mx-auto">
             {/* Header */}
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Quản lý Liệu trình</h1>
-                    <p className="text-gray-600 mt-1">Theo dõi và quản lý tất cả liệu trình điều trị</p>
-                </div>
-                <button
-                    onClick={() => setShowCreateModal(true)}
-                    className="px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-secondary transition"
-                >
-                    + Tạo liệu trình mới
-                </button>
+            <div className="mb-6">
+                <h1 className="text-3xl font-bold text-gray-900">Quản lý Liệu trình</h1>
+                <p className="text-gray-600 mt-1">Theo dõi và quản lý liệu trình điều trị từ các đặt lịch đã được duyệt</p>
             </div>
 
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
                 <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                     <div className="text-sm text-gray-600">Tổng số</div>
-                    <div className="text-2xl font-bold text-gray-900">{courses.length}</div>
+                    <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                     <div className="text-sm text-gray-600">Đang hoạt động</div>
-                    <div className="text-2xl font-bold text-green-600">
-                        {courses.filter(c => c.status === 'active').length}
-                    </div>
-                </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-                    <div className="text-sm text-gray-600">Tạm dừng</div>
-                    <div className="text-2xl font-bold text-yellow-600">
-                        {courses.filter(c => c.status === 'paused').length}
-                    </div>
+                    <div className="text-2xl font-bold text-green-600">{stats.active}</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                     <div className="text-sm text-gray-600">Hoàn thành</div>
-                    <div className="text-2xl font-bold text-blue-600">
-                        {courses.filter(c => c.status === 'completed').length}
-                    </div>
+                    <div className="text-2xl font-bold text-blue-600">{stats.completed}</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                     <div className="text-sm text-gray-600">Hết hạn</div>
-                    <div className="text-2xl font-bold text-red-600">
-                        {courses.filter(c => c.status === 'expired').length}
-                    </div>
+                    <div className="text-2xl font-bold text-red-600">{stats.expired}</div>
+                </div>
+                <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                    <div className="text-sm text-gray-600">Sắp hết hạn</div>
+                    <div className="text-2xl font-bold text-orange-600">{stats.expiringSoon}</div>
                 </div>
             </div>
 
             {/* Filters */}
             <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Tìm kiếm</label>
                         <input
                             type="text"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            placeholder="Tên gói, dịch vụ..."
+                            placeholder="Tên khách, dịch vụ..."
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
                         />
                     </div>
@@ -274,8 +254,25 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
                         >
                             <option value="all">Tất cả</option>
-                            <option value="draft">Nháp</option>
                             <option value="active">Đang hoạt động</option>
+                            <option value="completed">Hoàn thành</option>
+                            <option value="expired">Hết hạn</option>
+                            <option value="cancelled">Đã hủy</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Khách hàng</label>
+                        <select
+                            value={clientFilter}
+                            onChange={(e) => setClientFilter(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                        >
+                            <option value="all">Tất cả</option>
+                            {allUsers.filter(u => u.role === 'Client').map(user => (
+                                <option key={user.id} value={user.id}>
+                                    {user.name}
+                                </option>
+                            ))}
                         </select>
                     </div>
                     <div>
@@ -302,13 +299,13 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                     <table className="w-full">
                         <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Tên gói</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Khách hàng</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Dịch vụ</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Số buổi</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Tiến độ</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Trạng thái</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Chuyên viên</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Ngày bắt đầu</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Hết hạn</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Hạn sử dụng</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Nhắc nhở</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Hành động</th>
                             </tr>
                         </thead>
@@ -316,70 +313,91 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                             {paginatedCourses.length === 0 ? (
                                 <tr>
                                     <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
-                                        Không tìm thấy gói liệu trình nào
+                                        Không tìm thấy liệu trình nào
                                     </td>
                                 </tr>
                             ) : (
                                 paginatedCourses.map((course) => {
-                                    const servicesDisplay = course.services && course.services.length > 0
-                                        ? course.services.map(s => s.serviceName).join(', ')
-                                        : (course as any).serviceName || 'N/A';
-                                    const isExpiringSoon = course.daysUntilExpiry && course.daysUntilExpiry <= 7 && course.daysUntilExpiry > 0;
-                                    const isExpired = course.isExpired || course.status === 'expired';
-                                    const consultant = allUsers.find(u => u.id === course.consultantId);
+                                    // Try to get client from course.Client (from backend association) first, then fallback to allUsers
+                                    const client = (course as any).Client || allUsers.find(u => u.id === course.clientId);
+                                    const service = allServices.find(s => s.id === course.serviceId);
+                                    const progress = getProgressPercentage(course);
+                                    const daysUntilExpiry = course.expiryDate ? getDaysUntilExpiry(course.expiryDate) : null;
+                                    const nextReminder = getNextSessionReminder(course);
 
                                     return (
                                         <tr key={course.id} className="hover:bg-gray-50">
                                             <td className="px-4 py-3">
-                                                <div className="font-medium text-gray-900">{course.name || 'ffa'}</div>
-                                                <div className="text-xs text-gray-500 mt-1">
-                                                    {course.price?.toLocaleString('vi-VN')} đ
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="text-sm text-gray-900">
-                                                    {servicesDisplay}
-                                                </div>
-                                                {course.services && course.services.length > 1 && (
-                                                    <div className="text-xs text-gray-500 mt-1">
-                                                        {course.services.length} dịch vụ
+                                                <div className="font-medium text-gray-900">{client?.name || 'N/A'}</div>
+                                                {client?.phone && (
+                                                    <div className="text-xs text-gray-500 flex items-center gap-1">
+                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                                        </svg>
+                                                        {client.phone}
                                                     </div>
                                                 )}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="text-sm text-gray-900">{course.serviceName || service?.name || 'N/A'}</div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="text-sm font-medium text-gray-900">
+                                                    {course.completedSessions || 0}/{course.totalSessions}
+                                                </div>
+                                                <div className="text-xs text-gray-500">Tổng: {course.totalSessions} buổi</div>
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center gap-2">
                                                     <div className="flex-1 min-w-[80px]">
-                                                        {getProgressBar(course)}
+                                                        <div className="w-full bg-gray-200 rounded-full h-2">
+                                                            <div
+                                                                className={`h-2 rounded-full transition-all ${
+                                                                    progress === 100 ? 'bg-green-500' : 
+                                                                    progress >= 50 ? 'bg-blue-500' : 'bg-yellow-500'
+                                                                }`}
+                                                                style={{ width: `${progress}%` }}
+                                                            />
+                                                        </div>
                                                     </div>
                                                     <span className="text-sm text-gray-600 whitespace-nowrap">
-                                                        {course.completedSessions || 0}/{course.totalSessions}
+                                                        {progress}%
                                                     </span>
-                                                </div>
-                                                <div className="text-xs text-gray-500 mt-1">
-                                                    {course.progressPercentage || 0}%
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3">
                                                 {getStatusBadge(course.status)}
-                                                {isExpiringSoon && (
+                                                {daysUntilExpiry !== null && daysUntilExpiry > 0 && daysUntilExpiry <= 7 && (
                                                     <div className="text-xs text-orange-600 mt-1">
-                                                        Còn {course.daysUntilExpiry} ngày
+                                                        Còn {daysUntilExpiry} ngày
                                                     </div>
                                                 )}
-                                                {isExpired && (
+                                                {daysUntilExpiry !== null && daysUntilExpiry <= 0 && (
                                                     <div className="text-xs text-red-600 mt-1">
                                                         Đã hết hạn
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="px-4 py-3 text-sm text-gray-900">
-                                                {consultant?.name || '-'}
-                                            </td>
-                                            <td className="px-4 py-3 text-sm text-gray-600">
-                                                {course.startDate ? new Date(course.startDate).toLocaleDateString('vi-VN') : '-'}
-                                            </td>
                                             <td className="px-4 py-3 text-sm text-gray-600">
                                                 {course.expiryDate ? new Date(course.expiryDate).toLocaleDateString('vi-VN') : '-'}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {nextReminder ? (
+                                                    <div className="text-sm">
+                                                        <div className="text-gray-900">
+                                                            {new Date(nextReminder.date).toLocaleDateString('vi-VN')} {nextReminder.time}
+                                                        </div>
+                                                        {nextReminder.daysUntil > 0 && (
+                                                            <div className={`text-xs ${nextReminder.daysUntil <= 2 ? 'text-red-600 font-semibold' : 'text-orange-600'}`}>
+                                                                {nextReminder.daysUntil === 0 ? 'Hôm nay' : 
+                                                                 nextReminder.daysUntil === 1 ? 'Ngày mai' : 
+                                                                 `Còn ${nextReminder.daysUntil} ngày`}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-sm text-gray-400">-</span>
+                                                )}
                                             </td>
                                             <td className="px-4 py-3">
                                                 <button
@@ -435,148 +453,6 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                     </div>
                 )}
             </div>
-
-            {/* Create Modal */}
-            {showCreateModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                        <div className="p-6 border-b border-gray-200">
-                            <h2 className="text-2xl font-bold text-gray-900">Tạo liệu trình mới</h2>
-                        </div>
-                        <form onSubmit={handleCreateCourse} className="p-6 space-y-4">
-                            <div className="grid grid-cols-1 gap-4">
-                                {/* Package name */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Tên gói liệu trình <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        required
-                                        placeholder="VD: Liệu trình làm sáng da 3 bước"
-                                        value={newCourse.name}
-                                        onChange={(e) => setNewCourse({...newCourse, name: e.target.value})}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                                    />
-                                </div>
-                                
-                                {/* Description */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Mô tả gói liệu trình
-                                    </label>
-                                    <textarea
-                                        placeholder="Mô tả chi tiết về gói liệu trình..."
-                                        value={newCourse.description}
-                                        onChange={(e) => setNewCourse({...newCourse, description: e.target.value})}
-                                        rows={3}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                                    />
-                                </div>
-                                
-                                {/* Service selection */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Các dịch vụ trong gói <span className="text-red-500">*</span>
-                                        <span className="text-xs text-gray-500 ml-2">(1 dịch vụ = 1 buổi)</span>
-                                    </label>
-                                    <div className="space-y-2 max-h-64 overflow-y-auto border border-gray-300 rounded-md p-3">
-                                        {allServices.map((service) => {
-                                            const isSelected = selectedServices.some(s => s.serviceId === service.id);
-                                            return (
-                                                <label key={service.id} className="flex items-center gap-2 hover:bg-gray-50 p-2 rounded cursor-pointer">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={isSelected}
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) {
-                                                                setSelectedServices([
-                                                                    ...selectedServices,
-                                                                    {
-                                                                        serviceId: service.id,
-                                                                        serviceName: service.name,
-                                                                        order: selectedServices.length + 1,
-                                                                        price: service.price,
-                                                                        duration: service.duration
-                                                                    }
-                                                                ]);
-                                                            } else {
-                                                                setSelectedServices(
-                                                                    selectedServices.filter(s => s.serviceId !== service.id)
-                                                                        .map((s, idx) => ({ ...s, order: idx + 1 })) // Re-order
-                                                                );
-                                                            }
-                                                        }}
-                                                        className="rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
-                                                    />
-                                                    <div className="flex-1">
-                                                        <div className="text-sm font-medium text-gray-900">{service.name}</div>
-                                                        <div className="text-xs text-gray-500">
-                                                            {service.duration} phút - {Number(service.price).toLocaleString('vi-VN')} ₫
-                                                        </div>
-                                                    </div>
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
-                                    {selectedServices.length > 0 && (
-                                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                                            <div className="text-sm font-semibold text-blue-900 mb-2">
-                                                Đã chọn {selectedServices.length} dịch vụ = {calculatedSessions} buổi
-                                            </div>
-                                            <ul className="text-sm text-blue-800 space-y-1">
-                                                {selectedServices.map((s, idx) => (
-                                                    <li key={s.serviceId} className="flex justify-between">
-                                                        <span>{idx + 1}. {s.serviceName}</span>
-                                                        <span className="font-medium">{Number(s.price).toLocaleString('vi-VN')} ₫</span>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                            <div className="mt-2 pt-2 border-t border-blue-300 text-sm font-bold text-blue-900">
-                                                Tổng giá: {calculatedPrice.toLocaleString('vi-VN')} ₫
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                                
-                                {/* Consultant */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Chuyên viên tư vấn
-                                    </label>
-                                    <select
-                                        value={newCourse.consultantId}
-                                        onChange={(e) => setNewCourse({...newCourse, consultantId: e.target.value})}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                                    >
-                                        <option value="">-- Không chọn --</option>
-                                        {allUsers.filter(u => u.role === 'Staff').map(staff => (
-                                            <option key={staff.id} value={staff.id}>
-                                                {staff.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-                            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowCreateModal(false)}
-                                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                                >
-                                    Hủy
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="px-4 py-2 bg-brand-primary text-white rounded-md hover:bg-brand-secondary"
-                                >
-                                    Tạo liệu trình
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

@@ -1,207 +1,126 @@
-// backend/routes/treatmentCourses.js - Enhanced Phase 1
+// backend/routes/treatmentCourses.js - Updated to match db.txt schema
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
 
-// Helper: Calculate expiry date
-const calculateExpiryDate = (startDate, totalSessions, sessionsPerWeek, bufferDays = 14) => {
-    const weeksNeeded = totalSessions / sessionsPerWeek;
-    const daysNeeded = Math.ceil(weeksNeeded * 7);
+// Helper: Calculate expiry date based on startDate and durationWeeks
+const calculateExpiryDate = (startDate, durationWeeks) => {
     const expiryDate = new Date(startDate);
-    expiryDate.setDate(expiryDate.getDate() + daysNeeded + bufferDays);
+    expiryDate.setDate(expiryDate.getDate() + (durationWeeks * 7));
     return expiryDate.toISOString().split('T')[0];
 };
 
-// Helper: Update course progress
-const updateCourseProgress = async (courseId) => {
-    try {
-        const course = await db.TreatmentCourse.findByPk(courseId);
-        if (!course) return null;
-
-        // Count completed sessions
-        const completedCount = await db.TreatmentSession.count({
-            where: {
-                treatmentCourseId: courseId,
-                status: 'completed'
-            }
-        });
-
-        // Get last completed date
-        const lastSession = await db.TreatmentSession.findOne({
-            where: {
-                treatmentCourseId: courseId,
-                status: 'completed'
-            },
-            order: [['completedDate', 'DESC']]
-        });
-
-        // Calculate progress percentage
-        const progressPercentage = course.totalSessions > 0
-            ? Math.round((completedCount / course.totalSessions) * 100)
-            : 0;
-
-        // Determine status
-        let newStatus = course.status;
-        if (completedCount >= course.totalSessions) {
-            newStatus = 'completed';
-        } else if (course.expiryDate && new Date(course.expiryDate) < new Date() && course.status === 'active') {
-            newStatus = 'expired';
-        }
-
-        // Update course
-        await course.update({
-            completedSessions: completedCount,
-            progressPercentage,
-            lastCompletedDate: lastSession ? lastSession.completedDate : null,
-            status: newStatus
-        });
-
-        return course;
-    } catch (error) {
-        console.error('Error updating course progress:', error);
-        throw error;
-    }
+// Helper: Calculate default durationWeeks (totalSessions + 1)
+const calculateDefaultDurationWeeks = (totalSessions) => {
+    return totalSessions + 1;
 };
 
-// GET /api/treatment-courses - Get all treatment courses (with filters)
+// GET /api/treatment-courses - Get all treatment courses
 router.get('/', async (req, res) => {
     try {
-        const {
-            clientId,
-            therapistId,
-            status,
-            template,
-            includeExpired,
-            includeCompleted
-        } = req.query;
-
+        const { clientId, status, serviceId } = req.query;
         const where = {};
-
-        // Template courses (clientId is null)
-        if (template === 'true') {
-            where.clientId = null;
-        } else if (clientId) {
-            where.clientId = clientId;
-        }
-
-        if (therapistId) where.therapistId = therapistId;
+        
+        if (clientId) where.clientId = clientId;
         if (status) where.status = status;
-
-        // Default: exclude expired and cancelled unless requested
-        if (!includeExpired && !status) {
-            if (where.status) {
-                // If status already set, add to exclusion
-                where.status = { [Op.and]: [where.status, { [Op.notIn]: ['expired', 'cancelled'] }] };
-            } else {
-                where.status = { [Op.notIn]: ['expired', 'cancelled'] };
-            }
-        }
-
-        // Default: exclude completed unless requested
-        if (!includeCompleted && !status && template !== 'true') {
-            if (where.status && where.status[Op.notIn]) {
-                where.status[Op.notIn].push('completed');
-            } else if (!where.status) {
-                where.status = { [Op.notIn]: ['expired', 'cancelled', 'completed'] };
-            }
-        }
+        if (serviceId) where.serviceId = serviceId;
 
         const courses = await db.TreatmentCourse.findAll({
             where,
-            include: clientId || !template ? [
-                {
-                    model: db.User,
+            include: [
+                { 
+                    model: db.Service,
+                    attributes: ['id', 'name', 'description', 'price', 'duration']
+                },
+                { 
+                    model: db.User, 
                     as: 'Client',
+                    attributes: ['id', 'name', 'email', 'phone']
+                },
+                { 
+                    model: db.User, 
+                    as: 'Therapist',
                     attributes: ['id', 'name', 'email', 'phone'],
                     required: false
                 },
-                {
-                    model: db.Service,
-                    attributes: ['id', 'name', 'price', 'duration'],
-                    required: false
-                }
-            ] : [],
-            order: [['createdAt', 'DESC']]
+            ],
+            order: [['createdAt', 'DESC']],
         });
 
         res.json(courses);
     } catch (error) {
         console.error('Error fetching treatment courses:', error);
-        res.status(500).json({ message: 'Error fetching treatment courses', error: error.message });
+        res.status(500).json({ message: 'Internal server error' });
     }
 });
 
-// GET /api/treatment-courses/:id - get single course with details
+// GET /api/treatment-courses/:id - Get treatment course details with sessions
 router.get('/:id', async (req, res) => {
     try {
-        const { id } = req.params;
-
-        const course = await db.TreatmentCourse.findByPk(id, {
+        const course = await db.TreatmentCourse.findByPk(req.params.id, {
             include: [
+                { model: db.Service, as: 'Service' },
+                { model: db.User, as: 'Client' },
+                { model: db.User, as: 'Therapist' },
                 {
-                    model: db.User,
-                    as: 'Client',
-                    attributes: ['id', 'name', 'email', 'phone'],
-                    required: false
+                    model: db.TreatmentSession,
+                    as: 'TreatmentSessions',
+                    include: [
+                        { 
+                            model: db.Appointment, 
+                            as: 'Appointment',
+                            include: [
+                                {
+                                    model: db.User,
+                                    as: 'Therapist',
+                                    attributes: ['id', 'name', 'email', 'phone']
+                                }
+                            ]
+                        },
+                        { 
+                            model: db.User, 
+                            as: 'Staff',
+                            attributes: ['id', 'name', 'email', 'phone'],
+                            required: false
+                        },
+                    ],
+                    order: [['sessionNumber', 'ASC']],
                 },
-                {
-                    model: db.Service,
-                    attributes: ['id', 'name', 'price', 'duration', 'description'],
-                    required: false
-                }
-            ]
+            ],
         });
 
         if (!course) {
             return res.status(404).json({ message: 'Treatment course not found' });
         }
 
-        // Get all sessions for this course
-        const sessions = await db.TreatmentSession.findAll({
-            where: { treatmentCourseId: id },
-            order: [['sessionNumber', 'ASC']]
-        });
-
-        const courseData = course.toJSON();
-        courseData.sessions = sessions;
-
-        // Add expiry warning
-        if (course.expiryDate) {
-            const daysUntilExpiry = Math.ceil((new Date(course.expiryDate) - new Date()) / (1000 * 60 * 60 * 24));
-            courseData.daysUntilExpiry = daysUntilExpiry;
-            courseData.isExpiringSoon = daysUntilExpiry <= 7 && daysUntilExpiry > 0;
-            courseData.isExpired = daysUntilExpiry < 0;
-        }
-
-        res.json(courseData);
+        res.json(course);
     } catch (error) {
         console.error('Error fetching course details:', error);
         res.status(500).json({ message: 'Error fetching course details', error: error.message });
     }
 });
 
-// POST /api/treatment-courses - Create new treatment course with auto-generated sessions
+// POST /api/treatment-courses - Create new treatment course
 router.post('/', async (req, res) => {
     try {
         const {
             serviceId,
             clientId,
             totalSessions,
-            sessionsPerWeek,
-            treatmentGoals,
-            initialSkinCondition,
-            consultantId,
-            consultantName,
             startDate,
-            therapistId
+            durationWeeks, // Optional, defaults to totalSessions + 1
+            frequencyType, // 'weeks_per_session' or 'sessions_per_week'
+            frequencyValue, // e.g., 2 (weeks per session or sessions per week)
+            therapistId,
+            notes,
         } = req.body;
 
         // Validate required fields
-        if (!serviceId || !totalSessions || !sessionsPerWeek) {
+        if (!serviceId || !clientId || !totalSessions) {
             return res.status(400).json({
-                message: 'Missing required fields: serviceId, totalSessions, sessionsPerWeek'
+                message: 'Missing required fields: serviceId, clientId, totalSessions'
             });
         }
 
@@ -211,60 +130,68 @@ router.post('/', async (req, res) => {
             return res.status(404).json({ message: 'Service not found' });
         }
 
-        // Calculate expiry date
+        // Calculate dates
         const courseStartDate = startDate || new Date().toISOString().split('T')[0];
-        const expiryDate = calculateExpiryDate(courseStartDate, totalSessions, sessionsPerWeek);
+        const finalDurationWeeks = durationWeeks || calculateDefaultDurationWeeks(totalSessions);
+        const expiryDate = calculateExpiryDate(courseStartDate, finalDurationWeeks);
 
         // Create course
         const course = await db.TreatmentCourse.create({
             id: `tc-${uuidv4()}`,
             serviceId,
             serviceName: service.name,
-            clientId: clientId || null,
-            therapistId: therapistId || null,
+            clientId,
             totalSessions,
-            sessionsPerWeek,
-            sessionDuration: service.duration || 60,
-            treatmentGoals,
-            initialSkinCondition,
-            consultantId,
-            consultantName,
-            startDate: courseStartDate,
-            expiryDate,
-            status: clientId ? 'active' : 'draft',
-            progressPercentage: 0,
             completedSessions: 0,
-            isPaused: false
+            startDate: courseStartDate,
+            durationWeeks: finalDurationWeeks,
+            expiryDate,
+            frequencyType: frequencyType || null,
+            frequencyValue: frequencyValue || null,
+            therapistId: therapistId || null,
+            status: 'active',
+            notes: notes || null,
+            createdAt: new Date(),
         });
 
-        // Auto-generate sessions only if not a template (has clientId)
-        if (clientId) {
-            const sessions = [];
-            const startDateObj = new Date(courseStartDate);
+        // Auto-generate treatment sessions
+        const sessions = [];
+        const startDateObj = new Date(courseStartDate);
 
-            for (let i = 1; i <= totalSessions; i++) {
-                const daysBetweenSessions = Math.floor(7 / sessionsPerWeek);
-                const sessionDate = new Date(startDateObj);
+        for (let i = 1; i <= totalSessions; i++) {
+            let sessionDate = new Date(startDateObj);
+            
+            // Calculate session date based on frequency
+            if (frequencyType === 'sessions_per_week' && frequencyValue) {
+                // e.g., 2 sessions per week = every 3-4 days
+                const daysBetweenSessions = Math.floor(7 / frequencyValue);
                 sessionDate.setDate(sessionDate.getDate() + ((i - 1) * daysBetweenSessions));
-
-                sessions.push({
-                    id: `ts-${uuidv4()}`,
-                    treatmentCourseId: course.id,
-                    sessionNumber: i,
-                    scheduledDate: sessionDate.toISOString().split('T')[0],
-                    status: 'pending',
-                    createdAt: new Date(),
-                    updatedAt: new Date()
-                });
+            } else if (frequencyType === 'weeks_per_session' && frequencyValue) {
+                // e.g., 2 weeks per session = every 14 days
+                sessionDate.setDate(sessionDate.getDate() + ((i - 1) * frequencyValue * 7));
+            } else {
+                // Default: spread evenly over durationWeeks
+                const daysBetweenSessions = Math.floor((finalDurationWeeks * 7) / totalSessions);
+                sessionDate.setDate(sessionDate.getDate() + ((i - 1) * daysBetweenSessions));
             }
 
-            await db.TreatmentSession.bulkCreate(sessions);
-            console.log(`✅ Created treatment course ${course.id} with ${sessions.length} sessions`);
+            sessions.push({
+                id: `ts-${uuidv4()}`,
+                treatmentCourseId: course.id,
+                sessionNumber: i,
+                status: 'scheduled',
+                sessionDate: sessionDate.toISOString().split('T')[0],
+                sessionTime: '09:00', // Default time, can be updated when appointment is created
+                staffId: therapistId || null,
+            });
         }
+
+        await db.TreatmentSession.bulkCreate(sessions);
+        console.log(`✅ Created treatment course ${course.id} with ${sessions.length} sessions`);
 
         res.status(201).json({
             course,
-            message: clientId ? `Treatment course created with ${totalSessions} sessions` : 'Template course created'
+            message: `Treatment course created with ${totalSessions} sessions`
         });
     } catch (error) {
         console.error('Error creating treatment course:', error);
@@ -272,7 +199,7 @@ router.post('/', async (req, res) => {
     }
 });
 
-// PUT /api/treatment-courses/:id - update
+// PUT /api/treatment-courses/:id - Update treatment course
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -283,189 +210,90 @@ router.put('/:id', async (req, res) => {
             return res.status(404).json({ message: 'Treatment course not found' });
         }
 
+        // If durationWeeks is updated, recalculate expiryDate
+        if (updates.durationWeeks !== undefined) {
+            updates.expiryDate = calculateExpiryDate(
+                updates.startDate || course.startDate,
+                updates.durationWeeks
+            );
+        }
+
         await course.update(updates);
-        res.json({
-            course,
-            message: 'Treatment course updated successfully'
-        });
+        res.json(course);
     } catch (error) {
         console.error('Error updating treatment course:', error);
         res.status(500).json({ message: 'Error updating treatment course', error: error.message });
     }
 });
 
-// POST /api/treatment-courses/:id/pause - Pause course
-router.post('/:id/pause', async (req, res) => {
+// DELETE /api/treatment-courses/:id - Delete treatment course
+router.delete('/:id', async (req, res) => {
+    try {
+        const course = await db.TreatmentCourse.findByPk(req.params.id);
+        if (!course) {
+            return res.status(404).json({ message: 'Treatment course not found' });
+        }
+
+        await course.destroy();
+        res.json({ message: 'Treatment course deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting treatment course:', error);
+        res.status(500).json({ message: 'Error deleting treatment course', error: error.message });
+    }
+});
+
+// PUT /api/treatment-courses/:id/complete-session - Mark a session as completed
+router.put('/:id/complete-session', async (req, res) => {
     try {
         const { id } = req.params;
-        const { reason } = req.body;
+        const { sessionNumber, customerStatusNotes, adminNotes } = req.body;
 
         const course = await db.TreatmentCourse.findByPk(id);
         if (!course) {
             return res.status(404).json({ message: 'Treatment course not found' });
         }
 
-        await course.update({
-            status: 'paused',
-            isPaused: true,
-            pauseReason: reason || 'No reason provided',
-            pausedDate: new Date()
+        const session = await db.TreatmentSession.findOne({
+            where: {
+                treatmentCourseId: id,
+                sessionNumber: sessionNumber,
+            },
         });
 
-        res.json({
-            course,
-            message: 'Treatment course paused successfully'
-        });
-    } catch (error) {
-        console.error('Error pausing course:', error);
-        res.status(500).json({ message: 'Error pausing course', error: error.message });
-    }
-});
-
-// POST /api/treatment-courses/:id/resume - Resume course
-router.post('/:id/resume', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { extendExpiryDays } = req.body;
-
-        const course = await db.TreatmentCourse.findByPk(id);
-        if (!course) {
-            return res.status(404).json({ message: 'Treatment course not found' });
-        }
-
-        // Calculate days paused
-        const daysPaused = course.pausedDate
-            ? Math.ceil((new Date() - new Date(course.pausedDate)) / (1000 * 60 * 60 * 24))
-            : 0;
-
-        // Extend expiry date
-        let newExpiryDate = course.expiryDate;
-        if (extendExpiryDays || daysPaused) {
-            const daysToAdd = extendExpiryDays || daysPaused;
-            const expiryDateObj = new Date(course.expiryDate);
-            expiryDateObj.setDate(expiryDateObj.getDate() + daysToAdd);
-            newExpiryDate = expiryDateObj.toISOString().split('T')[0];
-        }
-
-        await course.update({
-            status: 'active',
-            isPaused: false,
-            resumedDate: new Date(),
-            expiryDate: newExpiryDate
-        });
-
-        res.json({
-            course,
-            daysPaused,
-            daysExtended: extendExpiryDays || daysPaused,
-            message: `Treatment course resumed. Expiry extended by ${extendExpiryDays || daysPaused} days.`
-        });
-    } catch (error) {
-        console.error('Error resuming course:', error);
-        res.status(500).json({ message: 'Error resuming course', error: error.message });
-    }
-});
-
-// GET /api/treatment-courses/:id/progress - Get detailed progress
-router.get('/:id/progress', async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const course = await db.TreatmentCourse.findByPk(id);
-        if (!course) {
-            return res.status(404).json({ message: 'Treatment course not found' });
-        }
-
-        const sessions = await db.TreatmentSession.findAll({
-            where: { treatmentCourseId: id },
-            order: [['sessionNumber', 'ASC']]
-        });
-
-        const completedSessions = sessions.filter(s => s.status === 'completed');
-        const pendingSessions = sessions.filter(s => s.status === 'pending');
-        const scheduledSessions = sessions.filter(s => s.status === 'scheduled');
-        const missedSessions = sessions.filter(s => s.status === 'missed');
-
-        const progress = {
-            courseId: id,
-            totalSessions: course.totalSessions,
-            completedSessions: completedSessions.length,
-            pendingSessions: pendingSessions.length,
-            scheduledSessions: scheduledSessions.length,
-            missedSessions: missedSessions.length,
-            progressPercentage: course.progressPercentage,
-            startDate: course.startDate,
-            expiryDate: course.expiryDate,
-            lastCompletedDate: course.lastCompletedDate,
-            nextScheduledSession: scheduledSessions[0] || pendingSessions[0] || null,
-            status: course.status,
-            isPaused: course.isPaused,
-            timeline: sessions.map(s => ({
-                sessionNumber: s.sessionNumber,
-                status: s.status,
-                scheduledDate: s.scheduledDate,
-                completedDate: s.completedDate,
-                therapistName: s.therapistName
-            }))
-        };
-
-        // Calculate days until expiry
-        if (course.expiryDate) {
-            const daysUntilExpiry = Math.ceil((new Date(course.expiryDate) - new Date()) / (1000 * 60 * 60 * 24));
-            progress.daysUntilExpiry = daysUntilExpiry;
-            progress.isExpiringSoon = daysUntilExpiry <= 7 && daysUntilExpiry > 0;
-            progress.isExpired = daysUntilExpiry < 0;
-        }
-
-        res.json(progress);
-    } catch (error) {
-        console.error('Error getting course progress:', error);
-        res.status(500).json({ message: 'Error getting course progress', error: error.message });
-    }
-});
-
-// POST /api/treatment-courses/:courseId/complete-session/:sessionId - Complete a session
-router.post('/:courseId/complete-session/:sessionId', async (req, res) => {
-    try {
-        const { courseId, sessionId } = req.params;
-        const sessionData = req.body;
-
-        const session = await db.TreatmentSession.findByPk(sessionId);
         if (!session) {
-            return res.status(404).json({ message: 'Session not found' });
+            return res.status(404).json({ message: 'Treatment session not found' });
         }
 
-        // Update session
         await session.update({
             status: 'completed',
-            completedDate: new Date(),
-            ...sessionData
+            customerStatusNotes: customerStatusNotes || null,
+            adminNotes: adminNotes || null,
+            completedAt: new Date(),
         });
 
-        // Update course progress
-        await updateCourseProgress(courseId);
-
-        res.json({
-            session,
-            message: 'Session completed successfully'
+        // Update course completedSessions
+        const completedCount = await db.TreatmentSession.count({
+            where: {
+                treatmentCourseId: id,
+                status: 'completed',
+            },
         });
+
+        let newStatus = course.status;
+        if (completedCount >= course.totalSessions) {
+            newStatus = 'completed';
+        }
+
+        await course.update({
+            completedSessions: completedCount,
+            status: newStatus,
+        });
+
+        res.json({ course, session });
     } catch (error) {
         console.error('Error completing session:', error);
         res.status(500).json({ message: 'Error completing session', error: error.message });
     }
-});
-
-// DELETE /api/treatment-courses/:id - delete
-router.delete('/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const result = await db.TreatmentCourse.destroy({ where: { id } });
-    if (result > 0) return res.status(204).send();
-    res.status(404).json({ message: 'Treatment course not found' });
-  } catch (error) {
-    console.error('Error deleting treatment course:', error);
-    res.status(500).json({ message: 'Internal server error' });
-  }
 });
 
 module.exports = router;

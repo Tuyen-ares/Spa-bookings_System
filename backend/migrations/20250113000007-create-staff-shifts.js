@@ -64,15 +64,6 @@ module.exports = {
         type: Sequelize.ENUM('pending_approval', 'approved', 'rejected'),
         allowNull: true,
       },
-      roomId: {
-        type: Sequelize.STRING,
-        allowNull: true,
-        references: {
-          model: 'rooms',
-          key: 'id',
-        },
-        onDelete: 'SET NULL',
-      },
     });
   },
 

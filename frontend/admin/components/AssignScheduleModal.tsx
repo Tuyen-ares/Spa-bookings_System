@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { User, StaffShift, Appointment, Room } from '../../types';
+import type { User, StaffShift, Appointment } from '../../types';
 
 const SHIFT_TIMES = {
     morning: { start: '09:00', end: '13:00' },
@@ -17,17 +17,15 @@ interface AssignScheduleModalProps {
     onSave: (shift: StaffShift) => void;
     onDelete: (shiftId: string) => void;
     allAppointments: Appointment[];
-    allRooms: Room[];
     existingShifts: StaffShift[]; // Add this to check for duplicates
 }
 
-const AssignScheduleModal: React.FC<AssignScheduleModalProps> = ({ context, onClose, onSave, onDelete, allAppointments, allRooms, existingShifts }) => {
+const AssignScheduleModal: React.FC<AssignScheduleModalProps> = ({ context, onClose, onSave, onDelete, allAppointments, existingShifts }) => {
     const { staff, date, shift } = context;
 
     const [shiftType, setShiftType] = useState<StaffShift['shiftType']>(shift?.shiftType || 'morning');
     const [shiftHours, setShiftHours] = useState(shift?.shiftHours || SHIFT_TIMES.morning);
     const [notes, setNotes] = useState(shift?.notes || '');
-    const [roomId, setRoomId] = useState(shift?.roomId || staff.roomId || '');
     const [error, setError] = useState('');
 
     useEffect(() => {
@@ -47,12 +45,6 @@ const AssignScheduleModal: React.FC<AssignScheduleModalProps> = ({ context, onCl
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
-
-        // Validate room selection is required for non-leave shifts
-        if (shiftType !== 'leave' && !roomId) {
-            setError('Vui lòng chọn phòng cho ca làm việc này.');
-            return;
-        }
 
         // Check for duplicate shifts (same staff, same date, same shift type)
         const duplicateShift = existingShifts.find(s => 
@@ -87,7 +79,6 @@ const AssignScheduleModal: React.FC<AssignScheduleModalProps> = ({ context, onCl
             status: 'approved', // Admin directly approves
             shiftHours: shiftHours,
             notes: notes,
-            roomId: roomId || undefined,
         };
 
         onSave(finalShift);
@@ -135,27 +126,6 @@ const AssignScheduleModal: React.FC<AssignScheduleModalProps> = ({ context, onCl
                                         <label htmlFor="endTime" className="block text-sm font-medium text-gray-700">Giờ kết thúc</label>
                                         <input type="time" id="endTime" value={shiftHours.end} onChange={e => setShiftHours(p => ({ ...p, end: e.target.value }))} className="mt-1 w-full p-2 border rounded" readOnly={shiftType !== 'custom'} required />
                                     </div>
-                                </div>
-                            )}
-
-                            {shiftType !== 'leave' && (
-                                <div>
-                                    <label htmlFor="roomId" className="block text-sm font-medium text-gray-700">
-                                        Phòng <span className="text-red-500">*</span>
-                                    </label>
-                                    <select 
-                                        id="roomId" 
-                                        name="roomId" 
-                                        value={roomId} 
-                                        onChange={e => setRoomId(e.target.value)} 
-                                        className="mt-1 w-full p-2 border rounded"
-                                        required
-                                    >
-                                        <option value="">-- Chọn phòng --</option>
-                                        {allRooms.filter(r => r.isActive).map(room => (
-                                            <option key={room.id} value={room.id}>{room.name}</option>
-                                        ))}
-                                    </select>
                                 </div>
                             )}
 

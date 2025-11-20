@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
 import type { User, Appointment, StaffTier, InternalNotification, Service, Sale } from '../../types';
-import { CalendarIcon, ClockIcon, StarIcon, BellIcon, ChartBarIcon, TrophyIcon } from '../../shared/icons';
+import { CalendarIcon, StarIcon, BellIcon, ChartBarIcon, TrophyIcon } from '../../shared/icons';
 
 const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
@@ -22,71 +22,6 @@ const KpiProgress: React.FC<{ label: string; value: number; goal: number; format
     );
 };
 
-const TimekeepingCard: React.FC = () => {
-    const [status, setStatus] = useState<'out' | 'in' | 'late'>('out');
-    const [checkInTime, setCheckInTime] = useState<string | null>(null);
-    const [lateMinutes, setLateMinutes] = useState<number | null>(null);
-
-    const handleCheckIn = () => {
-        const now = new Date();
-
-        // Use minutes-since-midnight to compute lateness precisely
-        const minutesSinceMidnight = now.getHours() * 60 + now.getMinutes();
-        const LATE_THRESHOLD_MINUTES = 9 * 60 + 5; // 09:05 => 9*60 + 5 = 545
-        const isLate = minutesSinceMidnight > LATE_THRESHOLD_MINUTES;
-
-        setStatus(isLate ? 'late' : 'in');
-        setCheckInTime(now.toLocaleTimeString('vi-VN'));
-
-        if (isLate) {
-            const minutesLate = minutesSinceMidnight - LATE_THRESHOLD_MINUTES;
-            setLateMinutes(minutesLate);
-            alert(`Đã check-in trễ lúc ${now.toLocaleTimeString('vi-VN')} (trễ ${minutesLate} phút)`);
-        } else {
-            setLateMinutes(null);
-            alert(`Đã check-in lúc ${now.toLocaleTimeString('vi-VN')}`);
-        }
-    };
-
-    const handleCheckOut = () => {
-        setStatus('out');
-        setCheckInTime(null);
-        setLateMinutes(null);
-        alert('Đã check-out thành công!');
-    };
-
-    return (
-        <div className="bg-white p-6 rounded-lg shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"><ClockIcon className="w-5 h-5 text-brand-primary" /> Chấm công hôm nay</h3>
-            <div className="text-center">
-                {status === 'out' && (
-                    <>
-                        <p className="text-gray-500 mb-4">Bạn chưa check-in. Vui lòng check-in khi bắt đầu ca làm.</p>
-                        <button onClick={handleCheckIn} className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-colors">
-                            Check-in
-                        </button>
-                    </>
-                )}
-                {status === 'in' && (
-                    <>
-                        <p className="text-green-600 font-semibold mb-4">Đang trong ca. Check-in lúc: {checkInTime}</p>
-                        <button onClick={handleCheckOut} className="w-full bg-red-600 text-white font-bold py-3 rounded-lg hover:bg-red-700 transition-colors">
-                            Check-out
-                        </button>
-                    </>
-                )}
-                {status === 'late' && (
-                    <>
-                        <p className="text-red-600 font-semibold mb-4">Bạn đã check-in trễ lúc: {checkInTime}{lateMinutes ? ` (trễ ${lateMinutes} phút)` : ''}</p>
-                        <button onClick={handleCheckOut} className="w-full bg-red-600 text-white font-bold py-3 rounded-lg hover:bg-red-700 transition-colors">
-                            Check-out
-                        </button>
-                    </>
-                )}
-            </div>
-        </div>
-    );
-}
 
 
 interface StaffDashboardPageProps {
@@ -199,7 +134,7 @@ const StaffDashboardPage: React.FC<StaffDashboardPageProps> = ({ currentUser, al
             {/* Note: staffRole removed from users table in db.txt */}
             <p className="text-gray-600 mb-8">Bạn đang ở vai trò <span className="font-semibold text-brand-primary">Nhân viên</span>.</p>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
                 {/* Personal Info Card */}
                 <div className="bg-white p-6 rounded-lg shadow-sm flex items-center gap-4">
                     <img src={currentUser.profilePictureUrl} alt={currentUser.name} className="w-16 h-16 rounded-full object-cover border-2 border-brand-primary/50" />
@@ -211,9 +146,6 @@ const StaffDashboardPage: React.FC<StaffDashboardPageProps> = ({ currentUser, al
                         )}
                     </div>
                 </div>
-
-                {/* Timekeeping Card */}
-                <TimekeepingCard />
 
                 {/* Notifications */}
                 <div className="bg-white p-6 rounded-lg shadow-sm">

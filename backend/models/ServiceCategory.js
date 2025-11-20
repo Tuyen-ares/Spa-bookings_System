@@ -19,16 +19,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       comment: 'Mô tả danh mục',
     },
-    iconUrl: {
-      type: DataTypes.STRING(500),
-      allowNull: true,
-      comment: 'URL icon danh mục',
-    },
-    order: {
+    displayOrder: {
       type: DataTypes.INTEGER,
       allowNull: true,
       defaultValue: 0,
-      comment: 'Thứ tự hiển thị',
+      comment: 'Thứ tự hiển thị (số nhỏ hiển thị trước)',
     },
   }, {
     tableName: 'service_categories',

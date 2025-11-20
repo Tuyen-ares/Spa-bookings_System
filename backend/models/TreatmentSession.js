@@ -11,91 +11,57 @@ module.exports = (sequelize) => {
     treatmentCourseId: {
       type: DataTypes.STRING,
       allowNull: false,
-      // Foreign key via associations
-    },
-    sessionNumber: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      comment: 'Buổi thứ mấy (1, 2, 3...)',
+      comment: 'ID liệu trình',
     },
     appointmentId: {
       type: DataTypes.STRING,
       allowNull: true,
-      // Foreign key via associations
-      comment: 'Link to appointment nếu đã đặt lịch',
+      comment: 'ID lịch hẹn (liên kết với appointments)',
     },
-    scheduledDate: {
-      type: DataTypes.DATEONLY,
-      allowNull: true,
-      comment: 'Ngày dự kiến thực hiện',
-    },
-    scheduledTime: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      comment: 'Giờ dự kiến (VD: 09:00)',
-    },
-    completedDate: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      comment: 'Ngày thực tế hoàn thành',
-    },
-    therapistId: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      // Foreign key via associations
-    },
-    therapistName: {
-      type: DataTypes.STRING,
-      allowNull: true,
+    sessionNumber: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      comment: 'Số thứ tự buổi (1, 2, 3, ...)',
     },
     status: {
-      type: DataTypes.ENUM('scheduled', 'completed', 'cancelled', 'missed', 'pending'),
+      type: DataTypes.ENUM('scheduled', 'completed', 'cancelled', 'missed'),
       allowNull: false,
-      defaultValue: 'pending',
+      defaultValue: 'scheduled',
+      comment: 'Trạng thái buổi điều trị',
     },
-    notes: {
+    sessionDate: {
+      type: DataTypes.DATEONLY,
+      allowNull: false,
+      comment: 'Ngày thực hiện',
+    },
+    sessionTime: {
+      type: DataTypes.STRING(10),
+      allowNull: false,
+      comment: 'Giờ thực hiện (HH:MM)',
+    },
+    staffId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'ID nhân viên thực hiện',
+    },
+    customerStatusNotes: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: 'Ghi chú trước buổi (từ khách hàng)',
+      comment: 'Ghi chú tình trạng khách (TEXT, không phải ENUM) - Ví dụ: "Khách ổn, da sáng hơn, không có kích ứng"',
     },
-    therapistNotes: {
+    adminNotes: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: 'Ghi chú sau buổi (từ chuyên viên)',
+      comment: 'Ghi chú của admin sau buổi',
     },
-    skinCondition: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: 'Tình trạng da quan sát được',
-    },
-    productsUsed: {
-      type: DataTypes.JSON,
-      allowNull: true,
-      comment: 'Danh sách sản phẩm đã sử dụng',
-    },
-    nextSessionRecommendation: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: 'Đề xuất cho buổi tiếp theo',
-    },
-    rating: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      comment: 'Đánh giá của khách (1-5 sao)',
-    },
-    createdAt: {
+    completedAt: {
       type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW,
-    },
-    updatedAt: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW,
+      allowNull: true,
+      comment: 'Ngày hoàn thành',
     },
   }, {
     tableName: 'treatment_sessions',
-    timestamps: true,
+    timestamps: false, // No timestamps in schema
   });
 
   return TreatmentSession;

@@ -224,7 +224,6 @@ router.post('/process', async (req, res) => {
                 
                 const payment = await db.Payment.create({
                     id: paymentId,
-                    bookingId: appointmentId,
                     appointmentId: appointmentId,
                     userId: appointment.userId,
                     serviceName: appointment.serviceName,
@@ -287,7 +286,6 @@ router.post('/process', async (req, res) => {
             try {
                 const payment = await db.Payment.create({
                     id: `pay-${uuidv4()}`,
-                    bookingId: appointmentId,
                     appointmentId: appointmentId,
                     userId: appointment.userId,
                     serviceName: appointment.serviceName,

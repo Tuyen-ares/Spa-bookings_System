@@ -15,14 +15,19 @@ router.get('/lucky-wheel-prizes', (req, res) => {
 router.get('/:userId', async (req, res) => {
     const { userId } = req.params;
     try {
-        let wallet = await db.Wallet.findByPk(userId);
+        let wallet = await db.Wallet.findOne({ where: { userId } });
         if (!wallet) {
             // Create a default wallet if not found for the user
             const user = await db.User.findByPk(userId);
             if (!user) {
                 return res.status(404).json({ message: 'User not found, cannot create wallet.' });
             }
-            wallet = await db.Wallet.create({ userId: user.id, balance: 0, points: 0, totalEarned: 0, totalSpent: 0 });
+            wallet = await db.Wallet.create({ 
+                id: uuidv4(),
+                userId: user.id, 
+                points: 0, 
+                totalSpent: 0.00 
+            });
             res.status(201).json(wallet);
         } else {
             res.json(wallet);
@@ -33,21 +38,18 @@ router.get('/:userId', async (req, res) => {
     }
 });
 
-// PUT /api/wallets/:userId - Update user's wallet (points, balance, spinsLeft)
+// PUT /api/wallets/:userId - Update user's wallet (points, totalSpent)
 router.put('/:userId', async (req, res) => {
     const { userId } = req.params;
-    const updatedWalletData = req.body; // e.g., { points: 1500, spinsLeft: 2 }
+    const updatedWalletData = req.body; // e.g., { points: 1500, totalSpent: 500000 }
 
     try {
-        const wallet = await db.Wallet.findByPk(userId);
+        const wallet = await db.Wallet.findOne({ where: { userId } });
         if (!wallet) {
             return res.status(404).json({ message: 'Wallet not found for this user.' });
         }
 
         await wallet.update(updatedWalletData);
-
-        // Note: Tier upgrade functionality disabled - Tier table removed
-        // Tier upgrade can be implemented manually if needed
 
         res.json(wallet);
     } catch (error) {
@@ -57,15 +59,16 @@ router.put('/:userId', async (req, res) => {
 });
 
 // GET /api/wallets/:userId/points-history - Get user's points history from wallet
+// Note: pointsHistory field has been removed from wallets table
 router.get('/:userId/points-history', async (req, res) => {
     const { userId } = req.params;
     try {
-        const wallet = await db.Wallet.findByPk(userId);
+        const wallet = await db.Wallet.findOne({ where: { userId } });
         if (!wallet) {
             return res.status(404).json({ message: 'Wallet not found' });
         }
-        const pointsHistory = wallet.pointsHistory || [];
-        res.json(pointsHistory);
+        // Return empty array as pointsHistory is no longer stored in wallets table
+        res.json([]);
     } catch (error) {
         console.error('Error fetching points history:', error);
         res.status(500).json({ message: 'Internal server error' });
@@ -73,32 +76,16 @@ router.get('/:userId/points-history', async (req, res) => {
 });
 
 // POST /api/wallets/:userId/points-history - Add an entry to points history in wallet
+// Note: pointsHistory field has been removed from wallets table
 router.post('/:userId/points-history', async (req, res) => {
     const { userId } = req.params;
-    const { date, pointsChange, type, source, description } = req.body;
-
-    if (!description || pointsChange === undefined) {
-        return res.status(400).json({ message: 'Missing description or pointsChange for history entry' });
-    }
-
     try {
-        const wallet = await db.Wallet.findByPk(userId);
+        const wallet = await db.Wallet.findOne({ where: { userId } });
         if (!wallet) {
             return res.status(404).json({ message: 'Wallet not found' });
         }
-
-        const pointsHistory = wallet.pointsHistory || [];
-        const newEntry = {
-            date: date || new Date().toISOString().split('T')[0],
-            pointsChange,
-            type: type || (pointsChange > 0 ? 'earned' : 'spent'),
-            source: source || 'manual',
-            description
-        };
-        pointsHistory.push(newEntry);
-
-        await wallet.update({ pointsHistory });
-        res.status(201).json(newEntry);
+        // Points history is no longer stored in wallets table
+        res.json({ message: 'Points history entry added (not stored)', pointsHistory: [] });
     } catch (error) {
         console.error('Error creating points history entry:', error);
         res.status(500).json({ message: 'Internal server error' });

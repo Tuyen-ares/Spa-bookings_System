@@ -10,7 +10,10 @@ class AppointmentService {
     async findBestTherapist(serviceId, userId, date, time) {
         // 1. Get service info
         const service = await db.Service.findByPk(serviceId, {
-            include: [{ model: db.ServiceCategory }]
+            include: [{ 
+                model: db.ServiceCategory,
+                attributes: ['id', 'name', 'description', 'displayOrder']
+            }]
         });
 
         if (!service) {
@@ -203,13 +206,11 @@ class AppointmentService {
 
         // Auto-assign therapist if requested
         let therapistId = data.therapistId;
-        let therapistName = data.therapist;
 
         if (autoAssign && !therapistId) {
             const bestTherapist = await this.findBestTherapist(serviceId, userId, date, time);
             if (bestTherapist) {
                 therapistId = bestTherapist.id;
-                therapistName = bestTherapist.name;
             }
         }
 
@@ -219,11 +220,9 @@ class AppointmentService {
             serviceId,
             serviceName: service.name,
             userId,
-            userName: user.name,
             date,
             time,
             therapistId,
-            therapist: therapistName,
             status: data.status || 'pending',
             paymentStatus: data.paymentStatus || 'Unpaid',
             notesForTherapist: data.notesForTherapist || '',
@@ -289,7 +288,6 @@ class AppointmentService {
 
         await appointment.update({
             status: 'completed',
-            isCompleted: true,
             staffNotesAfterSession: staffNotes
         });
 
@@ -370,20 +368,9 @@ class AppointmentService {
             const wallet = await db.Wallet.findOne({ where: { userId } });
             if (wallet) {
                 const currentPoints = wallet.points || 0;
-                const currentHistory = wallet.pointsHistory || [];
-
-                currentHistory.push({
-                    date: new Date().toISOString(),
-                    pointsChange: pointsEarned,
-                    type: 'earn',
-                    source: 'appointment_completion',
-                    description: `Hoàn thành dịch vụ: ${appointment.serviceName}`
-                });
 
                 await wallet.update({
-                    points: currentPoints + pointsEarned,
-                    totalEarned: (wallet.totalEarned || 0) + pointsEarned,
-                    pointsHistory: currentHistory
+                    points: currentPoints + pointsEarned
                 });
             }
         } catch (error) {

@@ -16,10 +16,6 @@ module.exports = {
         type: Sequelize.TEXT,
         allowNull: false,
       },
-      longDescription: {
-        type: Sequelize.TEXT,
-        allowNull: true,
-      },
       price: {
         type: Sequelize.DECIMAL(10, 2),
         allowNull: false,
@@ -35,11 +31,6 @@ module.exports = {
         allowNull: false,
         comment: 'Thời gian dịch vụ (phút)',
       },
-      category: {
-        type: Sequelize.STRING,
-        allowNull: true,
-        comment: 'Tên danh mục (để hiển thị)',
-      },
       categoryId: {
         type: Sequelize.INTEGER,
         allowNull: true,
@@ -50,7 +41,7 @@ module.exports = {
         onDelete: 'SET NULL',
       },
       imageUrl: {
-        type: Sequelize.STRING(500),
+        type: Sequelize.TEXT('long'),
         allowNull: true,
       },
       rating: {
@@ -67,23 +58,6 @@ module.exports = {
         type: Sequelize.BOOLEAN,
         allowNull: false,
         defaultValue: true,
-      },
-      popularity: {
-        type: Sequelize.INTEGER,
-        allowNull: false,
-        defaultValue: 0,
-      },
-      benefits: {
-        type: Sequelize.JSON,
-        allowNull: true,
-      },
-      suitableFor: {
-        type: Sequelize.JSON,
-        allowNull: true,
-      },
-      process: {
-        type: Sequelize.JSON,
-        allowNull: true,
       },
     });
   },

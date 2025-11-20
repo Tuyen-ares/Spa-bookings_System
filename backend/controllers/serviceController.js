@@ -5,6 +5,23 @@ class ServiceController {
     async getAllServices(req, res) {
         try {
             const services = await serviceService.getAllServices();
+            console.log('Backend - getAllServices: Total services found:', services.length);
+            
+            // Debug: Log services info
+            if (services.length > 0) {
+                services.forEach((service, index) => {
+                    console.log(`Service ${index + 1}:`, {
+                        id: service.id,
+                        name: service.name,
+                        isActive: service.isActive,
+                        categoryId: service.categoryId,
+                        hasImageUrl: !!service.imageUrl
+                    });
+                });
+            } else {
+                console.warn('Backend - No services found in database!');
+            }
+            
             res.json(services);
         } catch (error) {
             console.error('Error fetching services:', error);
