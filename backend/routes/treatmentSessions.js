@@ -124,6 +124,8 @@ router.put('/:id', async (req, res) => {
         });
         
         const oldStaffId = session.staffId;
+        const oldAppointmentId = session.appointmentId;
+        const isChangingStaff = oldStaffId && updates.staffId && oldStaffId !== updates.staffId;
         
         // Nếu phân công staff và session có ngày/giờ, tạo/cập nhật appointment và staff shift
         // Cần xử lý trước khi update session để có thể kiểm tra appointmentId cũ
@@ -194,10 +196,6 @@ router.put('/:id', async (req, res) => {
                     console.log(`✅ Created appointment ${appointment.id} for treatment session ${session.id}`);
                 }
 
-                // Tạo/update staff shift
-                const appointmentDate = session.sessionDate;
-                const appointmentTime = session.sessionTime;
-                
                 // Helper functions from appointments.js
                 const getShiftTypeFromTime = (time) => {
                     const [hours] = time.split(':').map(Number);
@@ -229,7 +227,52 @@ router.put('/:id', async (req, res) => {
                     };
                 };
 
-                // Check if staff already has a shift for this date
+                // Nếu đang thay đổi nhân viên, xử lý shift của nhân viên cũ
+                if (isChangingStaff && oldStaffId && session.sessionDate) {
+                    try {
+                        // Tìm shift của nhân viên cũ trong ngày đó
+                        const oldStaffShift = await db.StaffShift.findOne({
+                            where: {
+                                staffId: oldStaffId,
+                                date: session.sessionDate,
+                                status: { [Op.in]: ['approved', 'pending'] }
+                            }
+                        });
+
+                        if (oldStaffShift) {
+                            // Kiểm tra xem shift này có appointment nào khác không (trừ appointment hiện tại)
+                            const appointmentIdToExclude = oldAppointmentId || (appointment ? appointment.id : null);
+                            const whereClause = {
+                                therapistId: oldStaffId,
+                                date: session.sessionDate
+                            };
+                            if (appointmentIdToExclude) {
+                                whereClause.id = { [Op.ne]: appointmentIdToExclude };
+                            }
+                            
+                            const otherAppointments = await db.Appointment.count({
+                                where: whereClause
+                            });
+
+                            // Nếu không còn appointment nào khác, xóa shift
+                            if (otherAppointments === 0) {
+                                await oldStaffShift.destroy();
+                                console.log(`✅ Deleted shift for old staff ${oldStaffId} on ${session.sessionDate} (no other appointments)`);
+                            } else {
+                                console.log(`ℹ️ Keeping shift for old staff ${oldStaffId} (has ${otherAppointments} other appointments)`);
+                            }
+                        }
+                    } catch (oldShiftError) {
+                        console.error('Error handling old staff shift:', oldShiftError);
+                        // Don't fail the update if old shift handling fails
+                    }
+                }
+
+                // Tạo/update staff shift cho nhân viên mới
+                const appointmentDate = session.sessionDate;
+                const appointmentTime = session.sessionTime;
+                
+                // Check if new staff already has a shift for this date
                 const existingShift = await db.StaffShift.findOne({
                     where: {
                         staffId: updates.staffId,
@@ -239,7 +282,7 @@ router.put('/:id', async (req, res) => {
                 });
 
                 if (!existingShift) {
-                    // Auto-create shift for the staff
+                    // Auto-create shift for the new staff
                     const shiftType = getShiftTypeFromTime(appointmentTime);
                     const shiftHours = getShiftHoursFromTime(appointmentTime);
                     
@@ -250,9 +293,9 @@ router.put('/:id', async (req, res) => {
                         shiftType: shiftType,
                         status: 'approved',
                         shiftHours: shiftHours,
-                        notes: `Tự động tạo khi phân công buổi ${session.sessionNumber} liệu trình ${course.serviceName || service.name}`
+                        notes: `Tự động tạo khi ${isChangingStaff ? 'thay đổi' : 'phân công'} buổi ${session.sessionNumber} liệu trình ${course.serviceName || service.name}`
                     });
-                    console.log(`✅ Auto-created shift for staff ${updates.staffId} on ${appointmentDate} (${shiftType})`);
+                    console.log(`✅ Auto-created shift for new staff ${updates.staffId} on ${appointmentDate} (${shiftType})`);
                 } else {
                     // Staff already has a shift, check if we need to update it
                     const existingShiftType = existingShift.shiftType;
@@ -281,21 +324,28 @@ router.put('/:id', async (req, res) => {
                                     `${existingShift.notes}; Cập nhật để bao gồm buổi ${session.sessionNumber} liệu trình` :
                                     `Cập nhật để bao gồm buổi ${session.sessionNumber} liệu trình`
                             });
-                            console.log(`✅ Updated shift for staff ${updates.staffId} to include appointment time`);
+                            console.log(`✅ Updated shift for new staff ${updates.staffId} to include appointment time`);
                         }
                     }
                 }
 
                 // Tạo thông báo cho khách hàng
+                const notificationTitle = isChangingStaff 
+                    ? 'Đã thay đổi nhân viên cho buổi liệu trình'
+                    : 'Đã phân công nhân viên cho buổi liệu trình';
+                const notificationMessage = isChangingStaff
+                    ? `Buổi ${session.sessionNumber} của liệu trình ${course.serviceName || service.name} đã được thay đổi nhân viên vào ${session.sessionDate} lúc ${session.sessionTime}`
+                    : `Buổi ${session.sessionNumber} của liệu trình ${course.serviceName || service.name} đã được phân công nhân viên vào ${session.sessionDate} lúc ${session.sessionTime}`;
+                
                 await createNotification(
                     course.clientId,
                     'appointment_confirmed',
-                    'Đã phân công nhân viên cho buổi liệu trình',
-                    `Buổi ${session.sessionNumber} của liệu trình ${course.serviceName || service.name} đã được phân công nhân viên vào ${session.sessionDate} lúc ${session.sessionTime}`,
+                    notificationTitle,
+                    notificationMessage,
                     appointment.id
                 );
 
-                console.log(`✅ Created notification for client ${course.clientId}`);
+                console.log(`✅ Created notification for client ${course.clientId} (${isChangingStaff ? 'staff changed' : 'staff assigned'})`);
             } catch (appointmentError) {
                 console.error('Error creating appointment/staff shift for treatment session:', appointmentError);
                 // Don't fail the session update if appointment creation fails
@@ -306,6 +356,43 @@ router.put('/:id', async (req, res) => {
         await session.update({
             ...updates,
         });
+        
+        // Đảm bảo: Nếu session có staffId và sessionDate/sessionTime nhưng chưa có appointmentId, tạo appointment
+        const updatedSession = await db.TreatmentSession.findByPk(id);
+        
+        if (updatedSession && updatedSession.staffId && updatedSession.sessionDate && updatedSession.sessionTime && !updatedSession.appointmentId) {
+            try {
+                // Load course with associations
+                const course = await db.TreatmentCourse.findByPk(updatedSession.treatmentCourseId, {
+                    include: [
+                        { model: db.Service, as: 'Service' },
+                        { model: db.User, as: 'Client' }
+                    ]
+                });
+                
+                if (course && course.Client && course.Service) {
+                    const appointment = await db.Appointment.create({
+                        id: `appt-${uuidv4()}`,
+                        serviceId: course.serviceId,
+                        serviceName: course.Service.name || course.serviceName,
+                        userId: course.clientId,
+                        date: updatedSession.sessionDate,
+                        time: updatedSession.sessionTime,
+                        therapistId: updatedSession.staffId,
+                        status: 'upcoming',
+                        paymentStatus: 'Unpaid',
+                        notesForTherapist: `Buổi ${updatedSession.sessionNumber} của liệu trình ${course.Service.name || course.serviceName}`,
+                        bookingGroupId: `group-${course.id}`,
+                    });
+                    
+                    await updatedSession.update({ appointmentId: appointment.id });
+                    console.log(`✅ Auto-created appointment ${appointment.id} for session ${updatedSession.id} (buổi ${updatedSession.sessionNumber}) - session has staff but no appointment`);
+                }
+            } catch (autoCreateError) {
+                console.error('Error auto-creating appointment for session with staff:', autoCreateError);
+                // Don't fail the update if auto-creation fails
+            }
+        }
 
         // Nếu hoàn thành session, tạo thông báo nhắc buổi tiếp theo
         if (updates.status === 'completed') {

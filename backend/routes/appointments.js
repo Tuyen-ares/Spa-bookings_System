@@ -179,12 +179,18 @@ router.get('/', async (req, res) => {
                 {
                     model: db.Service,
                     attributes: ['id', 'name', 'description']
+                },
+                {
+                    model: db.TreatmentSession,
+                    as: 'TreatmentSession',
+                    attributes: ['id', 'sessionNumber', 'adminNotes', 'customerStatusNotes', 'status'],
+                    required: false
                 }
             ],
             order: [['date', 'DESC'], ['time', 'ASC']]
         });
 
-        // Map appointments to include client info
+        // Map appointments to include client info and treatment session
         const mappedAppointments = appointments.map(apt => {
             const appointmentData = apt.toJSON();
             // Ensure Client association is preserved
@@ -194,6 +200,16 @@ router.get('/', async (req, res) => {
                     name: appointmentData.Client.name,
                     email: appointmentData.Client.email,
                     phone: appointmentData.Client.phone
+                };
+            }
+            // Ensure TreatmentSession is preserved
+            if (appointmentData.TreatmentSession) {
+                appointmentData.TreatmentSession = {
+                    id: appointmentData.TreatmentSession.id,
+                    sessionNumber: appointmentData.TreatmentSession.sessionNumber,
+                    adminNotes: appointmentData.TreatmentSession.adminNotes,
+                    customerStatusNotes: appointmentData.TreatmentSession.customerStatusNotes,
+                    status: appointmentData.TreatmentSession.status
                 };
             }
             return appointmentData;
@@ -216,11 +232,78 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/appointments/user/:userId
+// Returns appointments where user is either the client (userId) OR the therapist (therapistId)
 router.get('/user/:userId', async (req, res) => {
     const { userId } = req.params;
+    const { Op } = require('sequelize');
     try {
-        const userAppointments = await db.Appointment.findAll({ where: { userId }, include: ['Service', 'Therapist'] });
-        res.json(userAppointments);
+        // Get appointments where user is the client OR the therapist
+        const userAppointments = await db.Appointment.findAll({ 
+            where: { 
+                [Op.or]: [
+                    { userId: userId },
+                    { therapistId: userId }
+                ]
+            },
+            include: [
+                {
+                    model: db.User,
+                    as: 'Client',
+                    attributes: ['id', 'name', 'email', 'phone']
+                },
+                {
+                    model: db.User,
+                    as: 'Therapist',
+                    attributes: ['id', 'name', 'email', 'phone']
+                },
+                {
+                    model: db.Service,
+                    attributes: ['id', 'name', 'description', 'price', 'duration']
+                },
+                {
+                    model: db.TreatmentSession,
+                    as: 'TreatmentSession',
+                    attributes: ['id', 'sessionNumber', 'adminNotes', 'customerStatusNotes', 'status'],
+                    required: false
+                }
+            ],
+            order: [['date', 'DESC'], ['time', 'ASC']]
+        });
+        
+        // Map appointments to include client, therapist info, and treatment session
+        const mappedAppointments = userAppointments.map(apt => {
+            const appointmentData = apt.toJSON();
+            if (appointmentData.Client) {
+                appointmentData.Client = {
+                    id: appointmentData.Client.id,
+                    name: appointmentData.Client.name,
+                    email: appointmentData.Client.email,
+                    phone: appointmentData.Client.phone
+                };
+            }
+            if (appointmentData.Therapist) {
+                appointmentData.Therapist = {
+                    id: appointmentData.Therapist.id,
+                    name: appointmentData.Therapist.name,
+                    email: appointmentData.Therapist.email,
+                    phone: appointmentData.Therapist.phone
+                };
+            }
+            // Ensure TreatmentSession is preserved
+            if (appointmentData.TreatmentSession) {
+                appointmentData.TreatmentSession = {
+                    id: appointmentData.TreatmentSession.id,
+                    sessionNumber: appointmentData.TreatmentSession.sessionNumber,
+                    adminNotes: appointmentData.TreatmentSession.adminNotes,
+                    customerStatusNotes: appointmentData.TreatmentSession.customerStatusNotes,
+                    status: appointmentData.TreatmentSession.status
+                };
+            }
+            return appointmentData;
+        });
+        
+        console.log(`✅ Fetched ${mappedAppointments.length} appointments for user ${userId} (as client or therapist)`);
+        res.json(mappedAppointments);
     } catch (error) {
         console.error('Error fetching user appointments:', error);
         res.status(500).json({ message: 'Internal server error' });
@@ -338,7 +421,7 @@ router.post('/', async (req, res) => {
                 frequencyType: frequencyType,
                 frequencyValue: frequencyValue,
                 therapistId: finalTherapistId,
-                status: 'active',
+                status: 'pending', // Always 'pending' - only becomes 'active' when admin accepts appointment
                 notes: newAppointmentData.treatmentCourseNotes || null,
                 createdAt: new Date(),
             });
@@ -482,6 +565,64 @@ router.put('/:id', async (req, res) => {
         const oldStatus = appointment.status;
         await appointment.update(updatedData);
         
+        // Sync treatment course status with appointment status
+        // When appointment is accepted (pending -> upcoming/scheduled), update course from pending -> active
+        // When appointment is cancelled/reverted (upcoming/scheduled -> cancelled/pending), update course from active -> pending
+        const isBeingAccepted = (oldStatus === 'pending' && (updatedData.status === 'upcoming' || updatedData.status === 'scheduled'));
+        const isBeingCancelled = ((oldStatus === 'upcoming' || oldStatus === 'scheduled') && updatedData.status === 'cancelled');
+        const isBackToPending = ((oldStatus === 'upcoming' || oldStatus === 'scheduled') && updatedData.status === 'pending');
+        
+        if (isBeingAccepted || isBeingCancelled || isBackToPending) {
+            try {
+                // Find treatment session linked to this appointment
+                const linkedSession = await db.TreatmentSession.findOne({
+                    where: { appointmentId: id }
+                });
+                
+                if (linkedSession) {
+                    const treatmentCourse = await db.TreatmentCourse.findByPk(linkedSession.treatmentCourseId);
+                    if (treatmentCourse) {
+                        if (isBeingAccepted) {
+                            // Appointment is being accepted, update course from pending -> active
+                            if (treatmentCourse.status === 'pending') {
+                                await treatmentCourse.update({ status: 'active' });
+                                console.log(`✅ Updated treatment course ${treatmentCourse.id} status from 'pending' to 'active' after appointment acceptance`);
+                            }
+                        } else if (isBeingCancelled || isBackToPending) {
+                            // Appointment is being cancelled or reverted, update course from active -> pending
+                            if (treatmentCourse.status === 'active') {
+                                await treatmentCourse.update({ status: 'pending' });
+                                console.log(`✅ Updated treatment course ${treatmentCourse.id} status from 'active' to 'pending' after appointment cancellation/pending`);
+                            }
+                        }
+                    }
+                } else {
+                    // If no session linked, try to find treatment course by serviceId and userId
+                    const treatmentCourse = await db.TreatmentCourse.findOne({
+                        where: {
+                            serviceId: appointment.serviceId,
+                            clientId: appointment.userId,
+                            status: isBeingAccepted ? 'pending' : 'active'
+                        },
+                        order: [['createdAt', 'DESC']]
+                    });
+                    
+                    if (treatmentCourse) {
+                        if (isBeingAccepted && treatmentCourse.status === 'pending') {
+                            await treatmentCourse.update({ status: 'active' });
+                            console.log(`✅ Updated treatment course ${treatmentCourse.id} status from 'pending' to 'active' after appointment acceptance (no linked session)`);
+                        } else if ((isBeingCancelled || isBackToPending) && treatmentCourse.status === 'active') {
+                            await treatmentCourse.update({ status: 'pending' });
+                            console.log(`✅ Updated treatment course ${treatmentCourse.id} status from 'active' to 'pending' after appointment cancellation/pending (no linked session)`);
+                        }
+                    }
+                }
+            } catch (syncError) {
+                console.error('Error syncing treatment course status:', syncError);
+                // Don't fail the appointment update if sync fails
+            }
+        }
+        
         // Auto-create staff shift if therapist is assigned and status is 'upcoming'
         if (updatedData.therapistId && updatedData.status === 'upcoming') {
             const therapistId = updatedData.therapistId;
@@ -574,14 +715,66 @@ router.put('/:id', async (req, res) => {
                     });
                     console.log(`✅ Updated treatment session ${linkedSession.id} with staffId: ${updatedData.therapistId}`);
                     
-                    // Also update the treatment course's therapistId if this is the first session
-                    if (linkedSession.sessionNumber === 1) {
-                        const treatmentCourse = await db.TreatmentCourse.findByPk(linkedSession.treatmentCourseId);
-                        if (treatmentCourse && !treatmentCourse.therapistId) {
-                            await treatmentCourse.update({
-                                therapistId: updatedData.therapistId
+                    // Get treatment course
+                    const treatmentCourse = await db.TreatmentCourse.findByPk(linkedSession.treatmentCourseId);
+                    if (treatmentCourse) {
+                        // Update treatment course therapistId
+                        await treatmentCourse.update({
+                            therapistId: updatedData.therapistId
+                        });
+                        console.log(`✅ Updated treatment course ${treatmentCourse.id} with therapistId: ${updatedData.therapistId}`);
+                        
+                        // Khi admin xác nhận lịch (status thay đổi từ pending -> upcoming/scheduled) và chọn staff,
+                        // tự động gán staff đó cho TẤT CẢ các buổi trong liệu trình và tạo appointments
+                        if (isBeingAccepted && (updatedData.status === 'upcoming' || updatedData.status === 'scheduled')) {
+                            const allSessions = await db.TreatmentSession.findAll({
+                                where: { treatmentCourseId: treatmentCourse.id },
+                                order: [['sessionNumber', 'ASC']]
                             });
-                            console.log(`✅ Updated treatment course ${treatmentCourse.id} with therapistId: ${updatedData.therapistId}`);
+                            
+                            const service = await db.Service.findByPk(treatmentCourse.serviceId);
+                            const serviceName = service ? service.name : treatmentCourse.serviceName;
+                            
+                            console.log(`🔄 Auto-assigning staff ${updatedData.therapistId} to all ${allSessions.length} sessions in treatment course ${treatmentCourse.id}`);
+                            
+                            for (const session of allSessions) {
+                                // Gán staff cho TẤT CẢ các buổi trong liệu trình
+                                await session.update({ staffId: updatedData.therapistId });
+                                console.log(`✅ Assigned staff ${updatedData.therapistId} to session ${session.id} (buổi ${session.sessionNumber})`);
+                                
+                                if (!session.appointmentId) {
+                                    // Tạo appointment mới cho buổi này nếu chưa có
+                                    const newAppointment = await db.Appointment.create({
+                                        id: `apt-${uuidv4()}`,
+                                        serviceId: treatmentCourse.serviceId,
+                                        serviceName: serviceName,
+                                        userId: treatmentCourse.clientId,
+                                        date: session.sessionDate,
+                                        time: session.sessionTime,
+                                        therapistId: updatedData.therapistId,
+                                        status: 'upcoming',
+                                        paymentStatus: 'Unpaid',
+                                        notesForTherapist: `Buổi ${session.sessionNumber} của liệu trình ${serviceName}`,
+                                        bookingGroupId: `group-${treatmentCourse.id}`,
+                                    });
+                                    await session.update({ appointmentId: newAppointment.id });
+                                    console.log(`✅ Created appointment ${newAppointment.id} for session ${session.id} (buổi ${session.sessionNumber})`);
+                                } else {
+                                    // Nếu appointment đã tồn tại, cập nhật therapistId và đảm bảo status là 'upcoming'
+                                    const existingAppointment = await db.Appointment.findByPk(session.appointmentId);
+                                    if (existingAppointment) {
+                                        await existingAppointment.update({
+                                            date: session.sessionDate,
+                                            time: session.sessionTime,
+                                            therapistId: updatedData.therapistId,
+                                            status: 'upcoming'
+                                        });
+                                        console.log(`✅ Updated existing appointment ${existingAppointment.id} for session ${session.id} (buổi ${session.sessionNumber})`);
+                                    }
+                                }
+                            }
+                            
+                            console.log(`✅ Completed: Assigned staff ${updatedData.therapistId} to all ${allSessions.length} sessions in treatment course ${treatmentCourse.id}`);
                         }
                     }
                 } else {
@@ -590,13 +783,17 @@ router.put('/:id', async (req, res) => {
                     const appointment = await db.Appointment.findByPk(id);
                     if (appointment) {
                         // Find treatment course by serviceId and userId
+                        // Look for both 'pending' and 'active' courses (prioritize 'pending' first)
                         const treatmentCourse = await db.TreatmentCourse.findOne({
                             where: {
                                 serviceId: appointment.serviceId,
                                 clientId: appointment.userId,
-                                status: 'active'
+                                status: { [Op.in]: ['pending', 'active'] }
                             },
-                            order: [['createdAt', 'DESC']] // Get the most recent one
+                            order: [
+                                [db.sequelize.literal("CASE WHEN status = 'pending' THEN 0 ELSE 1 END"), 'ASC'],
+                                ['createdAt', 'DESC']
+                            ] // Get 'pending' first, then most recent
                         });
                         
                         if (treatmentCourse) {
@@ -605,17 +802,64 @@ router.put('/:id', async (req, res) => {
                                 therapistId: updatedData.therapistId
                             });
                             
-                            // Update all sessions in the course that don't have staffId yet
-                            await db.TreatmentSession.update(
-                                { staffId: updatedData.therapistId },
-                                {
-                                    where: {
-                                        treatmentCourseId: treatmentCourse.id,
-                                        staffId: null
+                            // If appointment is being accepted, auto-assign staff to all sessions and create appointments
+                            if (isBeingAccepted && (updatedData.status === 'upcoming' || updatedData.status === 'scheduled')) {
+                                const allSessions = await db.TreatmentSession.findAll({
+                                    where: { treatmentCourseId: treatmentCourse.id },
+                                    order: [['sessionNumber', 'ASC']]
+                                });
+                                
+                                const service = await db.Service.findByPk(treatmentCourse.serviceId);
+                                const serviceName = service ? service.name : treatmentCourse.serviceName;
+                                
+                                for (const session of allSessions) {
+                                    // Update staffId for all sessions
+                                    await session.update({ staffId: updatedData.therapistId });
+                                    
+                                    if (!session.appointmentId) {
+                                        // Create new appointment for this session
+                                        const newAppointment = await db.Appointment.create({
+                                            id: `apt-${uuidv4()}`,
+                                            serviceId: treatmentCourse.serviceId,
+                                            serviceName: serviceName,
+                                            userId: treatmentCourse.clientId,
+                                            date: session.sessionDate,
+                                            time: session.sessionTime,
+                                            therapistId: updatedData.therapistId,
+                                            status: 'upcoming',
+                                            paymentStatus: 'Unpaid',
+                                            notesForTherapist: `Buổi ${session.sessionNumber} của liệu trình ${serviceName}`,
+                                            bookingGroupId: `group-${treatmentCourse.id}`,
+                                        });
+                                        await session.update({ appointmentId: newAppointment.id });
+                                        console.log(`✅ Created appointment ${newAppointment.id} for session ${session.id} (buổi ${session.sessionNumber}) - no linked session case`);
+                                    } else {
+                                        // If appointment exists, update its date/time/therapist to match session
+                                        const existingAppointment = await db.Appointment.findByPk(session.appointmentId);
+                                        if (existingAppointment) {
+                                            await existingAppointment.update({
+                                                date: session.sessionDate,
+                                                time: session.sessionTime,
+                                                therapistId: updatedData.therapistId,
+                                                status: 'upcoming'
+                                            });
+                                            console.log(`✅ Updated existing appointment ${existingAppointment.id} for session ${session.id} - no linked session case`);
+                                        }
                                     }
                                 }
-                            );
-                            console.log(`✅ Updated treatment course ${treatmentCourse.id} and sessions with therapistId: ${updatedData.therapistId}`);
+                            } else {
+                                // Update all sessions in the course that don't have staffId yet
+                                await db.TreatmentSession.update(
+                                    { staffId: updatedData.therapistId },
+                                    {
+                                        where: {
+                                            treatmentCourseId: treatmentCourse.id,
+                                            staffId: null
+                                        }
+                                    }
+                                );
+                                console.log(`✅ Updated treatment course ${treatmentCourse.id} and sessions with therapistId: ${updatedData.therapistId}`);
+                            }
                         }
                     }
                 }

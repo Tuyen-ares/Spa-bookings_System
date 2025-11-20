@@ -65,10 +65,16 @@ module.exports = (sequelize) => {
       comment: 'ID nhân viên phụ trách',
     },
     status: {
-      type: DataTypes.ENUM('active', 'completed', 'expired', 'cancelled'),
+      type: DataTypes.ENUM('active', 'completed', 'expired', 'cancelled', 'pending'),
       allowNull: false,
       defaultValue: 'active',
       comment: 'Trạng thái liệu trình',
+    },
+    paymentStatus: {
+      type: DataTypes.ENUM('Paid', 'Unpaid'),
+      allowNull: false,
+      defaultValue: 'Unpaid',
+      comment: 'Trạng thái thanh toán (Đã thanh toán, Chưa thanh toán)',
     },
     notes: {
       type: DataTypes.TEXT,

@@ -45,11 +45,36 @@ router.get('/', async (req, res) => {
                     attributes: ['id', 'name', 'email', 'phone'],
                     required: false
                 },
+                {
+                    model: db.TreatmentSession,
+                    as: 'TreatmentSessions',
+                    attributes: ['id', 'sessionNumber', 'status', 'sessionDate', 'sessionTime', 'adminNotes', 'customerStatusNotes', 'staffId', 'appointmentId'],
+                    required: false,
+                    include: [
+                        {
+                            model: db.User,
+                            as: 'Staff',
+                            attributes: ['id', 'name', 'email', 'phone'],
+                            required: false
+                        }
+                    ],
+                    order: [['sessionNumber', 'ASC']],
+                },
             ],
             order: [['createdAt', 'DESC']],
         });
 
-        res.json(courses);
+        // Map courses to include sessions as 'sessions' (for frontend compatibility)
+        const mappedCourses = courses.map(course => {
+            const courseData = course.toJSON();
+            if (courseData.TreatmentSessions) {
+                courseData.sessions = courseData.TreatmentSessions;
+                delete courseData.TreatmentSessions;
+            }
+            return courseData;
+        });
+
+        res.json(mappedCourses);
     } catch (error) {
         console.error('Error fetching treatment courses:', error);
         res.status(500).json({ message: 'Internal server error' });
@@ -293,6 +318,27 @@ router.put('/:id/complete-session', async (req, res) => {
     } catch (error) {
         console.error('Error completing session:', error);
         res.status(500).json({ message: 'Error completing session', error: error.message });
+    }
+});
+
+// PUT /api/treatment-courses/:id/confirm-payment - Xác nhận thanh toán cho liệu trình
+router.put('/:id/confirm-payment', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const course = await db.TreatmentCourse.findByPk(id);
+        
+        if (!course) {
+            return res.status(404).json({ message: 'Treatment course not found' });
+        }
+
+        // Update payment status to Paid
+        await course.update({ paymentStatus: 'Paid' });
+        
+        console.log(`✅ Confirmed payment for treatment course ${id}`);
+        res.json({ course, message: 'Payment confirmed successfully' });
+    } catch (error) {
+        console.error('Error confirming payment:', error);
+        res.status(500).json({ message: 'Error confirming payment', error: error.message });
     }
 });
 

@@ -124,7 +124,7 @@ db.TreatmentCourse.belongsTo(db.User, { foreignKey: 'therapistId', as: 'Therapis
 // Treatment Session Associations
 db.TreatmentCourse.hasMany(db.TreatmentSession, { foreignKey: 'treatmentCourseId', onDelete: 'CASCADE' });
 db.TreatmentSession.belongsTo(db.TreatmentCourse, { foreignKey: 'treatmentCourseId' });
-db.Appointment.hasOne(db.TreatmentSession, { foreignKey: 'appointmentId', onDelete: 'SET NULL' });
+db.Appointment.hasOne(db.TreatmentSession, { foreignKey: 'appointmentId', as: 'TreatmentSession', onDelete: 'SET NULL' });
 db.TreatmentSession.belongsTo(db.Appointment, { foreignKey: 'appointmentId' });
 db.User.hasMany(db.TreatmentSession, { foreignKey: 'staffId', as: 'StaffTreatmentSessions', onDelete: 'SET NULL' });
 db.TreatmentSession.belongsTo(db.User, { foreignKey: 'staffId', as: 'Staff' });
