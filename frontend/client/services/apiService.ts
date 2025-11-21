@@ -139,12 +139,20 @@ export const deleteReview = (id: string) => remove(`${API_BASE_URL}/reviews/${id
 export const createPromotion = (data: Partial<Promotion>) => create<Promotion>(`${API_BASE_URL}/promotions`, data);
 export const updatePromotion = (id: string, data: Partial<Promotion>) => update<Promotion>(`${API_BASE_URL}/promotions/${id}`, data);
 export const deletePromotion = (id: string) => remove(`${API_BASE_URL}/promotions/${id}`);
-export const applyPromotion = async (code: string): Promise<{ success: boolean; message: string; promotion: Promotion }> => {
+export const applyPromotion = async (code: string, userId?: string, appointmentId?: string, serviceId?: string): Promise<{ success: boolean; message: string; promotion: Promotion }> => {
     const response = await fetch(`${API_BASE_URL}/promotions/apply/${code}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
+        body: JSON.stringify({ userId, appointmentId, serviceId })
     });
+    return handleResponse(response);
+};
+
+export const getApplicablePromotions = async (userId?: string, serviceId?: string): Promise<Promotion[]> => {
+    const params = new URLSearchParams();
+    if (userId) params.append('userId', userId);
+    if (serviceId) params.append('serviceId', serviceId);
+    const response = await fetch(`${API_BASE_URL}/promotions?${params.toString()}`);
     return handleResponse(response);
 };
 

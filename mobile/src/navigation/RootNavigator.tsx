@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, SafeAreaView } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -34,10 +35,12 @@ export const RootNavigator = () => {
       }
     };
 
+    // Initial check
     checkAuth();
 
-    // Listen for storage changes (login/logout)
-    const interval = setInterval(checkAuth, 1000);
+    // Listen for storage changes (login/logout) - check every 2 seconds instead of 1
+    // This reduces unnecessary re-renders
+    const interval = setInterval(checkAuth, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -57,9 +60,12 @@ export const RootNavigator = () => {
 
   if (isLoggedIn === null) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#8b5cf6" />
-      </View>
+      <SafeAreaView style={styles.loadingContainer}>
+        <StatusBar style="auto" />
+        <View style={styles.loadingContent}>
+          <ActivityIndicator size="large" color="#8b5cf6" />
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -67,7 +73,13 @@ export const RootNavigator = () => {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <StatusBar style="auto" />
+      <Stack.Navigator 
+        screenOptions={{ 
+          headerShown: false,
+          contentStyle: { backgroundColor: '#ffffff' }
+        }}
+      >
         {isLoggedIn ? (
           <Stack.Screen name="Main" component={MainNav} />
         ) : (
@@ -77,3 +89,15 @@ export const RootNavigator = () => {
     </NavigationContainer>
   );
 };
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  loadingContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});

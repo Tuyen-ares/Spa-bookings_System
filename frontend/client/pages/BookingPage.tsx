@@ -19,6 +19,34 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     const [searchParams] = useSearchParams();
     const serviceIdFromUrl = searchParams.get('serviceId');
 
+    // Format date from YYYY-MM-DD to dd-mm-yyyy
+    const formatDateDisplay = (dateString: string): string => {
+        if (!dateString) return '';
+        const [year, month, day] = dateString.split('-');
+        return `${day}-${month}-${year}`;
+    };
+
+    // Convert dd-mm-yyyy to YYYY-MM-DD
+    const parseDateInput = (dateString: string): string => {
+        if (!dateString) return '';
+        const parts = dateString.split('-');
+        if (parts.length === 3) {
+            const [day, month, year] = parts;
+            if (day && month && year && day.length === 2 && month.length === 2 && year.length === 4) {
+                // Validate date
+                const dateObj = new Date(`${year}-${month}-${day}`);
+                if (dateObj && !isNaN(dateObj.getTime())) {
+                    const checkDay = dateObj.getDate().toString().padStart(2, '0');
+                    const checkMonth = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+                    if (checkDay === day && checkMonth === month) {
+                        return `${year}-${month}-${day}`;
+                    }
+                }
+            }
+        }
+        return '';
+    };
+
     // State
     const [currentStep, setCurrentStep] = useState(1);
     const [services, setServices] = useState<Service[]>([]);
@@ -26,9 +54,12 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     const [selectedCategory, setSelectedCategory] = useState<number | ''>('');
     const [selectedServices, setSelectedServices] = useState<Array<{ service: Service; quantity: number }>>([]);
     const [selectedDate, setSelectedDate] = useState<string>('');
+    const [dateInputValue, setDateInputValue] = useState<string>('');
     const [selectedTime, setSelectedTime] = useState<string>('');
     const [promotions, setPromotions] = useState<Promotion[]>([]);
+    const [applicablePromotions, setApplicablePromotions] = useState<Promotion[]>([]);
     const [selectedPromotion, setSelectedPromotion] = useState<Promotion | null>(null);
+    const [isBirthday, setIsBirthday] = useState<boolean>(false);
     const [treatmentCourses, setTreatmentCourses] = useState<TreatmentCourse[]>([]);
     const [selectedTab, setSelectedTab] = useState<'upcoming' | 'history' | 'courses'>('upcoming');
     const [userAppointments, setUserAppointments] = useState<Appointment[]>([]);
@@ -105,6 +136,15 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         }
     }, [selectedDate, availableTimeSlots, selectedTime]);
 
+    // Sync dateInputValue when selectedDate changes (from date picker)
+    useEffect(() => {
+        if (selectedDate) {
+            setDateInputValue(formatDateDisplay(selectedDate));
+        } else {
+            setDateInputValue('');
+        }
+    }, [selectedDate]);
+
     // Load data
     useEffect(() => {
         loadInitialData();
@@ -135,6 +175,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 apiService.getServices().catch(err => { console.error('Error fetching services:', err); throw err; }),
                 apiService.getServiceCategories().catch(err => { console.error('Error fetching categories:', err); return []; }),
                 apiService.getUsers().catch(err => { console.error('Error fetching users:', err); return []; }),
+                // Load all promotions first, will filter later based on selected services
                 apiService.getPromotions().catch(err => { console.error('Error fetching promotions:', err); return []; }),
                 apiService.getTreatmentCourses().catch(err => { console.error('Error fetching courses:', err); return []; }),
                 apiService.getReviews().catch(err => { console.error('Error fetching reviews:', err); return []; }),
@@ -157,6 +198,15 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
             if (currentUser) {
                 setUserAppointments(appointmentsData.filter(a => a.userId === currentUser.id));
+                
+                // Check if today is user's birthday
+                if (currentUser.birthday) {
+                    const today = new Date();
+                    const birthday = new Date(currentUser.birthday);
+                    const isTodayBirthday = birthday.getMonth() === today.getMonth() && 
+                                           birthday.getDate() === today.getDate();
+                    setIsBirthday(isTodayBirthday);
+                }
             }
 
             // Auto-select service from URL if provided
@@ -216,6 +266,28 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         return filtered;
     }, [services, selectedCategory]);
 
+    // Load applicable promotions when services are selected
+    useEffect(() => {
+        const loadApplicablePromotions = async () => {
+            if (!currentUser || selectedServices.length === 0) {
+                setApplicablePromotions([]);
+                return;
+            }
+            
+            try {
+                // Get promotions for first selected service (or all if multiple)
+                const firstService = selectedServices[0].service;
+                const applicable = await apiService.getApplicablePromotions(currentUser.id, firstService.id);
+                setApplicablePromotions(applicable);
+            } catch (error) {
+                console.error('Error loading applicable promotions:', error);
+                setApplicablePromotions([]);
+            }
+        };
+        
+        loadApplicablePromotions();
+    }, [currentUser, selectedServices]);
+
     // Step 2: Select Time
     const isTimeSlotBooked = (time: string) => {
         if (!selectedDate) return false;
@@ -256,26 +328,13 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         try {
             const bookingGroupId = uuidv4();
             
-            // Apply promotion code if selected (increment usageCount)
+            // Validate promotion is still applicable
             if (selectedPromotion) {
-                try {
-                    const result = await apiService.applyPromotion(selectedPromotion.code);
-                    console.log('Promotion applied successfully:', result);
-                    // Update promotion in local state with new usageCount
-                    if (result.promotion) {
-                        setPromotions(prev => prev.map(p => 
-                            p.id === result.promotion.id ? result.promotion : p
-                        ));
-                    }
-                } catch (error: any) {
-                    console.error('Failed to apply promotion:', error);
-                    const errorMsg = error.message || 'Lỗi khi áp dụng mã khuyến mãi';
-                    console.error('Error message:', errorMsg);
-                    
-                    // Show error to user and stop booking process if promotion fails
-                    alert(`Không thể áp dụng mã khuyến mãi: ${errorMsg}`);
+                const isStillApplicable = applicablePromotions.some(p => p.id === selectedPromotion.id);
+                if (!isStillApplicable) {
+                    alert('Mã khuyến mãi này không còn khả dụng. Vui lòng chọn mã khác.');
                     setIsPaymentModalOpen(false);
-                    return; // Stop the booking process
+                    return;
                 }
             }
             
@@ -292,11 +351,27 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 paymentStatus: 'Unpaid' as const,
                 notes: '',
                 bookingGroupId: bookingGroupId,
+                promotionId: selectedPromotion?.id || null, // Include promotion ID if selected
                 quantity: quantity, // Send quantity to backend for treatment course creation
                 durationWeeks: quantity + 1, // Default duration (admin can adjust later)
                 frequencyType: 'sessions_per_week' as const, // Default frequency type
                 frequencyValue: 1 // Default: 1 session per week
             }));
+
+            // Record promotion usage after creating appointments (before payment)
+            if (selectedPromotion && appointmentsToCreate.length > 0) {
+                try {
+                    await apiService.applyPromotion(
+                        selectedPromotion.code,
+                        currentUser!.id,
+                        appointmentsToCreate[0].id,
+                        appointmentsToCreate[0].serviceId
+                    );
+                } catch (error: any) {
+                    console.error('Failed to record promotion usage:', error);
+                    // Don't block booking, just log error
+                }
+            }
 
             // Create all appointments (one per service)
             const createdAppointments = await Promise.all(
@@ -523,13 +598,63 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         <div className="max-w-2xl mx-auto">
             <div className="mb-6">
                 <label className="block text-gray-700 font-semibold mb-2">Chọn Ngày</label>
-                <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                />
+                <div className="relative">
+                    <input
+                        type="text"
+                        value={dateInputValue}
+                        onChange={(e) => {
+                            let value = e.target.value.replace(/\D/g, ''); // Only digits
+                            // Auto-format: dd-mm-yyyy
+                            let formatted = '';
+                            if (value.length > 0) formatted = value.slice(0, 2);
+                            if (value.length > 2) formatted += '-' + value.slice(2, 4);
+                            if (value.length > 4) formatted += '-' + value.slice(4, 8);
+                            
+                            setDateInputValue(formatted);
+                            
+                            // Parse to YYYY-MM-DD when complete (8 digits)
+                            if (value.length === 8) {
+                                const parsed = parseDateInput(formatted);
+                                if (parsed) {
+                                    const minDate = new Date().toISOString().split('T')[0];
+                                    if (parsed >= minDate) {
+                                        setSelectedDate(parsed);
+                                    } else {
+                                        setSelectedDate('');
+                                    }
+                                } else {
+                                    setSelectedDate('');
+                                }
+                            } else {
+                                setSelectedDate('');
+                            }
+                        }}
+                        placeholder="dd-mm-yyyy (ví dụ: 28-11-2025)"
+                        maxLength={10}
+                        className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    />
+                    <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => {
+                            setSelectedDate(e.target.value);
+                            if (e.target.value) {
+                                setDateInputValue(formatDateDisplay(e.target.value));
+                            } else {
+                                setDateInputValue('');
+                            }
+                        }}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="absolute right-0 top-0 h-full w-12 opacity-0 cursor-pointer"
+                        title="Chọn từ lịch"
+                    />
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                    </div>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">Nhập ngày theo định dạng: dd-mm-yyyy hoặc click vào icon lịch để chọn</p>
             </div>
 
             <div className="mb-6">
@@ -618,10 +743,30 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                         <p><strong>Dịch vụ:</strong> {selectedServices.map(({ service, quantity }) => 
                             `${service.name}${quantity > 1 ? ` x${quantity}` : ''}`
                         ).join(', ')}</p>
-                        <p><strong>Ngày:</strong> {selectedDate}</p>
+                        <p><strong>Ngày:</strong> {formatDateDisplay(selectedDate)}</p>
                         <p><strong>Giờ:</strong> {selectedTime}</p>
                     </div>
                 </div>
+
+                {/* Birthday Notification */}
+                {isBirthday && (
+                    <div className="mb-6 p-4 bg-gradient-to-r from-pink-50 to-purple-50 border-2 border-pink-300 rounded-lg">
+                        <div className="flex items-center gap-3">
+                            <div className="text-4xl">🎂</div>
+                            <div className="flex-1">
+                                <h4 className="font-bold text-lg text-pink-700 mb-1">Chúc mừng sinh nhật!</h4>
+                                <p className="text-sm text-gray-700 mb-2">
+                                    Hôm nay là sinh nhật của bạn! Bạn có voucher ưu đãi đặc biệt dành cho sinh nhật.
+                                </p>
+                                {applicablePromotions.filter(p => p.targetAudience === 'Birthday').length > 0 && (
+                                    <p className="text-xs text-gray-600">
+                                        Voucher sinh nhật sẽ tự động hiển thị khi bạn chọn dịch vụ.
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div className="mb-6">
                     <label className="block text-gray-700 font-semibold mb-2">Mã giảm giá (nếu có)</label>
@@ -639,8 +784,20 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                     alert('Vui lòng nhập mã khuyến mãi');
                                     return;
                                 }
-                                const promo = promotions.find(p => p.code === promoCode.toUpperCase());
+                                // Find promotion by code (case-insensitive) from applicable promotions first
+                                const promo = applicablePromotions.find(p => 
+                                    p.code && promoCode && 
+                                    p.code.toUpperCase().trim() === promoCode.toUpperCase().trim()
+                                ) || promotions.find(p => 
+                                    p.code && promoCode && 
+                                    p.code.toUpperCase().trim() === promoCode.toUpperCase().trim()
+                                );
                                 if (promo) {
+                                    // Check if promotion is active
+                                    if (promo.isActive === false) {
+                                        alert('Mã khuyến mãi này không còn hoạt động');
+                                        return;
+                                    }
                                     // Check if promotion has stock (số lượng còn lại)
                                     if (promo.stock !== null && promo.stock <= 0) {
                                         alert('Mã khuyến mãi đã hết lượt sử dụng');
@@ -656,7 +813,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                         return;
                                     }
                                     setSelectedPromotion(promo);
-                                    alert('Chọn mã thành công! Mã sẽ được áp dụng khi đặt lịch.');
+                                    setPromoCode(''); // Clear input after successful apply
                                 } else {
                                     alert('Mã giảm giá không hợp lệ');
                                 }
@@ -667,41 +824,23 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                         </button>
                     </div>
                     
-                    <p className="text-sm text-gray-500 mb-3">Ấn danh sách ưu đãi</p>
-                    <div className="border rounded-lg p-4 max-h-60 overflow-y-auto">
-                        <div className="space-y-2">
-                            {promotions.length === 0 ? (
-                                <p className="text-center text-gray-400 py-4">Không có mã giảm giá khả dụng</p>
-                            ) : (
-                                promotions.map(promo => {
-                                    const isSelected = selectedPromotion?.id === promo.id;
-                                    return (
-                                        <div
-                                            key={promo.id}
-                                            className={`border rounded-lg p-3 flex justify-between items-center ${
-                                                isSelected ? 'border-amber-600 bg-amber-50' : 'border-gray-200'
-                                            }`}
-                                        >
-                                            <div className="flex-1 pr-4">
-                                                <p className="font-semibold text-sm">{promo.title}</p>
-                                                <p className="text-xs text-gray-600 mt-1">{promo.description}</p>
-                                            </div>
-                                            <button
-                                                onClick={() => setSelectedPromotion(isSelected ? null : promo)}
-                                                className={`px-4 py-1 rounded text-sm font-semibold whitespace-nowrap ${
-                                                    isSelected 
-                                                        ? 'bg-amber-600 text-white'
-                                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                                }`}
-                                            >
-                                                Chọn
-                                            </button>
-                                        </div>
-                                    );
-                                })
-                            )}
+                    {selectedPromotion && (
+                        <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                            <p className="text-sm text-green-800">
+                                <span className="font-semibold">Mã đã áp dụng: </span>
+                                {selectedPromotion.title} ({selectedPromotion.code})
+                            </p>
+                            <button
+                                onClick={() => {
+                                    setSelectedPromotion(null);
+                                    setPromoCode('');
+                                }}
+                                className="mt-2 text-xs text-red-600 hover:text-red-800 underline"
+                            >
+                                Hủy áp dụng
+                            </button>
                         </div>
-                    </div>
+                    )}
                 </div>
 
                 <div className="bg-white border border-gray-300 rounded-lg p-4 mb-6">

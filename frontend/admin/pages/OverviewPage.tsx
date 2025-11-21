@@ -449,7 +449,8 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
 
     const bookingHeatmapData: { slots: string[]; data: Record<string, number> } = useMemo(() => {
         const safeAppointments = Array.isArray(localAppointments) && localAppointments.length > 0 ? localAppointments : (Array.isArray(allAppointments) ? allAppointments : []);
-        const timeSlots = ['09:00', '11:00', '13:00', '15:00', '17:00', '19:00'];
+        // Updated to 2 shifts: Morning (9-16h) and Afternoon (16-22h)
+        const timeSlots = ['09:00', '11:00', '13:00', '15:00', '16:00', '18:00', '20:00', '21:00'];
         const data: Record<string, number> = {};
 
         safeAppointments.forEach(app => {

@@ -254,7 +254,8 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
                         />
                         <select value={promoFilterAudience} onChange={e => setPromoFilterAudience(e.target.value as PromotionTargetAudience | 'All')} className="p-3 border border-gray-300 rounded-lg bg-white">
                             <option value="All">Tất cả đối tượng</option>
-                            {PROMOTION_TARGET_AUDIENCES.map(audience => <option key={audience} value={audience}>{getAudienceDisplay(audience)}</option>)}
+                            <option value="New Clients">Khách hàng mới</option>
+                            <option value="Birthday">Khách hàng sinh nhật</option>
                         </select>
                         <select value={promoFilterCategory} onChange={e => setPromoFilterCategory(e.target.value)} className="p-3 border border-gray-300 rounded-lg bg-white">
                             {allServiceCategories.map(category => <option key={category} value={category}>{category === 'All' ? 'Tất cả danh mục' : category}</option>)}

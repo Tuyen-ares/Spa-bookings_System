@@ -208,6 +208,8 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
 
     const featuredPromotions = useMemo(() => {
         return allPromotions.filter(promo => {
+            // Only show public promotions on homepage
+            if (promo.isPublic === false) return false;
             const expiry = promo.expiryDate ? new Date(promo.expiryDate) : null;
             const now = new Date();
             const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);

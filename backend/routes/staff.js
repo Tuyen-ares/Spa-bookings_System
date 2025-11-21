@@ -75,7 +75,35 @@ router.get('/shifts/:staffId', async (req, res) => {
 router.get('/shifts', async (req, res) => {
     try {
         const staffShifts = await db.StaffShift.findAll();
-        res.json(staffShifts);
+        
+        // Fix shifts that are missing shiftHours by adding default hours based on shiftType
+        const defaultShiftHours = {
+            morning: { start: '09:00', end: '16:00' },
+            afternoon: { start: '16:00', end: '22:00' },
+        };
+        
+        const fixedShifts = await Promise.all(staffShifts.map(async (shift) => {
+            // If shift is missing shiftHours and has a standard shiftType, add default hours
+            if (!shift.shiftHours && shift.shiftType && shift.shiftType !== 'leave' && shift.shiftType !== 'custom' && defaultShiftHours[shift.shiftType]) {
+                try {
+                    await shift.update({
+                        shiftHours: defaultShiftHours[shift.shiftType]
+                    });
+                    console.log(`✅ Fixed shift ${shift.id}: Added default shiftHours for ${shift.shiftType}`);
+                    // Return updated shift data
+                    return {
+                        ...shift.toJSON(),
+                        shiftHours: defaultShiftHours[shift.shiftType]
+                    };
+                } catch (updateError) {
+                    console.error(`Error fixing shift ${shift.id}:`, updateError);
+                    return shift.toJSON();
+                }
+            }
+            return shift.toJSON();
+        }));
+        
+        res.json(fixedShifts);
     } catch (error) {
         console.error('Error fetching all staff shifts:', error);
         res.status(500).json({ message: 'Internal server error' });
@@ -83,16 +111,20 @@ router.get('/shifts', async (req, res) => {
 });
 
 // POST /api/staff/shifts - Add a new shift/leave request
+// Note: Staff requests always start as 'pending', only admin can approve via PUT
 router.post('/shifts', async (req, res) => {
     const newShiftData = req.body;
     if (!newShiftData.staffId || !newShiftData.date || !newShiftData.shiftType) {
         return res.status(400).json({ message: 'Missing required shift data' });
     }
     try {
+        // Always set status to 'pending' for staff requests
+        // Admin can approve later via PUT /api/staff/shifts/:id
+        const { status, ...shiftDataWithoutStatus } = newShiftData;
         const createdShift = await db.StaffShift.create({
             id: `shift-${uuidv4()}`,
-            status: 'pending',
-            ...newShiftData,
+            status: 'pending', // Always pending when created by staff
+            ...shiftDataWithoutStatus,
         });
         res.status(201).json(createdShift);
     } catch (error) {

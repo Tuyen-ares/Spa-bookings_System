@@ -301,6 +301,8 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                     <div className="space-y-6">
                         {/* Calculate tier from wallet points since tierLevel is not in users table */}
                         {promotions.filter(p => {
+                            // Only show public promotions
+                            if (p.isPublic === false) return false;
                             if (p.targetAudience === 'Group') return true;
                             if (!wallet) return p.targetAudience === 'Tier Level 1';
                             const userPoints = wallet.points || 0;

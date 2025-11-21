@@ -102,9 +102,9 @@ const DayDetailsModal: React.FC<DayDetailsModalProps> = ({
     
     const getShiftTypeDisplay = (type?: StaffShift['shiftType']) => {
         switch (type) {
-            case 'morning': return 'Sáng (9h-13h)';
-            case 'afternoon': return 'Chiều (13h-17h)';
-            case 'evening': return 'Tối (17h-21h)';
+            case 'morning': return 'Sáng (9h-16h)';
+            case 'afternoon': return 'Chiều (16h-22h)';
+            case 'evening': return 'Tối (17h-21h)'; // Legacy support, should not be used
             case 'leave': return 'Nghỉ phép';
             default: return 'Không xác định';
         }
@@ -211,9 +211,8 @@ const DayDetailsModal: React.FC<DayDetailsModalProps> = ({
                                 <label htmlFor="shiftType" className="block text-sm font-medium text-gray-700">Loại ca</label>
                                 <select id="shiftType" name="shiftType" value={shiftFormData.shiftType || ''} onChange={handleFormChange} className="mt-1 w-full p-2 border rounded" required>
                                     <option value="">Chọn loại ca</option>
-                                    <option value="morning">Sáng (9h-13h)</option>
-                                    <option value="afternoon">Chiều (13h-17h)</option>
-                                    <option value="evening">Tối (17h-21h)</option>
+                                    <option value="morning">Sáng (9h-16h)</option>
+                                    <option value="afternoon">Chiều (16h-22h)</option>
                                     <option value="leave">Nghỉ phép</option>
                                 </select>
                             </div>

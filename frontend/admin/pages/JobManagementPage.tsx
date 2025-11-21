@@ -169,8 +169,14 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
     }, [startDate]);
 
     const dashboardStats = useMemo(() => {
-        const todayStr = new Date().toISOString().split('T')[0];
-        const totalShiftsToday = staffShifts.filter(s => s.date === todayStr && s.shiftType !== 'leave').length;
+        // Format today's date in local timezone
+        const today = new Date();
+        const todayYear = today.getFullYear();
+        const todayMonth = String(today.getMonth() + 1).padStart(2, '0');
+        const todayDay = String(today.getDate()).padStart(2, '0');
+        const todayStr = `${todayYear}-${todayMonth}-${todayDay}`;
+        // Only count approved shifts
+        const totalShiftsToday = staffShifts.filter(s => s.date === todayStr && s.shiftType !== 'leave' && s.status === 'approved').length;
         const customersServedToday = allAppointments.filter(a => a.date === todayStr && a.status === 'completed').length;
         const totalAppointmentsToday = allAppointments.filter(a => a.date === todayStr && a.status !== 'cancelled').length;
         const performance = totalAppointmentsToday > 0 ? (customersServedToday / totalAppointmentsToday) * 100 : 0;
@@ -192,7 +198,11 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
         const slots: { date: string; staffId: string; time: string }[] = [];
         
         weekDays.forEach(day => {
-            const dateStr = day.toISOString().split('T')[0];
+            // Format date in local timezone to avoid timezone shift
+            const year = day.getFullYear();
+            const month = String(day.getMonth() + 1).padStart(2, '0');
+            const dayNum = String(day.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${dayNum}`;
             const shiftsForDay = staffShifts.filter(s => s.date === dateStr && s.shiftType !== 'leave' && s.status === 'approved');
             
             shiftsForDay.forEach(shift => {
@@ -216,10 +226,14 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
 
     // Detect conflicts (overlapping appointments without enough staff)
     const detectConflicts = useMemo(() => {
-        const conflicts: { date: string; time: string; reason: string }[] = [];
+        const conflicts: { date: string; time: string; reason: string; staffId?: string }[] = [];
         
         weekDays.forEach(day => {
-            const dateStr = day.toISOString().split('T')[0];
+            // Format date in local timezone to avoid timezone shift
+            const year = day.getFullYear();
+            const month = String(day.getMonth() + 1).padStart(2, '0');
+            const dayNum = String(day.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${dayNum}`;
             const appointmentsForDay = allAppointments.filter(a => a.date === dateStr && a.status !== 'cancelled');
             const shiftsForDay = staffShifts.filter(s => s.date === dateStr && s.shiftType !== 'leave' && s.status === 'approved');
             
@@ -234,7 +248,16 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
             });
             
             appointmentsByTime.forEach((apts, time) => {
-                // Check if enough staff available
+                // Separate appointments: assigned vs unassigned
+                const assignedAppointments = apts.filter(apt => apt.therapistId);
+                const unassignedAppointments = apts.filter(apt => !apt.therapistId);
+                
+                // If all appointments are assigned, no conflict (they've been properly assigned)
+                if (unassignedAppointments.length === 0) {
+                    return; // No conflicts if all appointments are assigned
+                }
+                
+                // Check if enough staff available for the time slot
                 const availableStaff = shiftsForDay.filter(shift => {
                     // Safe check for shiftHours
                     if (!shift.shiftHours || !shift.shiftHours.start || !shift.shiftHours.end) {
@@ -245,18 +268,23 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                     return time >= shiftStart && time < shiftEnd;
                 });
                 
-                if (apts.length > availableStaff.length) {
+                // Count how many staff are already busy with assigned appointments at this time
+                const busyStaffIds = new Set(assignedAppointments.map(apt => apt.therapistId).filter(Boolean));
+                const availableStaffForUnassigned = availableStaff.filter(shift => !busyStaffIds.has(shift.staffId));
+                
+                // Only report conflict if there are unassigned appointments and not enough staff
+                if (unassignedAppointments.length > availableStaffForUnassigned.length) {
                     conflicts.push({
                         date: dateStr,
                         time,
-                        reason: `Thiếu nhân viên: ${apts.length} lịch hẹn nhưng chỉ có ${availableStaff.length} nhân viên`
+                        reason: `Thiếu nhân viên: ${unassignedAppointments.length} lịch hẹn chưa phân công nhưng chỉ có ${availableStaffForUnassigned.length} nhân viên còn trống`
                     });
                 }
             });
         });
         
         return conflicts;
-    }, [weekDays, allAppointments, staffShifts]);
+    }, [weekDays, allAppointments, staffShifts, allUsers]);
 
     const handleCellClick = (staff: User, date: Date, shift?: StaffShift) => {
         // Format date to YYYY-MM-DD in local timezone to avoid date shift
@@ -306,8 +334,19 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                 const updatedShift = await apiService.updateStaffShift(shift.id, shift);
                 setStaffShifts(prev => prev.map(s => s.id === updatedShift.id ? updatedShift : s));
             } else {
+                // Admin creates shift - it will be created as 'pending', then auto-approved
                 const newShift = await apiService.createStaffShift(shift);
-                setStaffShifts(prev => [...prev, newShift]);
+                // If admin wants it approved, approve it immediately
+                if (shift.status === 'approved') {
+                    const approvedShift = await apiService.updateStaffShift(newShift.id, {
+                        ...newShift,
+                        status: 'approved',
+                        managerApprovalStatus: 'approved',
+                    });
+                    setStaffShifts(prev => [...prev, approvedShift]);
+                } else {
+                    setStaffShifts(prev => [...prev, newShift]);
+                }
             }
         } catch (error) { 
             console.error("Failed to save shift", error); 
@@ -323,11 +362,11 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
         }
     };
 
-    // Quick create fixed shifts (morning 8-12h, afternoon 14-18h)
+    // Quick create fixed shifts (morning 9-16h, afternoon 16-22h)
     const handleQuickCreateFixedShifts = async (shiftType: 'morning' | 'afternoon', days: Date[]) => {
         const shiftHours = shiftType === 'morning' 
-            ? { start: '08:00', end: '12:00' }
-            : { start: '14:00', end: '18:00' };
+            ? { start: '09:00', end: '16:00' }
+            : { start: '16:00', end: '22:00' };
         
         // Use selected staff IDs if any, otherwise use filtered staff
         let selectedStaff: User[];
@@ -356,7 +395,11 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
             
             for (const staff of selectedStaff) {
                 for (const day of days) {
-                    const dateStr = day.toISOString().split('T')[0];
+                    // Format date in local timezone to avoid timezone shift
+            const year = day.getFullYear();
+            const month = String(day.getMonth() + 1).padStart(2, '0');
+            const dayNum = String(day.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${dayNum}`;
                     // Check if shift already exists
                     const exists = staffShifts.find(s => 
                         s.staffId === staff.id && 
@@ -370,11 +413,17 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                                 staffId: staff.id,
                                 date: dateStr,
                                 shiftType,
-                                status: 'approved',
+                                status: 'pending', // Will be approved after creation
                                 shiftHours,
                             };
+                            // Admin creates shift - create as pending then auto-approve
                             const created = await apiService.createStaffShift(newShift);
-                            newShifts.push(created);
+                            const approved = await apiService.updateStaffShift(created.id, {
+                                ...created,
+                                status: 'approved',
+                                managerApprovalStatus: 'approved',
+                            });
+                            newShifts.push(approved);
                             createdCount++;
                         } catch (err) {
                             console.error(`Failed to create shift for ${staff.name} on ${dateStr}:`, err);
@@ -478,15 +527,40 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
             leave: 'bg-gray-200 text-gray-700',
         };
         
-        // Safe check for shiftHours
-        const timeDisplay = shift.shiftHours?.start && shift.shiftHours?.end 
-            ? `${shift.shiftHours.start} - ${shift.shiftHours.end}`
-            : 'Chưa có giờ';
+        // Pending shifts have different styling (yellow/orange with dashed border)
+        const pendingColors = {
+            morning: 'bg-yellow-50 text-yellow-800 border-2 border-dashed border-yellow-400',
+            afternoon: 'bg-yellow-50 text-yellow-800 border-2 border-dashed border-yellow-400',
+            evening: 'bg-yellow-50 text-yellow-800 border-2 border-dashed border-yellow-400',
+            custom: 'bg-yellow-50 text-yellow-800 border-2 border-dashed border-yellow-400',
+            leave: 'bg-yellow-50 text-yellow-800 border-2 border-dashed border-yellow-400',
+        };
+        
+        // Default shift hours based on shiftType if shiftHours is missing
+        const defaultShiftHours: Record<string, { start: string; end: string }> = {
+            morning: { start: '09:00', end: '16:00' },
+            afternoon: { start: '16:00', end: '22:00' },
+        };
+        
+        // Use shiftHours if available, otherwise use default based on shiftType
+        let timeDisplay = 'Chưa có giờ';
+        if (shift.shiftHours?.start && shift.shiftHours?.end) {
+            timeDisplay = `${shift.shiftHours.start} - ${shift.shiftHours.end}`;
+        } else if (shift.shiftType && shift.shiftType !== 'leave' && shift.shiftType !== 'custom' && defaultShiftHours[shift.shiftType]) {
+            // Use default hours for standard shift types
+            const defaultHours = defaultShiftHours[shift.shiftType];
+            timeDisplay = `${defaultHours.start} - ${defaultHours.end}`;
+        }
+        
+        const isPending = shift.status === 'pending';
         
         return {
-            color: baseColors[shift.shiftType] || 'bg-gray-100',
+            color: isPending 
+                ? (pendingColors[shift.shiftType] || 'bg-yellow-50 text-yellow-800 border-2 border-dashed border-yellow-400')
+                : (baseColors[shift.shiftType] || 'bg-gray-100'),
             time: timeDisplay,
             isLeave: shift.shiftType === 'leave',
+            isPending: isPending,
         };
     };
 
@@ -497,10 +571,32 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
         return 'bg-green-50';
     };
 
-    const getConflictsForCell = (date: string, time?: string) => {
+    const getConflictsForCell = (date: string, staffId?: string, time?: string) => {
         return detectConflicts.filter(c => {
             if (c.date !== date) return false;
-            if (time) return c.time === time;
+            if (time && c.time !== time) return false;
+            // If staffId is provided:
+            // - Show conflicts that are specific to this staff (c.staffId === staffId)
+            // - Show unassigned conflicts (no c.staffId) only if this staff has a shift at that time
+            if (staffId) {
+                if (c.staffId) {
+                    // Staff-specific conflict: only show for that staff
+                    return c.staffId === staffId;
+                } else {
+                    // Unassigned conflict: only show if this staff has a shift at that time
+                    const dateStr = date;
+                    const shiftsForDay = staffShifts.filter(s => s.date === dateStr && s.staffId === staffId && s.shiftType !== 'leave' && s.status === 'approved');
+                    const hasShiftAtTime = shiftsForDay.some(shift => {
+                        if (!shift.shiftHours || !shift.shiftHours.start || !shift.shiftHours.end) {
+                            return false;
+                        }
+                        const shiftStart = shift.shiftHours.start;
+                        const shiftEnd = shift.shiftHours.end;
+                        return c.time >= shiftStart && c.time < shiftEnd;
+                    });
+                    return hasShiftAtTime;
+                }
+            }
             return true;
         });
     };
@@ -765,14 +861,24 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                                         </div>
                                     </td>
                                     {weekDays.map(day => {
-                                        const dateString = day.toISOString().split('T')[0];
-                                        const shiftsForCell = staffShifts.filter(s => s.staffId === staff.id && s.date === dateString);
+                                        // Format date in local timezone to avoid timezone shift
+                                        const year = day.getFullYear();
+                                        const month = String(day.getMonth() + 1).padStart(2, '0');
+                                        const dayNum = String(day.getDate()).padStart(2, '0');
+                                        const dateString = `${year}-${month}-${dayNum}`;
+                                        // Show both approved and pending shifts (pending will have different styling)
+                                        const shiftsForCell = staffShifts.filter(s => 
+                                            s.staffId === staff.id && 
+                                            s.date === dateString && 
+                                            (s.status === 'approved' || s.status === 'pending')
+                                        );
                                         const appointmentsForCell = allAppointments.filter(a => 
                                             a.therapistId === staff.id && 
                                             a.date === dateString && 
                                             a.status !== 'cancelled'
                                         );
-                                        const conflicts = getConflictsForCell(dateString);
+                                        // Only show conflicts relevant to this staff member
+                                        const conflicts = getConflictsForCell(dateString, staff.id);
                                         const hasConflict = conflicts.length > 0;
                                         const cellBgColor = getBusynessColor(appointmentsForCell.length, hasConflict);
 
@@ -790,12 +896,15 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                                                         return (
                                                             <div 
                                                                 key={shift.id} 
-                                                                className={`p-1.5 rounded text-xs font-semibold ${display.color} cursor-move`}
+                                                                className={`p-1.5 rounded text-xs font-semibold ${display.color} cursor-move ${display.isPending ? 'opacity-75' : ''}`}
                                                                 onClick={(e) => { e.stopPropagation(); handleCellClick(staff, day, shift); }}
                                                                 draggable
                                                                 onDragStart={(e) => handleDragStart(e, shift, staff)}
                                                             >
                                                                 <p>{display.isLeave ? 'Nghỉ phép' : display.time}</p>
+                                                                {display.isPending && (
+                                                                    <p className="text-[10px] font-normal italic mt-0.5">⏳ Đợi xác nhận</p>
+                                                                )}
                                                             </div>
                                                         );
                                                     })}

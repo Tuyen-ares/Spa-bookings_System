@@ -265,7 +265,7 @@ export const StaffAppointmentsPage: React.FC<AppointmentsPageProps> = ({ current
                                                 <ClipboardDocumentCheckIcon className="w-5 h-5" /> Hoàn thành
                                             </button>
                                         )}
-                                        {(app.status === 'pending' || app.status === 'upcoming') && (
+                                        {(app.status === 'pending' || app.status === 'upcoming') && activeTab !== 'upcoming' && (
                                             <button onClick={() => setAppointmentToCancel(app)} className="bg-red-100 text-red-700 hover:bg-red-200 font-semibold px-4 py-2 rounded-md text-sm transition-colors">Hủy lịch</button>
                                         )}
                                     </div>
@@ -305,7 +305,7 @@ export const StaffAppointmentsPage: React.FC<AppointmentsPageProps> = ({ current
                                     Hoàn thành
                                 </button>
                             )}
-                            {(selectedAppointment.status === 'pending' || selectedAppointment.status === 'upcoming') && (
+                            {(selectedAppointment.status === 'pending' || selectedAppointment.status === 'upcoming') && activeTab !== 'upcoming' && (
                                 <button onClick={() => setAppointmentToCancel(selectedAppointment)} className="bg-red-500 text-white hover:bg-red-600 font-semibold px-4 py-2 rounded-md text-sm transition-colors mr-3">
                                     Hủy lịch
                                 </button>

@@ -2,9 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import type { User, StaffShift, Appointment } from '../../types';
 
 const SHIFT_TIMES = {
-    morning: { start: '09:00', end: '13:00' },
-    afternoon: { start: '13:00', end: '17:00' },
-    evening: { start: '17:00', end: '21:00' },
+    morning: { start: '09:00', end: '16:00' },
+    afternoon: { start: '16:00', end: '22:00' },
 };
 
 interface AssignScheduleModalProps {
@@ -58,7 +57,6 @@ const AssignScheduleModal: React.FC<AssignScheduleModalProps> = ({ context, onCl
             const shiftTypeNames = {
                 morning: 'Sáng',
                 afternoon: 'Chiều',
-                evening: 'Tối',
                 custom: 'Tùy chỉnh',
                 leave: 'Nghỉ phép'
             };
@@ -108,9 +106,8 @@ const AssignScheduleModal: React.FC<AssignScheduleModalProps> = ({ context, onCl
                             <div>
                                 <label htmlFor="shiftType" className="block text-sm font-medium text-gray-700">Loại ca</label>
                                 <select id="shiftType" name="shiftType" value={shiftType} onChange={e => setShiftType(e.target.value as StaffShift['shiftType'])} className="mt-1 w-full p-2 border rounded" required>
-                                    <option value="morning">Sáng (9h-13h)</option>
-                                    <option value="afternoon">Chiều (13h-17h)</option>
-                                    <option value="evening">Tối (17h-21h)</option>
+                                    <option value="morning">Sáng (9h-16h)</option>
+                                    <option value="afternoon">Chiều (16h-22h)</option>
                                     <option value="custom">Tùy chỉnh</option>
                                     <option value="leave">Nghỉ phép</option>
                                 </select>

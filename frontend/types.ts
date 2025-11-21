@@ -135,6 +135,7 @@ export interface Promotion {
   minOrderValue?: number;
   stock?: number | null; // Số lượng còn lại (NULL = không giới hạn)
   isActive?: boolean;
+  isPublic?: boolean; // true = public (hiển thị trên trang khách hàng), false = private (chỉ dùng khi biết mã)
 }
 
 export interface Review {

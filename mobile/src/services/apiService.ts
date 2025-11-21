@@ -1,9 +1,9 @@
 import axios, { AxiosInstance } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import type { 
-  User, 
-  Appointment, 
+import type {
+  User,
+  Appointment,
   Service,
   ServiceCategory,
   Promotion,
@@ -19,10 +19,18 @@ const getApiBaseUrl = () => {
   if (Platform.OS === 'web') {
     return 'http://localhost:3001/api';
   }
-  // For Android emulator/device, use your computer's IP.
-  // Metro shows exp://192.168.1.12:8081 in your environment, use that host so the mobile app
-  // can reach the backend when running on a device on the same Wi-Fi.
-  return 'http://192.168.1.12:3001/api';
+  // For Android emulator, use 10.0.2.2 to access host machine's localhost
+  // For Android physical device, use your computer's real IP address (e.g., 192.168.1.158)
+  if (Platform.OS === 'android') {
+    // Try 10.0.2.2 first (for emulator), fallback to actual IP if needed
+    return 'http://10.0.2.2:3001/api';
+  }
+  // iOS Simulator: can use localhost directly
+  if (Platform.OS === 'ios') {
+    return 'http://localhost:3001/api';
+  }
+  // Fallback
+  return 'http://10.0.2.2:3001/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -32,7 +40,7 @@ let apiClient: AxiosInstance;
 // Initialize API client
 export const initializeApi = async () => {
   const token = await AsyncStorage.getItem('token');
-  
+
   apiClient = axios.create({
     baseURL: API_BASE_URL,
     headers: {
@@ -61,22 +69,22 @@ export const initializeApi = async () => {
 export const login = async (credentials: LoginCredentials): Promise<AuthResponse> => {
   const response = await apiClient.post('/auth/login', credentials);
   const data = response.data;
-  
+
   // Save token & user to AsyncStorage
   await AsyncStorage.setItem('token', data.token);
   await AsyncStorage.setItem('user', JSON.stringify(data.user));
-  
+
   return data;
 };
 
 export const register = async (data: RegisterData): Promise<AuthResponse> => {
   const response = await apiClient.post('/auth/register', data);
   const result = response.data;
-  
+
   // Save token & user to AsyncStorage
   await AsyncStorage.setItem('token', result.token);
   await AsyncStorage.setItem('user', JSON.stringify(result.user));
-  
+
   return result;
 };
 

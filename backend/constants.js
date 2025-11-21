@@ -1,8 +1,9 @@
 // backend/constants.js
 const AVAILABLE_SPECIALTIES = ['Facial', 'Massage', 'Body Care', 'Hair Removal', 'Nail Care', 'Skincare', 'Clinic', 'Relax'];
 const PROMOTION_TARGET_AUDIENCES = ['All', 'New Clients', 'Birthday', 'VIP', 'Tier Level 1', 'Tier Level 2', 'Tier Level 3'];
-const AVAILABLE_TIMES = ['09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'];
-const STANDARD_WORK_TIMES = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'];
+// Updated to 2 shifts: Morning (9-16h) and Afternoon (16-22h)
+const AVAILABLE_TIMES = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'];
+const STANDARD_WORK_TIMES = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'];
 const LUCKY_WHEEL_PRIZES = [
   { type: 'points', value: 100, label: '100 Điểm' },
   { type: 'spin', value: 1, label: 'Thêm 1 lượt quay' },

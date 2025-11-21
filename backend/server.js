@@ -77,9 +77,12 @@ db.sequelize.sync(syncOptions) // Removed `force: true` to make data persistent
     });
 
     // Start the server
-    app.listen(PORT, () => {
+    // Listen on 0.0.0.0 to allow connections from emulator and devices on the same network
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server is running on port ${PORT}`);
       console.log(`Access the API at http://localhost:${PORT}`);
+      console.log(`Server listening on 0.0.0.0:${PORT} (accessible from network)`);
+      console.log(`Mobile app should use: http://192.168.1.158:${PORT}/api`);
       
       // Cron jobs removed - TreatmentCourse functionality removed
     });

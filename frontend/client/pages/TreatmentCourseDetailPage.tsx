@@ -311,7 +311,7 @@ export const TreatmentCourseDetailPage: React.FC<TreatmentCourseDetailPageProps>
                                                                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
                                                                 >
                                                                     <option value="">Chọn giờ</option>
-                                                                    {['09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'].map(time => (
+                                                                    {['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'].map(time => (
                                                                         <option key={time} value={time}>{time}</option>
                                                                     ))}
                                                                 </select>

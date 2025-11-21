@@ -530,6 +530,8 @@ router.post('/', async (req, res) => {
             serviceId: newAppointmentData.serviceId,
             therapistId: finalTherapistId,
             notesForTherapist: newAppointmentData.notesForTherapist || null,
+            promotionId: newAppointmentData.promotionId || null, // Save promotion ID if provided
+            bookingGroupId: newAppointmentData.bookingGroupId || null,
         });
 
         // Link first treatment session to appointment if treatment course was created
@@ -618,7 +620,35 @@ router.put('/:id', async (req, res) => {
         }
         
         const oldStatus = appointment.status;
+        const oldPaymentStatus = appointment.paymentStatus;
         await appointment.update(updatedData);
+        
+        // Record promotion usage when payment status changes to Paid
+        if (oldPaymentStatus !== 'Paid' && updatedData.paymentStatus === 'Paid' && appointment.promotionId && appointment.userId) {
+            try {
+                const existingUsage = await db.PromotionUsage.findOne({
+                    where: {
+                        userId: appointment.userId,
+                        promotionId: appointment.promotionId,
+                        appointmentId: appointment.id
+                    }
+                });
+                
+                if (!existingUsage) {
+                    await db.PromotionUsage.create({
+                        id: `promo-usage-${uuidv4()}`,
+                        userId: appointment.userId,
+                        promotionId: appointment.promotionId,
+                        appointmentId: appointment.id,
+                        serviceId: appointment.serviceId,
+                    });
+                    console.log(`✅ Recorded promotion usage for promotion ${appointment.promotionId} when payment confirmed`);
+                }
+            } catch (promoError) {
+                console.error('Error recording promotion usage:', promoError);
+                // Don't fail the appointment update if promotion usage recording fails
+            }
+        }
         
         // Sync treatment course status with appointment status
         // When appointment is accepted (pending -> upcoming/scheduled), update course from pending -> active

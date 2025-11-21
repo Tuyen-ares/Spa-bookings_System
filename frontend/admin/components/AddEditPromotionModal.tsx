@@ -23,6 +23,7 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
         targetAudience: 'All',
         applicableServiceIds: [],
         minOrderValue: 0,
+        isPublic: true, // Default to public
     });
     const [imagePreview, setImagePreview] = useState<string>(promotion?.imageUrl || '');
 
@@ -88,14 +89,14 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
     }, [allTiers]);
 
     const audienceOptions = useMemo(() => {
+        // Only show: All, New Clients, Birthday
         const promoTargetAudiences: PromotionTargetAudience[] = [
             'All',
             'New Clients',
             'Birthday',
-            'VIP',
         ];
-        return [...promoTargetAudiences.filter(a => !a.startsWith('Tier Level')), ...getTierLevelOptions];
-    }, [getTierLevelOptions]);
+        return promoTargetAudiences;
+    }, []);
 
 
     return (
@@ -161,9 +162,9 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
                             <div className="md:col-span-2">
                                 <label className="block text-sm font-medium text-gray-700">Đối tượng áp dụng</label>
                                 <select name="targetAudience" value={formData.targetAudience} onChange={handleChange} className="mt-1 w-full p-2 border rounded">
-                                    {audienceOptions.map(audience => (
-                                        <option key={audience} value={audience}>{audience}</option>
-                                    ))}
+                                    <option value="All">Tất cả đối tượng</option>
+                                    <option value="New Clients">Khách hàng mới</option>
+                                    <option value="Birthday">Khách hàng sinh nhật</option>
                                 </select>
                             </div>
 
@@ -192,6 +193,28 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Số lượng (lượt sử dụng)</label>
                                 <input type="number" name="stock" value={formData.stock || ''} onChange={handleChange} placeholder="Để trống = không giới hạn" className="mt-1 w-full p-2 border rounded" />
+                            </div>
+                            
+                            <div className="md:col-span-2">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        name="isPublic"
+                                        checked={formData.isPublic !== false}
+                                        onChange={(e) => {
+                                            setFormData(prev => ({ ...prev, isPublic: e.target.checked }));
+                                        }}
+                                        className="rounded text-brand-primary focus:ring-brand-primary w-4 h-4"
+                                    />
+                                    <span className="text-sm font-medium text-gray-700">
+                                        Công khai (Public)
+                                    </span>
+                                </label>
+                                <p className="text-xs text-gray-500 mt-1 ml-6">
+                                    {formData.isPublic !== false 
+                                        ? '✓ Voucher sẽ hiển thị công khai trên trang khách hàng' 
+                                        : '⚠ Voucher riêng tư - chỉ ai biết mã hoặc được admin gửi mã mới có thể sử dụng'}
+                                </p>
                             </div>
                         </div>
                     </div>

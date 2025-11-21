@@ -68,6 +68,12 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: true,
     },
+    isPublic: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: true,
+      comment: 'true = public (hiển thị trên trang khách hàng), false = private (chỉ dùng khi biết mã)',
+    },
   }, {
     tableName: 'promotions',
     timestamps: false,

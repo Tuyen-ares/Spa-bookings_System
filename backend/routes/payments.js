@@ -469,6 +469,28 @@ router.get('/vnpay-return', async (req, res) => {
                         );
                         console.log(`Updated all appointments in booking group ${appointment.bookingGroupId} to Paid and pending status`);
                     }
+                    
+                    // Record promotion usage if appointment has promotionId
+                    if (appointment.promotionId && payment.userId) {
+                        const existingUsage = await db.PromotionUsage.findOne({
+                            where: {
+                                userId: payment.userId,
+                                promotionId: appointment.promotionId,
+                                appointmentId: appointment.id
+                            }
+                        });
+                        
+                        if (!existingUsage) {
+                            await db.PromotionUsage.create({
+                                id: `promo-usage-${uuidv4()}`,
+                                userId: payment.userId,
+                                promotionId: appointment.promotionId,
+                                appointmentId: appointment.id,
+                                serviceId: appointment.serviceId,
+                            });
+                            console.log(`Recorded promotion usage for promotion ${appointment.promotionId}`);
+                        }
+                    }
                 }
             }
 

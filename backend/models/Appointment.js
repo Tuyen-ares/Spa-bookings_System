@@ -70,6 +70,14 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true,
     },
+    promotionId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      references: {
+        model: 'promotions',
+        key: 'id',
+      },
+    },
   }, {
     tableName: 'appointments',
     timestamps: false,

@@ -83,6 +83,7 @@ db.Service = require('../models/Service')(sequelize, DataTypes);
 db.Appointment = require('../models/Appointment')(sequelize, DataTypes);
 db.Wallet = require('../models/Wallet')(sequelize, DataTypes);
 db.Promotion = require('../models/Promotion')(sequelize, DataTypes);
+db.PromotionUsage = require('../models/PromotionUsage')(sequelize, DataTypes);
 db.StaffAvailability = require('../models/StaffAvailability')(sequelize, DataTypes);
 db.StaffShift = require('../models/StaffShift')(sequelize, DataTypes);
 db.Payment = require('../models/Payment')(sequelize, DataTypes);
@@ -151,6 +152,16 @@ db.Payment.belongsTo(db.User, { foreignKey: 'userId', as: 'ClientForPayment' });
 db.Appointment.hasOne(db.Payment, { foreignKey: 'appointmentId', onDelete: 'SET NULL' });
 db.Payment.belongsTo(db.Appointment, { foreignKey: 'appointmentId' });
 // Note: Product table removed, so productId foreign key removed from Payment
+
+// Promotion Associations
+db.User.hasMany(db.PromotionUsage, { foreignKey: 'userId', onDelete: 'CASCADE' });
+db.PromotionUsage.belongsTo(db.User, { foreignKey: 'userId' });
+db.Promotion.hasMany(db.PromotionUsage, { foreignKey: 'promotionId', onDelete: 'CASCADE' });
+db.PromotionUsage.belongsTo(db.Promotion, { foreignKey: 'promotionId' });
+db.Appointment.hasMany(db.PromotionUsage, { foreignKey: 'appointmentId', onDelete: 'SET NULL' });
+db.PromotionUsage.belongsTo(db.Appointment, { foreignKey: 'appointmentId' });
+db.Service.hasMany(db.PromotionUsage, { foreignKey: 'serviceId', onDelete: 'SET NULL' });
+db.PromotionUsage.belongsTo(db.Service, { foreignKey: 'serviceId' });
 
 // Review Associations
 db.User.hasMany(db.Review, { foreignKey: 'userId', onDelete: 'CASCADE' });
