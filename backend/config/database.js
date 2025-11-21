@@ -52,6 +52,22 @@ const sequelize = new Sequelize(
     dialect: 'mysql',
     port: parseInt(process.env.DB_PORT) || 3306,
     logging: false,
+    dialectOptions: {
+      // Support for Azure Database SSL connection
+      ssl: process.env.DB_SSL === 'true' ? {
+        require: true,
+        rejectUnauthorized: false // For Azure Database, set to false if using self-signed cert
+      } : false,
+      // Support for Azure Database connection timeout
+      connectTimeout: 60000,
+    },
+    // Connection pool settings for Azure
+    pool: {
+      max: 5,
+      min: 0,
+      acquire: 30000,
+      idle: 10000
+    }
   }
 );
 
