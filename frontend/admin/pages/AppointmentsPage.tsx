@@ -756,7 +756,12 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                         return <div key={`empty-${index}`} className="p-2 min-h-[120px] border border-gray-200 rounded bg-gray-50"></div>;
                     }
 
-                    const dateKey = date.toISOString().split('T')[0];
+                    // Format date as YYYY-MM-DD in local timezone
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const dateKey = `${year}-${month}-${day}`;
+                    
                     const dayAppointments = appointmentsByDate.get(dateKey) || [];
                     const isToday = date.toDateString() === new Date().toDateString();
                     const isExpanded = expandedDates.has(dateKey);
@@ -870,7 +875,12 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         return (
             <div className="grid grid-cols-7 gap-4">
                 {weekDays.map((date, index) => {
-                    const dateKey = date.toISOString().split('T')[0];
+                    // Format date as YYYY-MM-DD in local timezone
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const dateKey = `${year}-${month}-${day}`;
+                    
                     const dayAppointments = (appointmentsByDate.get(dateKey) || []).sort((a, b) => {
                         // Sort by time
                         const timeA = a.time.split(':').map(Number);
@@ -958,7 +968,11 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
 
     // Render day view with timeline
     const renderDayView = () => {
-        const selectedDay = currentDate.toISOString().split('T')[0];
+        // Format current date as YYYY-MM-DD in local timezone
+        const year = currentDate.getFullYear();
+        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const day = String(currentDate.getDate()).padStart(2, '0');
+        const selectedDay = `${year}-${month}-${day}`;
 
         // Get appointments for this day with filters (exclude cancelled)
         const dayAppointments = appointments

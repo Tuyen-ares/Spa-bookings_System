@@ -86,10 +86,10 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
             count: allTreatmentCourses.length,
             courses: allTreatmentCourses.map(c => ({
                 id: c.id,
-                name: c.serviceName || c.name,
+                name: (c as any).serviceName || c.name,
                 clientId: c.clientId,
                 status: c.status,
-                sessionsCount: c.sessions?.length || c.TreatmentSessions?.length || 0
+                sessionsCount: c.sessions?.length || (c as any).TreatmentSessions?.length || 0
             }))
         });
         setLocalTreatmentCourses(allTreatmentCourses);
@@ -106,11 +106,11 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                     coursesCount: clientCourses.length,
                     courses: clientCourses.map(c => ({
                         id: c.id,
-                        name: c.serviceName || c.name,
+                        name: (c as any).serviceName || c.name,
                         status: c.status,
                         clientId: c.clientId,
-                        sessionsCount: c.sessions?.length || c.TreatmentSessions?.length || 0,
-                        sessions: c.sessions || c.TreatmentSessions
+                        sessionsCount: c.sessions?.length || (c as any).TreatmentSessions?.length || 0,
+                        sessions: c.sessions || (c as any).TreatmentSessions
                     }))
                 });
                 
@@ -204,10 +204,10 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
 
         const courses = localTreatmentCourses.filter(course => {
             const matches = course.clientId === currentUser.id;
-            if (matches) {
+                if (matches) {
                 console.log('✅ Found course for client:', {
                     courseId: course.id,
-                    courseName: course.serviceName || course.name,
+                    courseName: (course as any).serviceName || course.name,
                     clientId: course.clientId,
                     status: course.status,
                     sessionsCount: course.sessions?.length || 0,
@@ -221,7 +221,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
             totalCourses: localTreatmentCourses.length,
             myCourses: courses.length,
             currentUserId: currentUser.id,
-            courses: courses.map(c => ({ id: c.id, name: c.serviceName || c.name, status: c.status, clientId: c.clientId, sessionsCount: c.sessions?.length || 0 }))
+            courses: courses.map(c => ({ id: c.id, name: (c as any).serviceName || c.name, status: c.status, clientId: c.clientId, sessionsCount: c.sessions?.length || 0 }))
         });
         
         return { myUpcomingAppointments: upcoming, myHistoryAppointments: history, myTreatmentCourses: courses };
@@ -298,8 +298,32 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 course.status === 'active' || course.status === 'pending'
             );
         } else {
-            // Show completed courses
-            return courses.filter(course => course.status === 'completed');
+            // Show completed courses ONLY when progress is 100%
+            return courses.filter(course => {
+                // Compute progress from available fields
+                const totalSessions = course.totalSessions ?? (Array.isArray(course.sessions) ? course.sessions.length : (Array.isArray((course as any).TreatmentSessions) ? (course as any).TreatmentSessions.length : 0));
+                let completedSessions = course.completedSessions ?? 0;
+
+                if (completedSessions === 0) {
+                    // Try counting from session objects if available
+                    const sessionsArr = course.sessions ?? (course as any).TreatmentSessions;
+                    if (Array.isArray(sessionsArr) && sessionsArr.length > 0) {
+                        completedSessions = sessionsArr.filter((s: any) => s.status === 'completed').length;
+                    }
+                }
+
+                // Compute actual progress percentage
+                let progressPct = 0;
+                if (totalSessions && totalSessions > 0) {
+                    progressPct = Math.round((completedSessions / totalSessions) * 100);
+                } else if (typeof (course as any).progressPercentage === 'number') {
+                    progressPct = (course as any).progressPercentage;
+                }
+
+                // STRICT: Only show if progress is exactly 100%
+                // Reject 0% or any incomplete course, even with status='completed'
+                return progressPct >= 100 && totalSessions > 0 && completedSessions > 0;
+            });
         }
     };
     
@@ -441,29 +465,32 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
         );
     };
 
-    const HistoryAppointmentCard: React.FC<{ appointment: Appointment & { dateTime: Date } }> = ({ appointment }) => (
-        <div className="bg-white p-5 rounded-lg shadow-soft-lg border border-gray-100 flex justify-between items-center">
-            <div>
-                <p className="text-sm font-semibold text-brand-dark">{appointment.dateTime.toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} - {appointment.time}</p>
-                <h4 className="text-xl font-bold font-serif text-brand-text mt-1">{appointment.serviceName}</h4>
-                <p className="text-xs text-gray-500 mt-1">Kỹ thuật viên: {appointment.therapist || 'Không có'}</p>
-            </div>
-            <div className="flex flex-col items-end gap-3">
-                <span className={`px-3 py-1 text-xs font-bold rounded-full ${appointment.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {appointment.status === 'completed' ? 'Hoàn thành' : 'Đã hủy'}
-                </span>
-                <div className="flex items-center gap-3">
-                    <button onClick={() => setViewingAppointment(appointment)} className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Xem Chi Tiết</button>
-                    {appointment.status === 'completed' && (
-                        <>
-                            <button onClick={() => navigate(`/service/${appointment.serviceId}`)} className="text-sm font-semibold text-green-600 hover:underline">Đánh giá</button>
-                            <button onClick={() => navigate(`/booking?serviceId=${appointment.serviceId}`)} className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Đặt lại</button>
-                        </>
-                    )}
+    const HistoryAppointmentCard: React.FC<{ appointment: Appointment & { dateTime: Date } }> = ({ appointment }) => {
+        const therapistName = appointment.Therapist?.name || (allUsers.find(u => u.id === appointment.therapistId)?.name) || 'Không có';
+        return (
+            <div className="bg-white p-5 rounded-lg shadow-soft-lg border border-gray-100 flex justify-between items-center">
+                <div>
+                    <p className="text-sm font-semibold text-brand-dark">{appointment.dateTime.toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} - {appointment.time}</p>
+                    <h4 className="text-xl font-bold font-serif text-brand-text mt-1">{appointment.serviceName}</h4>
+                    <p className="text-xs text-gray-500 mt-1">Kỹ thuật viên: {therapistName}</p>
+                </div>
+                <div className="flex flex-col items-end gap-3">
+                    <span className={`px-3 py-1 text-xs font-bold rounded-full ${appointment.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        {appointment.status === 'completed' ? 'Hoàn thành' : 'Đã hủy'}
+                    </span>
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => setViewingAppointment(appointment)} className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Xem Chi Tiết</button>
+                        {appointment.status === 'completed' && (
+                            <>
+                                <button onClick={() => navigate(`/service/${appointment.serviceId}`)} className="text-sm font-semibold text-green-600 hover:underline">Đánh giá</button>
+                                <button onClick={() => navigate(`/booking?serviceId=${appointment.serviceId}`)} className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Đặt lại</button>
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
-        </div>
-    );
+        );
+    };
     
     const TreatmentCourseCard: React.FC<{ course: TreatmentCourse }> = ({ course }) => {
         const sessions = course.sessions || [];
@@ -484,9 +511,9 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
             .filter(s => s.status === 'completed')
             .sort((a, b) => b.sessionNumber - a.sessionNumber)[0]; // Get most recent completed session
         
-        // Get admin notes from current session or previous session
-        const adminNotes = currentSession?.adminNotes || previousSession?.adminNotes;
-        const customerStatusNotes = currentSession?.customerStatusNotes || previousSession?.customerStatusNotes;
+        // Get notes from current session or previous session (map to available fields)
+        const adminNotes = currentSession?.therapistNotes || previousSession?.therapistNotes;
+        const customerStatusNotes = currentSession?.notes || previousSession?.notes;
         
         return (
             <div 
@@ -498,7 +525,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
             >
                 <div className="flex justify-between items-start mb-4">
                     <div className="flex-1">
-                        <h4 className="text-xl font-bold font-serif text-brand-text mb-2">{course.serviceName || course.name}</h4>
+                        <h4 className="text-xl font-bold font-serif text-brand-text mb-2">{(course as any).serviceName || course.name}</h4>
                         <div className="flex flex-wrap gap-2 text-sm mb-3">
                             <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full font-semibold">
                                 {course.totalSessions} buổi
@@ -526,13 +553,13 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                 <div className="flex items-center gap-2 mb-2">
                                     <span className="text-lg font-bold text-purple-800">📌 Buổi hiện tại: Buổi {currentSession.sessionNumber}</span>
                                 </div>
-                                {currentSession.sessionDate && (
+                                {((currentSession.date) || (currentSession as any).scheduledDate) && (
                                     <p className="text-sm text-gray-700 mb-1">
-                                        <strong>Ngày:</strong> {new Date(currentSession.sessionDate).toLocaleDateString('vi-VN')}
-                                        {currentSession.sessionTime && ` - ${currentSession.sessionTime}`}
+                                        <strong>Ngày:</strong> {new Date(currentSession.date || (currentSession as any).scheduledDate).toLocaleDateString('vi-VN')}
+                                        {(currentSession as any).scheduledTime && ` - ${(currentSession as any).scheduledTime}`}
                                     </p>
                                 )}
-                                {currentSession.staffId && (
+                                {(currentSession.therapistId || (currentSession as any).therapistName) && (
                                     <p className="text-sm text-gray-700">
                                         <strong>Kỹ thuật viên:</strong> Đã được phân công
                                     </p>
@@ -765,7 +792,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                 </div>
                                 <div>
                                     <p className="text-sm text-gray-500">Kỹ thuật viên</p>
-                                    <p className="font-semibold text-gray-800">{viewingAppointment.therapist || 'Chưa phân công'}</p>
+                                    <p className="font-semibold text-gray-800">{viewingAppointment.Therapist?.name || (allUsers.find(u => u.id === viewingAppointment.therapistId)?.name) || 'Chưa phân công'}</p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-gray-500">Trạng thái thanh toán</p>

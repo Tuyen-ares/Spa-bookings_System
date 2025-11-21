@@ -162,7 +162,6 @@ const StaffPage: React.FC<StaffPageProps> = ({ allUsers, allServices, allAppoint
                                 <tr className="text-left text-sm font-semibold text-gray-600">
                                     <th className="p-4">Nhân viên</th>
                                     <th className="p-4">Vai trò</th>
-                                    <th className="p-4">Chuyên môn</th>
                                     <th className="p-4">Trạng thái</th>
                                     <th className="p-4">Đăng nhập cuối</th>
                                     <th className="p-4">Hành động</th>
@@ -185,10 +184,7 @@ const StaffPage: React.FC<StaffPageProps> = ({ allUsers, allServices, allAppoint
                                                 {ROLE_TRANSLATIONS[user.role]}
                                             </span>
                                         </td>
-                                        <td className="p-4 text-xs text-gray-600 max-w-xs truncate">
-                                            N/A
-                                        </td>
-                                        <td className="p-4">
+                                            <td className="p-4">
                                             <span className={`px-2 py-1 text-xs font-semibold rounded-full ${user.status === 'Active' ? 'bg-green-100 text-green-800' : user.status === 'Inactive' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
                                                 {getStatusText(user.status)}
                                             </span>

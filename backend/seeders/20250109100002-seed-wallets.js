@@ -5,25 +5,28 @@ module.exports = {
   async up(queryInterface, Sequelize) {
     const wallets = [
       {
+        id: 'wallet-client-1',
         userId: 'user-client-1',
-        balance: 100000,
         points: 900,
-        totalEarned: 900,
-        totalSpent: 0,
+        tierLevel: 2,
+        totalSpent: 900000,
+        lastUpdated: new Date('2024-07-28T10:00:00.000Z')
       },
       {
+        id: 'wallet-client-2',
         userId: 'user-client-2',
-        balance: 200000,
         points: 2200,
-        totalEarned: 2200,
-        totalSpent: 0,
+        tierLevel: 3,
+        totalSpent: 2200000,
+        lastUpdated: new Date('2024-08-05T14:00:00.000Z')
       },
       {
+        id: 'wallet-client-3',
         userId: 'user-client-3',
-        balance: 500000,
         points: 5500,
-        totalEarned: 5500,
-        totalSpent: 0,
+        tierLevel: 4,
+        totalSpent: 5500000,
+        lastUpdated: new Date('2024-08-10T09:30:00.000Z')
       },
     ];
 

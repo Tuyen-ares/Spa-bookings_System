@@ -460,13 +460,7 @@ router.put('/:id/complete', async (req, res) => {
         });
 
         if (course) {
-            if (nextSession && nextSession.scheduledDate) {
-                await course.update({ nextAppointmentDate: nextSession.scheduledDate });
-            } else {
-                await course.update({ nextAppointmentDate: null });
-            }
-
-            // Kiểm tra xem đã hoàn thành tất cả buổi chưa
+            // Đếm số buổi đã hoàn thành và cập nhật completedSessions
             const totalCompleted = await db.TreatmentSession.count({
                 where: {
                     treatmentCourseId: session.treatmentCourseId,
@@ -474,6 +468,13 @@ router.put('/:id/complete', async (req, res) => {
                 },
             });
 
+            // Cập nhật completedSessions
+            await course.update({ 
+                completedSessions: totalCompleted,
+                nextAppointmentDate: (nextSession && nextSession.scheduledDate) ? nextSession.scheduledDate : null
+            });
+
+            // Kiểm tra xem đã hoàn thành tất cả buổi chưa
             if (totalCompleted >= course.totalSessions) {
                 await course.update({ status: 'completed' });
                 
@@ -484,6 +485,17 @@ router.put('/:id/complete', async (req, res) => {
                         'system',
                         'Hoàn thành liệu trình',
                         `Chúc mừng! Bạn đã hoàn thành liệu trình ${course.serviceName}`,
+                        course.id
+                    );
+                }
+            } else if (nextSession) {
+                // Thông báo buổi tiếp theo
+                if (course.clientId) {
+                    await createNotification(
+                        course.clientId,
+                        'treatment_course_reminder',
+                        'Nhắc nhở liệu trình',
+                        `Bạn đã hoàn thành buổi ${session.sessionNumber}. Hãy đặt lịch cho buổi ${nextSession.sessionNumber} tiếp theo!`,
                         course.id
                     );
                 }

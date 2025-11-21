@@ -115,6 +115,7 @@ const UserDetailsModal: React.FC<{ user: User; onClose: () => void; allTiers: Ti
     const [totalSpending, setTotalSpending] = useState<number>(0);
     const [isLoadingDetails, setIsLoadingDetails] = useState(true);
     const [errorDetails, setErrorDetails] = useState<string | null>(null);
+    const [showFullLoginHistory, setShowFullLoginHistory] = useState(false);
 
     useEffect(() => {
         const fetchDetails = async () => {
@@ -221,18 +222,111 @@ const UserDetailsModal: React.FC<{ user: User; onClose: () => void; allTiers: Ti
 
                     {/* Note: staffProfile fields removed - not in db.txt users table */}
 
-                    <div>
-                        <h3 className="text-lg font-semibold text-gray-700 mb-2">Lịch sử đăng nhập</h3>
-                        {user.loginHistory && user.loginHistory.length > 0 ? (
-                            <div className="p-4 bg-gray-50 rounded-lg border">
-                                <div className="text-sm text-gray-600">Đăng nhập gần nhất:</div>
-                                <div className="text-base font-medium text-gray-900 mt-1">
-                                    {new Date(user.loginHistory[0].date).toLocaleString('vi-VN')}
+                    <div className="mt-6 border-t pt-6">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Thông tin đăng nhập</h3>
+                        
+                        {user.lastLogin ? (
+                            <div className="space-y-3">
+                                <div className="p-4 bg-gradient-to-r from-brand-light to-white rounded-lg border border-brand-primary/20">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className="w-10 h-10 rounded-full bg-brand-primary/10 flex items-center justify-center">
+                                            <svg className="w-5 h-5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-gray-500 font-medium">Lần đăng nhập cuối</p>
+                                            <p className="text-base font-semibold text-gray-800">
+                                                {new Date(user.lastLogin).toLocaleString('vi-VN', {
+                                                    year: 'numeric',
+                                                    month: 'long',
+                                                    day: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit',
+                                                    second: '2-digit'
+                                                })}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="mt-3 pt-3 border-t border-brand-primary/10">
+                                        <div className="grid grid-cols-2 gap-4 text-sm">
+                                            <div>
+                                                <p className="text-gray-500">Thời gian từ lần cuối</p>
+                                                <p className="font-medium text-gray-800">
+                                                    {(() => {
+                                                        const now = new Date();
+                                                        const last = new Date(user.lastLogin);
+                                                        const diffMs = now.getTime() - last.getTime();
+                                                        const diffMins = Math.floor(diffMs / 60000);
+                                                        const diffHours = Math.floor(diffMs / 3600000);
+                                                        const diffDays = Math.floor(diffMs / 86400000);
+                                                        
+                                                        if (diffMins < 1) return 'Vừa xong';
+                                                        if (diffMins < 60) return `${diffMins} phút trước`;
+                                                        if (diffHours < 24) return `${diffHours} giờ trước`;
+                                                        return `${diffDays} ngày trước`;
+                                                    })()}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-gray-500">Trạng thái</p>
+                                                <p className="font-medium">
+                                                    {(() => {
+                                                        const now = new Date();
+                                                        const last = new Date(user.lastLogin);
+                                                        const diffMins = Math.floor((now.getTime() - last.getTime()) / 60000);
+                                                        
+                                                        if (diffMins < 30) {
+                                                            return <span className="inline-flex items-center gap-1.5 text-green-700">
+                                                                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                                                                Đang hoạt động
+                                                            </span>;
+                                                        } else {
+                                                            return <span className="text-gray-600">Không hoạt động</span>;
+                                                        }
+                                                    })()}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="p-3 bg-gray-50 rounded-lg border">
+                                        <p className="text-xs text-gray-500 mb-1">Ngày tham gia</p>
+                                        <p className="text-sm font-medium text-gray-800">
+                                            {new Date(user.joinDate).toLocaleDateString('vi-VN', {
+                                                year: 'numeric',
+                                                month: 'long',
+                                                day: 'numeric'
+                                            })}
+                                        </p>
+                                    </div>
+                                    <div className="p-3 bg-gray-50 rounded-lg border">
+                                        <p className="text-xs text-gray-500 mb-1">Tổng thời gian</p>
+                                        <p className="text-sm font-medium text-gray-800">
+                                            {(() => {
+                                                const join = new Date(user.joinDate);
+                                                const now = new Date();
+                                                const diffDays = Math.floor((now.getTime() - join.getTime()) / 86400000);
+                                                const diffMonths = Math.floor(diffDays / 30);
+                                                
+                                                if (diffMonths > 0) return `${diffMonths} tháng`;
+                                                return `${diffDays} ngày`;
+                                            })()}
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         ) : (
-                            <div className="p-4 text-center text-gray-500 bg-gray-50 rounded-lg border">
-                                Không có dữ liệu.
+                            <div className="p-6 text-center bg-gray-50 rounded-lg border border-gray-200">
+                                <div className="w-12 h-12 rounded-full bg-gray-200 mx-auto mb-3 flex items-center justify-center">
+                                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                    </svg>
+                                </div>
+                                <p className="text-sm text-gray-500">Người dùng chưa đăng nhập lần nào</p>
                             </div>
                         )}
                     </div>
