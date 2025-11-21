@@ -178,7 +178,7 @@ router.get('/', async (req, res) => {
                 },
                 {
                     model: db.Service,
-                    attributes: ['id', 'name', 'description']
+                    attributes: ['id', 'name', 'description', 'price', 'duration']
                 },
                 {
                     model: db.TreatmentSession,
@@ -231,6 +231,54 @@ router.get('/', async (req, res) => {
     }
 });
 
+// GET /api/appointments/:id - Get single appointment by ID
+router.get('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const appointment = await db.Appointment.findByPk(id, {
+            include: [
+                {
+                    model: db.User,
+                    as: 'Client',
+                    attributes: ['id', 'name', 'email', 'phone']
+                },
+                {
+                    model: db.User,
+                    as: 'Therapist',
+                    attributes: ['id', 'name', 'email', 'phone']
+                },
+                {
+                    model: db.Service,
+                    attributes: ['id', 'name', 'description', 'price', 'duration']
+                },
+                {
+                    model: db.TreatmentSession,
+                    as: 'TreatmentSession',
+                    attributes: ['id', 'sessionNumber', 'adminNotes', 'customerStatusNotes', 'status', 'treatmentCourseId'],
+                    required: false,
+                    include: [
+                        {
+                            model: db.TreatmentCourse,
+                            as: 'TreatmentCourse',
+                            attributes: ['id', 'totalSessions', 'completedSessions', 'serviceName']
+                        }
+                    ]
+                }
+            ]
+        });
+
+        if (!appointment) {
+            return res.status(404).json({ message: 'Không tìm thấy lịch hẹn' });
+        }
+
+        res.json(appointment);
+    } catch (error) {
+        console.error('Error fetching appointment:', error);
+        res.status(500).json({ message: 'Lỗi khi tải thông tin lịch hẹn' });
+    }
+});
+
 // GET /api/appointments/user/:userId
 // Returns appointments where user is either the client (userId) OR the therapist (therapistId)
 router.get('/user/:userId', async (req, res) => {
@@ -273,6 +321,12 @@ router.get('/user/:userId', async (req, res) => {
         // Map appointments to include client, therapist info, and treatment session
         const mappedAppointments = userAppointments.map(apt => {
             const appointmentData = apt.toJSON();
+            
+            // Map price from Service to top level for mobile app
+            if (appointmentData.Service && appointmentData.Service.price) {
+                appointmentData.price = appointmentData.Service.price;
+            }
+            
             if (appointmentData.Client) {
                 appointmentData.Client = {
                     id: appointmentData.Client.id,
@@ -303,6 +357,7 @@ router.get('/user/:userId', async (req, res) => {
         });
         
         console.log(`✅ Fetched ${mappedAppointments.length} appointments for user ${userId} (as client or therapist)`);
+        
         res.json(mappedAppointments);
     } catch (error) {
         console.error('Error fetching user appointments:', error);
@@ -421,7 +476,7 @@ router.post('/', async (req, res) => {
                 frequencyType: frequencyType,
                 frequencyValue: frequencyValue,
                 therapistId: finalTherapistId,
-                status: 'pending', // Always 'pending' - only becomes 'active' when admin accepts appointment
+                status: 'active', // Active when created
                 notes: newAppointmentData.treatmentCourseNotes || null,
                 createdAt: new Date(),
             });
@@ -582,17 +637,11 @@ router.put('/:id', async (req, res) => {
                 if (linkedSession) {
                     const treatmentCourse = await db.TreatmentCourse.findByPk(linkedSession.treatmentCourseId);
                     if (treatmentCourse) {
-                        if (isBeingAccepted) {
-                            // Appointment is being accepted, update course from pending -> active
-                            if (treatmentCourse.status === 'pending') {
-                                await treatmentCourse.update({ status: 'active' });
-                                console.log(`✅ Updated treatment course ${treatmentCourse.id} status from 'pending' to 'active' after appointment acceptance`);
-                            }
-                        } else if (isBeingCancelled || isBackToPending) {
-                            // Appointment is being cancelled or reverted, update course from active -> pending
+                        if (isBeingCancelled) {
+                            // Appointment is being cancelled, update course to cancelled
                             if (treatmentCourse.status === 'active') {
-                                await treatmentCourse.update({ status: 'pending' });
-                                console.log(`✅ Updated treatment course ${treatmentCourse.id} status from 'active' to 'pending' after appointment cancellation/pending`);
+                                await treatmentCourse.update({ status: 'cancelled' });
+                                console.log(`✅ Updated treatment course ${treatmentCourse.id} status from 'active' to 'cancelled' after appointment cancellation`);
                             }
                         }
                     }
@@ -602,19 +651,14 @@ router.put('/:id', async (req, res) => {
                         where: {
                             serviceId: appointment.serviceId,
                             clientId: appointment.userId,
-                            status: isBeingAccepted ? 'pending' : 'active'
+                            status: 'active'
                         },
                         order: [['createdAt', 'DESC']]
                     });
                     
-                    if (treatmentCourse) {
-                        if (isBeingAccepted && treatmentCourse.status === 'pending') {
-                            await treatmentCourse.update({ status: 'active' });
-                            console.log(`✅ Updated treatment course ${treatmentCourse.id} status from 'pending' to 'active' after appointment acceptance (no linked session)`);
-                        } else if ((isBeingCancelled || isBackToPending) && treatmentCourse.status === 'active') {
-                            await treatmentCourse.update({ status: 'pending' });
-                            console.log(`✅ Updated treatment course ${treatmentCourse.id} status from 'active' to 'pending' after appointment cancellation/pending (no linked session)`);
-                        }
+                    if (treatmentCourse && isBeingCancelled) {
+                        await treatmentCourse.update({ status: 'cancelled' });
+                        console.log(`✅ Updated treatment course ${treatmentCourse.id} status from 'active' to 'cancelled' after appointment cancellation (no linked session)`);
                     }
                 }
             } catch (syncError) {
@@ -783,17 +827,15 @@ router.put('/:id', async (req, res) => {
                     const appointment = await db.Appointment.findByPk(id);
                     if (appointment) {
                         // Find treatment course by serviceId and userId
-                        // Look for both 'pending' and 'active' courses (prioritize 'pending' first)
                         const treatmentCourse = await db.TreatmentCourse.findOne({
                             where: {
                                 serviceId: appointment.serviceId,
                                 clientId: appointment.userId,
-                                status: { [Op.in]: ['pending', 'active'] }
+                                status: 'active'
                             },
                             order: [
-                                [db.sequelize.literal("CASE WHEN status = 'pending' THEN 0 ELSE 1 END"), 'ASC'],
                                 ['createdAt', 'DESC']
-                            ] // Get 'pending' first, then most recent
+                            ]
                         });
                         
                         if (treatmentCourse) {

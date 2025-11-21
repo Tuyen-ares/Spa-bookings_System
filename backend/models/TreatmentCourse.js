@@ -65,7 +65,7 @@ module.exports = (sequelize) => {
       comment: 'ID nhân viên phụ trách',
     },
     status: {
-      type: DataTypes.ENUM('active', 'completed', 'expired', 'cancelled', 'pending'),
+      type: DataTypes.ENUM('active', 'completed', 'expired', 'cancelled'),
       allowNull: false,
       defaultValue: 'active',
       comment: 'Trạng thái liệu trình',

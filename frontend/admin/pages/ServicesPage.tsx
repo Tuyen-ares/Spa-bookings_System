@@ -101,15 +101,21 @@ const ServicesPage: React.FC = () => {
 
     const handleSaveService = async (serviceData: ServiceWithStatus) => {
         try {
+            const isEditing = Boolean(editingService);
             let savedService: Service;
-            if (serviceData.id) {
-                savedService = await apiService.updateService(serviceData.id, serviceData);
+
+            if (isEditing && editingService) {
+                savedService = await apiService.updateService(editingService.id, serviceData);
             } else {
+                if (!serviceData.id) {
+                    throw new Error('Mã dịch vụ bị thiếu, vui lòng nhập đầy đủ.');
+                }
                 savedService = await apiService.createService(serviceData);
             }
             
             // Close modal first
             setIsAddEditModalOpen(false);
+            setEditingService(null);
             
             // Show loading state
             setIsLoadingServices(true);
@@ -127,6 +133,7 @@ const ServicesPage: React.FC = () => {
             setToast({ visible: true, message: `Lưu dịch vụ thất bại: ${err.message}` });
             setTimeout(() => setToast({ visible: false, message: '' }), 4000);
             setIsAddEditModalOpen(false);
+            setEditingService(null);
         }
     };
 

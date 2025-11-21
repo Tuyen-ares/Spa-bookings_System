@@ -13,6 +13,9 @@ class ServiceController {
                     console.log(`Service ${index + 1}:`, {
                         id: service.id,
                         name: service.name,
+                        price: service.price,
+                        discountPercent: service.discountPercent,
+                        discountPrice: service.discountPrice,
                         isActive: service.isActive,
                         categoryId: service.categoryId,
                         hasImageUrl: !!service.imageUrl
