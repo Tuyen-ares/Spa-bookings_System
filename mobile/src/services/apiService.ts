@@ -19,18 +19,18 @@ const getApiBaseUrl = () => {
   if (Platform.OS === 'web') {
     return 'http://localhost:3001/api';
   }
-  // For Android emulator, use 10.0.2.2 to access host machine's localhost
-  // For Android physical device, use your computer's real IP address (e.g., 192.168.1.158)
+  // For Android emulator/device, use your computer's real IP address
+  // This is your machine's IP: 192.168.80.1
+  // Make sure your backend is accessible from this IP
   if (Platform.OS === 'android') {
-    // Try 10.0.2.2 first (for emulator), fallback to actual IP if needed
-    return 'http://10.0.2.2:3001/api';
+    return 'http://192.168.80.1:3001/api';
   }
   // iOS Simulator: can use localhost directly
   if (Platform.OS === 'ios') {
     return 'http://localhost:3001/api';
   }
   // Fallback
-  return 'http://10.0.2.2:3001/api';
+  return 'http://192.168.80.1:3001/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -41,12 +41,15 @@ let apiClient: AxiosInstance;
 export const initializeApi = async () => {
   const token = await AsyncStorage.getItem('token');
 
+  console.log('🔗 API Base URL:', API_BASE_URL); // Debug log
+
   apiClient = axios.create({
     baseURL: API_BASE_URL,
     headers: {
       'Content-Type': 'application/json',
       ...(token && { 'Authorization': `Bearer ${token}` })
-    }
+    },
+    timeout: 10000, // 10 seconds timeout
   });
 
   // Add response interceptor for error handling
@@ -58,9 +61,25 @@ export const initializeApi = async () => {
         await AsyncStorage.removeItem('token');
         await AsyncStorage.removeItem('user');
       }
+
+      // Debug network errors
+      if (error.code === 'ECONNREFUSED' || error.message.includes('Network Error')) {
+        console.error('❌ API Connection Error:', error.message);
+        console.error('🔗 Attempted URL:', error.config?.url);
+        console.error('🔗 Base URL:', API_BASE_URL);
+      }
+
       return Promise.reject(error);
     }
   );
+
+  // Test connection on initialization
+  try {
+    // Just log that we're trying to connect
+    console.log('🔄 Testing API connection to:', API_BASE_URL);
+  } catch (error) {
+    console.error('❌ API initialization error:', error);
+  }
 
   return apiClient;
 };

@@ -1,13 +1,15 @@
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator, StyleSheet, Text, SafeAreaView, StatusBar as RNStatusBar } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text, StatusBar as RNStatusBar } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeApi } from './src/services/apiService';
 
 export default function App() {
   const [isReady, setIsReady] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     const prepareApp = async () => {
@@ -21,8 +23,10 @@ export default function App() {
         console.log('App: API client initialized');
         setIsReady(true);
         console.log('App: Ready!');
-      } catch (error) {
+        setError(null);
+      } catch (error: any) {
         console.error('Error preparing app:', error);
+        setError(error);
         // Still set ready even if there's an error
         setIsReady(true);
       }
@@ -31,23 +35,40 @@ export default function App() {
     prepareApp();
   }, []);
 
+  // Error boundary - show error if initialization failed
+  if (error) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.loadingContainer} edges={['top', 'bottom']}>
+          <RNStatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+          <View style={styles.loadingContent}>
+            <Text style={styles.errorText}>Lỗi khởi tạo ứng dụng</Text>
+            <Text style={styles.errorDetail}>{error.message}</Text>
+          </View>
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
+
   if (!isReady) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <RNStatusBar barStyle="dark-content" backgroundColor="#ffffff" />
-        <View style={styles.loadingContent}>
-          <ActivityIndicator size="large" color="#8b5cf6" />
-          <Text style={styles.loadingText}>Đang tải ứng dụng...</Text>
-        </View>
-      </SafeAreaView>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.loadingContainer} edges={['top', 'bottom']}>
+          <RNStatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+          <View style={styles.loadingContent}>
+            <ActivityIndicator size="large" color="#8b5cf6" />
+            <Text style={styles.loadingText}>Đang tải ứng dụng...</Text>
+          </View>
+        </SafeAreaView>
+      </SafeAreaProvider>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaProvider>
       <RNStatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       <RootNavigator />
-    </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
@@ -69,5 +90,17 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: '#666666',
+  },
+  errorText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#ef4444',
+    marginBottom: 8,
+  },
+  errorDetail: {
+    fontSize: 14,
+    color: '#666666',
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
 });

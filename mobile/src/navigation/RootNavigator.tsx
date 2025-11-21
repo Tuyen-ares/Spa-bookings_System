@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View, StyleSheet, SafeAreaView } from 'react-native';
+import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer } from '@react-navigation/native';
@@ -15,6 +16,7 @@ const Stack = createNativeStackNavigator();
 export const RootNavigator = () => {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -29,8 +31,10 @@ export const RootNavigator = () => {
         } else {
           setIsLoggedIn(false);
         }
-      } catch (error) {
+        setError(null);
+      } catch (error: any) {
         console.error('Error checking auth:', error);
+        setError(error);
         setIsLoggedIn(false);
       }
     };
@@ -60,10 +64,17 @@ export const RootNavigator = () => {
 
   if (isLoggedIn === null) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer} edges={['top', 'bottom']}>
         <StatusBar style="auto" />
         <View style={styles.loadingContent}>
           <ActivityIndicator size="large" color="#8b5cf6" />
+          {error && (
+            <View style={{ marginTop: 16, padding: 16 }}>
+              <Text style={{ color: '#ef4444', fontSize: 12, textAlign: 'center' }}>
+                Lỗi: {error.message}
+              </Text>
+            </View>
+          )}
         </View>
       </SafeAreaView>
     );
