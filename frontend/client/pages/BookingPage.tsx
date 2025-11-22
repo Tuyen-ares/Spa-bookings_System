@@ -191,7 +191,19 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             
             setServices(activeServices);
             setCategories(categoriesData || []);
-            setPromotions(promotionsData.filter(p => p.isActive));
+            // Parse applicableServiceIds if they're strings (from JSON)
+            const parsedPromotions = promotionsData.filter(p => p.isActive).map(p => {
+                if (p.applicableServiceIds && typeof p.applicableServiceIds === 'string') {
+                    try {
+                        p.applicableServiceIds = JSON.parse(p.applicableServiceIds);
+                    } catch (e) {
+                        console.error('Error parsing applicableServiceIds for promotion', p.code, e);
+                        p.applicableServiceIds = [];
+                    }
+                }
+                return p;
+            });
+            setPromotions(parsedPromotions);
             setTreatmentCourses(coursesData);
             setReviews(reviewsData);
             setAllAppointments(appointmentsData);
@@ -771,36 +783,38 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 <div className="mb-6">
                     <label className="block text-gray-700 font-semibold mb-2">Mã giảm giá (nếu có)</label>
                     <div className="flex items-center gap-2 mb-3">
-                        <input
-                            type="text"
+                        <select
                             value={promoCode}
-                            onChange={(e) => setPromoCode(e.target.value)}
-                            placeholder="Nhập mã giảm giá"
-                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                        />
-                        <button
-                            onClick={() => {
-                                if (!promoCode.trim()) {
-                                    alert('Vui lòng nhập mã khuyến mãi');
+                            onChange={(e) => {
+                                const selectedCode = e.target.value;
+                                setPromoCode(selectedCode);
+                                
+                                if (!selectedCode) {
+                                    setSelectedPromotion(null);
                                     return;
                                 }
-                                // Find promotion by code (case-insensitive) from applicable promotions first
+                                
+                                // Find promotion by code from applicable promotions first, then from all public promotions
                                 const promo = applicablePromotions.find(p => 
-                                    p.code && promoCode && 
-                                    p.code.toUpperCase().trim() === promoCode.toUpperCase().trim()
+                                    p.code && selectedCode && 
+                                    p.code.toUpperCase().trim() === selectedCode.toUpperCase().trim()
                                 ) || promotions.find(p => 
-                                    p.code && promoCode && 
-                                    p.code.toUpperCase().trim() === promoCode.toUpperCase().trim()
+                                    p.code && selectedCode && 
+                                    p.code.toUpperCase().trim() === selectedCode.toUpperCase().trim() &&
+                                    p.isPublic === true // Only public promotions
                                 );
+                                
                                 if (promo) {
                                     // Check if promotion is active
                                     if (promo.isActive === false) {
                                         alert('Mã khuyến mãi này không còn hoạt động');
+                                        setPromoCode('');
                                         return;
                                     }
                                     // Check if promotion has stock (số lượng còn lại)
                                     if (promo.stock !== null && promo.stock <= 0) {
                                         alert('Mã khuyến mãi đã hết lượt sử dụng');
+                                        setPromoCode('');
                                         return;
                                     }
                                     // Check expiry
@@ -810,18 +824,157 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                     expiryDate.setHours(0, 0, 0, 0);
                                     if (today > expiryDate) {
                                         alert('Mã khuyến mãi đã hết hạn');
+                                        setPromoCode('');
                                         return;
                                     }
                                     setSelectedPromotion(promo);
-                                    setPromoCode(''); // Clear input after successful apply
                                 } else {
-                                    alert('Mã giảm giá không hợp lệ');
+                                    setSelectedPromotion(null);
                                 }
                             }}
-                            className="px-6 py-2 bg-amber-700 text-white rounded-lg hover:bg-amber-800 font-semibold"
+                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white"
                         >
-                            Áp dụng
-                        </button>
+                            <option value="">-- Chọn mã giảm giá --</option>
+                            {(() => {
+                                // Get all public promotions that are active and not expired
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                
+                                // Get selected service IDs
+                                const selectedServiceIds = selectedServices.map(({ service }) => service.id);
+                                
+                                // If no services selected, don't show any promotions
+                                if (selectedServiceIds.length === 0) {
+                                    return null;
+                                }
+                                
+                                // Filter promotions based on conditions
+                                const filteredPromotions = promotions.filter(p => {
+                                    // Must be public
+                                    if (p.isPublic !== true) return false;
+                                    
+                                    // Must be active
+                                    if (p.isActive === false) return false;
+                                    
+                                    // Check expiry
+                                    const expiryDate = new Date(p.expiryDate);
+                                    expiryDate.setHours(0, 0, 0, 0);
+                                    if (today > expiryDate) return false;
+                                    
+                                    // Check stock
+                                    if (p.stock !== null && p.stock <= 0) return false;
+                                    
+                                    // IMPORTANT: Check if promotion applies to selected services
+                                    // Parse applicableServiceIds if it's a string (from JSON)
+                                    let applicableServiceIdsArray: string[] = [];
+                                    if (p.applicableServiceIds) {
+                                        if (typeof p.applicableServiceIds === 'string') {
+                                            try {
+                                                applicableServiceIdsArray = JSON.parse(p.applicableServiceIds);
+                                            } catch (e) {
+                                                console.error('Error parsing applicableServiceIds:', e);
+                                                applicableServiceIdsArray = [];
+                                            }
+                                        } else if (Array.isArray(p.applicableServiceIds)) {
+                                            applicableServiceIdsArray = p.applicableServiceIds;
+                                        }
+                                    }
+                                    
+                                    // If promotion has applicableServiceIds and it's not empty, it must match at least one selected service
+                                    if (applicableServiceIdsArray && applicableServiceIdsArray.length > 0) {
+                                        // Promotion is for specific services - check if any selected service matches
+                                        const matchesService = selectedServiceIds.some(serviceId => 
+                                            applicableServiceIdsArray.includes(serviceId)
+                                        );
+                                        if (!matchesService) {
+                                            // Promotion doesn't apply to any selected service - DON'T SHOW IT
+                                            return false;
+                                        }
+                                    }
+                                    // If applicableServiceIds is empty/null, promotion applies to all services (no filter needed)
+                                    
+                                    // Filter by target audience
+                                    if (p.targetAudience === 'Birthday') {
+                                        // Only show if today is user's birthday
+                                        if (!isBirthday) return false;
+                                    } else if (p.targetAudience === 'New Clients') {
+                                        // Only show if user hasn't used this service before
+                                        if (!currentUser) return false;
+                                        
+                                        // Check if user has used any of the selected services
+                                        // For new client promotions, check each service individually
+                                        const hasUsedAnySelectedService = selectedServiceIds.some(serviceId => {
+                                            return userAppointments.some(apt => 
+                                                apt.serviceId === serviceId && 
+                                                apt.status === 'completed'
+                                            );
+                                        });
+                                        
+                                        // If user has used any selected service, don't show new client promotion
+                                        if (hasUsedAnySelectedService) return false;
+                                        
+                                        // For new client promotions with specific services, 
+                                        // we already checked applicableServiceIds above
+                                    }
+                                    // For "All" and other target audiences, no additional filtering needed
+                                    
+                                    return true;
+                                });
+                                
+                                // Also include applicable promotions from API (which backend already filtered)
+                                // But we need to filter them again by selected services
+                                const filteredApplicablePromotions = applicablePromotions.filter(p => {
+                                    if (p.isPublic !== true) return false;
+                                    if (p.isActive !== false) return false;
+                                    if (p.stock !== null && p.stock <= 0) return false;
+                                    
+                                    // Parse applicableServiceIds if it's a string (from JSON)
+                                    let applicableServiceIdsArray: string[] = [];
+                                    if (p.applicableServiceIds) {
+                                        if (typeof p.applicableServiceIds === 'string') {
+                                            try {
+                                                applicableServiceIdsArray = JSON.parse(p.applicableServiceIds);
+                                            } catch (e) {
+                                                console.error('Error parsing applicableServiceIds:', e);
+                                                applicableServiceIdsArray = [];
+                                            }
+                                        } else if (Array.isArray(p.applicableServiceIds)) {
+                                            applicableServiceIdsArray = p.applicableServiceIds;
+                                        }
+                                    }
+                                    
+                                    // Check if promotion applies to selected services
+                                    if (applicableServiceIdsArray && applicableServiceIdsArray.length > 0) {
+                                        const matchesService = selectedServiceIds.some(serviceId => 
+                                            applicableServiceIdsArray.includes(serviceId)
+                                        );
+                                        if (!matchesService) return false;
+                                    }
+                                    
+                                    return true;
+                                });
+                                
+                                // Combine both lists
+                                const allAvailablePromotions = [
+                                    ...filteredApplicablePromotions,
+                                    ...filteredPromotions
+                                ];
+                                
+                                // Remove duplicates by code
+                                const uniquePromotions = Array.from(
+                                    new Map(allAvailablePromotions.map(p => [p.code, p])).values()
+                                );
+                                
+                                return uniquePromotions.map(promo => (
+                                    <option key={promo.id} value={promo.code}>
+                                        {promo.code} - {promo.title} 
+                                        {promo.discountType === 'percentage' 
+                                            ? ` (Giảm ${promo.discountValue}%)` 
+                                            : ` (Giảm ${formatPrice(promo.discountValue)})`}
+                                    </option>
+                                ));
+                            })()}
+                        </select>
                     </div>
                     
                     {selectedPromotion && (
@@ -857,7 +1010,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
                 <div className="flex justify-between">
                     <button
-                        onClick={() => setCurrentStep(3)}
+                        onClick={() => setCurrentStep(2)}
                         className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
                     >
                         Trước

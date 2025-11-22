@@ -129,13 +129,6 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
     }, [service, allPromotions]);
 
 
-    const suitableTherapists = useMemo(() => {
-        if (!service || allUsers.length === 0) return [];
-        // Note: specialty field removed from users table in db.txt
-        // Show all Staff as technicians since we can't filter by specialty anymore
-        const technicians = allUsers.filter(u => u.role === 'Staff');
-        return technicians.slice(0, 3).map(t => t.name);
-    }, [service, allUsers]);
     
     const relatedServices = useMemo(() => {
         if (!service || allServices.length === 0) return [];
@@ -357,16 +350,10 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
                                 </div>
                             </div>
 
-                             <div className="mb-6">
-                                <h3 className="font-semibold text-brand-dark mb-3">Chuyên viên phù hợp:</h3>
-                                <div className="flex flex-wrap gap-3">
-                                    {suitableTherapists.length > 0 ? (
-                                        suitableTherapists.map(therapist => (
-                                            <span key={therapist} className="bg-brand-secondary text-brand-dark text-sm font-medium px-3 py-1 rounded-full">{therapist}</span>
-                                        ))
-                                    ) : (
-                                        <span className="text-sm text-gray-500 italic">Chưa có chuyên viên phù hợp.</span>
-                                    )}
+                            <div className="mb-6">
+                                <h3 className="font-semibold text-brand-dark mb-4">Mô tả chi tiết:</h3>
+                                <div className="text-gray-700 leading-relaxed whitespace-pre-line">
+                                    {service.description || 'Chưa có mô tả chi tiết cho dịch vụ này.'}
                                 </div>
                             </div>
                         </div>

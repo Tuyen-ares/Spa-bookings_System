@@ -74,6 +74,12 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: true,
       comment: 'true = public (hiển thị trên trang khách hàng), false = private (chỉ dùng khi biết mã)',
     },
+    pointsRequired: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null,
+      comment: 'Số điểm cần thiết để đổi voucher (chỉ áp dụng cho voucher private)',
+    },
   }, {
     tableName: 'promotions',
     timestamps: false,

@@ -24,6 +24,7 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
         applicableServiceIds: [],
         minOrderValue: 0,
         isPublic: true, // Default to public
+        pointsRequired: null,
     });
     const [imagePreview, setImagePreview] = useState<string>(promotion?.imageUrl || '');
 
@@ -34,18 +35,57 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
 
     useEffect(() => {
         if (promotion) {
+            // Normalize isPublic: convert 0/1/null/true/false to boolean
+            let normalizedIsPublic: boolean;
+            if (promotion.isPublic === true || 
+                promotion.isPublic === 1 || 
+                promotion.isPublic === '1' || 
+                String(promotion.isPublic).toLowerCase() === 'true') {
+                normalizedIsPublic = true;
+            } else {
+                normalizedIsPublic = false;
+            }
+            
             setFormData({
                 ...promotion,
+                isPublic: normalizedIsPublic, // Ensure it's a boolean
+                pointsRequired: promotion.pointsRequired ? Number(promotion.pointsRequired) : null,
                 applicableServiceIds: promotion.applicableServiceIds || [],
             });
             setImagePreview(promotion.imageUrl || '');
+        } else {
+            // Reset form when no promotion (creating new)
+            setFormData({
+                title: '',
+                description: '',
+                code: '',
+                expiryDate: '',
+                imageUrl: '',
+                discountType: 'percentage',
+                discountValue: 0,
+                termsAndConditions: '',
+                targetAudience: 'All',
+                applicableServiceIds: [],
+                minOrderValue: 0,
+                isPublic: true, // Default to public
+                pointsRequired: null,
+            });
+            setImagePreview('');
         }
     }, [promotion]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
         if (type === 'number') {
-            setFormData(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+            // For pointsRequired, allow null/empty (user can leave it blank)
+            if (name === 'pointsRequired') {
+                setFormData(prev => ({ 
+                    ...prev, 
+                    [name]: value === '' ? null : (parseInt(value) || null) 
+                }));
+            } else {
+                setFormData(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+            }
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
@@ -81,7 +121,30 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(formData as Promotion);
+        // Ensure isPublic is properly set (boolean, not undefined)
+        // formData.isPublic should already be a boolean from the checkbox
+        const isPublicValue = formData.isPublic !== false && formData.isPublic !== undefined;
+        
+        // If switching to private, ensure pointsRequired is set
+        if (!isPublicValue) {
+            const pointsValue = formData.pointsRequired ? Number(formData.pointsRequired) : null;
+            if (!pointsValue || pointsValue <= 0) {
+                alert('Vui lòng nhập số điểm cần thiết để đổi voucher (phải lớn hơn 0) khi chuyển sang voucher riêng tư.');
+                return;
+            }
+        }
+        
+        const submitData = {
+            ...formData,
+            isPublic: isPublicValue, // Explicitly set to boolean
+            // If isPublic is false and pointsRequired is empty/null, set to null
+            // If isPublic is true, pointsRequired should be null
+            pointsRequired: !isPublicValue 
+                ? (formData.pointsRequired && formData.pointsRequired > 0 ? Number(formData.pointsRequired) : null)
+                : null
+        };
+        console.log('Submitting promotion data:', JSON.stringify(submitData, null, 2));
+        onSave(submitData as Promotion);
     };
 
     const getTierLevelOptions = useMemo(() => {
@@ -216,6 +279,25 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
                                         : '⚠ Voucher riêng tư - chỉ ai biết mã hoặc được admin gửi mã mới có thể sử dụng'}
                                 </p>
                             </div>
+                            
+                            {formData.isPublic === false && (
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700">
+                                        Số điểm cần thiết để đổi voucher
+                                    </label>
+                                    <input 
+                                        type="number" 
+                                        name="pointsRequired" 
+                                        value={formData.pointsRequired || ''} 
+                                        onChange={handleChange} 
+                                        placeholder="Nhập số điểm (ví dụ: 100)"
+                                        className="mt-1 w-full p-2 border rounded" 
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Khách hàng cần có đủ số điểm này để đổi voucher. Để trống nếu không cho phép đổi bằng điểm.
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     </div>
                     <div className="bg-gray-50 px-6 py-4 flex justify-end gap-4 rounded-b-lg">

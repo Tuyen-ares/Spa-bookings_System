@@ -58,8 +58,8 @@ router.put('/:userId', async (req, res) => {
     }
 });
 
-// GET /api/wallets/:userId/points-history - Get user's points history from wallet
-// Note: pointsHistory field has been removed from wallets table
+// GET /api/wallets/:userId/points-history - Get user's points history from payments
+// Calculate points from completed payments: 1000 VND = 1 point
 router.get('/:userId/points-history', async (req, res) => {
     const { userId } = req.params;
     try {
@@ -67,8 +67,39 @@ router.get('/:userId/points-history', async (req, res) => {
         if (!wallet) {
             return res.status(404).json({ message: 'Wallet not found' });
         }
-        // Return empty array as pointsHistory is no longer stored in wallets table
-        res.json([]);
+        
+        // Get all completed payments for this user
+        const payments = await db.Payment.findAll({
+            where: {
+                userId: userId,
+                status: 'Completed'
+            },
+            include: [{
+                model: db.Appointment,
+                as: 'Appointment',
+                attributes: ['id', 'serviceName', 'serviceId'],
+                required: false
+            }],
+            order: [['date', 'DESC']]
+        });
+        
+        // Convert payments to points history entries
+        // 1000 VND = 1 point
+        const pointsHistory = payments.map(payment => {
+            const amount = parseFloat(payment.amount) || 0;
+            const pointsEarned = Math.floor(amount / 1000);
+            const serviceName = payment.serviceName || payment.Appointment?.serviceName || 'Dịch vụ';
+            
+            return {
+                date: payment.date.toISOString().split('T')[0],
+                pointsChange: pointsEarned,
+                type: 'earned',
+                source: 'payment',
+                description: `Thanh toán ${serviceName}: +${pointsEarned} điểm (${amount.toLocaleString('vi-VN')} VNĐ)`
+            };
+        });
+        
+        res.json(pointsHistory);
     } catch (error) {
         console.error('Error fetching points history:', error);
         res.status(500).json({ message: 'Internal server error' });

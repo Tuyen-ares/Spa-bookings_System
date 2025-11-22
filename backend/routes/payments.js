@@ -123,6 +123,30 @@ router.post('/', async (req, res) => {
             date: new Date().toISOString(),
             ...newPaymentData,
         });
+        
+        // Update wallet: add points (1000 VND = 1 point) and update totalSpent
+        if (newPaymentData.userId) {
+            try {
+                const wallet = await db.Wallet.findOne({ where: { userId: newPaymentData.userId } });
+                if (wallet) {
+                    const amount = parseFloat(newPaymentData.amount) || 0;
+                    const pointsEarned = Math.floor(amount / 1000);
+                    const currentPoints = wallet.points || 0;
+                    const currentTotalSpent = parseFloat(wallet.totalSpent?.toString() || '0');
+                    
+                    await wallet.update({
+                        points: currentPoints + pointsEarned,
+                        totalSpent: currentTotalSpent + amount,
+                        lastUpdated: new Date()
+                    });
+                    console.log(`Wallet updated: +${pointsEarned} points, total: ${currentPoints + pointsEarned} points`);
+                }
+            } catch (walletError) {
+                console.error('Error updating wallet:', walletError);
+                // Don't fail payment if wallet update fails
+            }
+        }
+        
         res.status(201).json(createdPayment);
 
         // Notify admins about payment (async, don't wait)
@@ -172,6 +196,30 @@ router.put('/:id/complete', async (req, res) => {
         }
 
         await payment.update({ status: 'Completed', date: new Date().toISOString() });
+        
+        // Update wallet: add points (1000 VND = 1 point) and update totalSpent
+        if (payment.userId) {
+            try {
+                const wallet = await db.Wallet.findOne({ where: { userId: payment.userId } });
+                if (wallet) {
+                    const amount = parseFloat(payment.amount) || 0;
+                    const pointsEarned = Math.floor(amount / 1000);
+                    const currentPoints = wallet.points || 0;
+                    const currentTotalSpent = parseFloat(wallet.totalSpent?.toString() || '0');
+                    
+                    await wallet.update({
+                        points: currentPoints + pointsEarned,
+                        totalSpent: currentTotalSpent + amount,
+                        lastUpdated: new Date()
+                    });
+                    console.log(`Wallet updated: +${pointsEarned} points, total: ${currentPoints + pointsEarned} points`);
+                }
+            } catch (walletError) {
+                console.error('Error updating wallet:', walletError);
+                // Don't fail payment if wallet update fails
+            }
+        }
+        
         res.json(payment);
     } catch (error) {
         console.error('Error completing payment:', error);
@@ -444,6 +492,29 @@ router.get('/vnpay-return', async (req, res) => {
 
             console.log('Payment updated to Completed');
 
+            // Update wallet: add points (1000 VND = 1 point) and update totalSpent
+            if (payment.userId) {
+                try {
+                    const wallet = await db.Wallet.findOne({ where: { userId: payment.userId } });
+                    if (wallet) {
+                        const amount = parseFloat(payment.amount) || 0;
+                        const pointsEarned = Math.floor(amount / 1000);
+                        const currentPoints = wallet.points || 0;
+                        const currentTotalSpent = parseFloat(wallet.totalSpent?.toString() || '0');
+                        
+                        await wallet.update({
+                            points: currentPoints + pointsEarned,
+                            totalSpent: currentTotalSpent + amount,
+                            lastUpdated: new Date()
+                        });
+                        console.log(`Wallet updated: +${pointsEarned} points, total: ${currentPoints + pointsEarned} points`);
+                    }
+                } catch (walletError) {
+                    console.error('Error updating wallet:', walletError);
+                    // Don't fail payment if wallet update fails
+                }
+            }
+
             // Update appointment payment status and set status to 'pending' (awaiting admin confirmation)
             // Also update all appointments in the same booking group
             if (payment.appointmentId) {
@@ -599,6 +670,29 @@ router.post('/vnpay-ipn', async (req, res) => {
                 status: 'Completed',
                 transactionId: transactionId || orderId
             });
+
+            // Update wallet: add points (1000 VND = 1 point) and update totalSpent
+            if (payment.userId) {
+                try {
+                    const wallet = await db.Wallet.findOne({ where: { userId: payment.userId } });
+                    if (wallet) {
+                        const amount = parseFloat(payment.amount) || 0;
+                        const pointsEarned = Math.floor(amount / 1000);
+                        const currentPoints = wallet.points || 0;
+                        const currentTotalSpent = parseFloat(wallet.totalSpent?.toString() || '0');
+                        
+                        await wallet.update({
+                            points: currentPoints + pointsEarned,
+                            totalSpent: currentTotalSpent + amount,
+                            lastUpdated: new Date()
+                        });
+                        console.log(`IPN: Wallet updated: +${pointsEarned} points, total: ${currentPoints + pointsEarned} points`);
+                    }
+                } catch (walletError) {
+                    console.error('IPN: Error updating wallet:', walletError);
+                    // Don't fail payment if wallet update fails
+                }
+            }
 
             // Update appointment payment status and set status to 'pending' (awaiting admin confirmation)
             // Also update all appointments in the same booking group

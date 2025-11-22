@@ -89,9 +89,26 @@ export const getReviews = async (filters?: { serviceId?: string; userId?: string
     const params = new URLSearchParams(filters as any);
     return fetch(`${API_BASE_URL}/reviews?${params.toString()}`).then(handleResponse);
 };
-export const getPromotions = async (): Promise<Promotion[]> => fetch(`${API_BASE_URL}/promotions`).then(handleResponse);
-// Note: Vouchers, Missions, and RedeemedRewards functionality removed
-export const getRedeemableVouchers = async (): Promise<RedeemableVoucher[]> => Promise.resolve([]);
+export const getPromotions = async (params?: { userId?: string; serviceId?: string; all?: boolean }): Promise<Promotion[]> => {
+    const queryParams = new URLSearchParams();
+    if (params?.userId) queryParams.append('userId', params.userId);
+    if (params?.serviceId) queryParams.append('serviceId', params.serviceId);
+    if (params?.all === true) queryParams.append('all', 'true');
+    const queryString = queryParams.toString();
+    return fetch(`${API_BASE_URL}/promotions${queryString ? `?${queryString}` : ''}`).then(handleResponse);
+};
+// Get redeemable vouchers (private vouchers that can be redeemed with points)
+export const getRedeemableVouchers = async (): Promise<RedeemableVoucher[]> => {
+    const response = await fetch(`${API_BASE_URL}/promotions?redeemableOnly=true`);
+    return handleResponse(response);
+};
+export const redeemVoucherWithPoints = async (promotionId: string, userId: string): Promise<{ success: boolean; message: string; promotion: Promotion; remainingPoints: number }> => {
+    return fetch(`${API_BASE_URL}/promotions/${promotionId}/redeem`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ userId })
+    }).then(handleResponse);
+};
 export const getTiers = async (): Promise<Tier[]> => Promise.resolve([]);
 export const getUserWallet = async (userId: string): Promise<Wallet> => fetch(`${API_BASE_URL}/wallets/${userId}`).then(handleResponse);
 export const getUserPointsHistory = async (userId: string): Promise<Array<{date: string; pointsChange: number; type: string; source: string; description: string}>> => fetch(`${API_BASE_URL}/wallets/${userId}/points-history`).then(handleResponse);

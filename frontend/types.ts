@@ -136,6 +136,7 @@ export interface Promotion {
   stock?: number | null; // Số lượng còn lại (NULL = không giới hạn)
   isActive?: boolean;
   isPublic?: boolean; // true = public (hiển thị trên trang khách hàng), false = private (chỉ dùng khi biết mã)
+  pointsRequired?: number | null; // Số điểm cần thiết để đổi voucher (chỉ áp dụng cho voucher private)
 }
 
 export interface Review {

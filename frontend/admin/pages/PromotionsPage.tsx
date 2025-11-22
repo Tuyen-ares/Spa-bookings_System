@@ -69,6 +69,7 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
     const [error, setError] = useState<string | null>(null);
 
     // Promotion Management States
+    const [activeTab, setActiveTab] = useState<'vouchers' | 'redeemable'>('vouchers'); // Tab state: vouchers (public) or redeemable (private)
     const [isPromotionModalOpen, setIsPromotionModalOpen] = useState(false);
     const [editingPromotion, setEditingPromotion] = useState<Promotion | null>(null);
     const [promoSearchTerm, setPromoSearchTerm] = useState('');
@@ -84,7 +85,35 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
             try {
                 setIsLoading(true);
                 setError(null);
-                const fetchedPromotions = await apiService.getPromotions();
+                // Fetch all promotions (including private) for admin
+                const fetchedPromotions = await apiService.getPromotions({ all: true });
+                console.log('=== FETCHED FROM API ===');
+                console.log('Total fetched:', fetchedPromotions.length);
+                
+                // Check raw data from API - HƯỚNG ĐI MỚI: Dùng pointsRequired
+                const redeemableVouchers = fetchedPromotions.filter(p => {
+                    const pointsValue = p.pointsRequired;
+                    const isRedeemable = pointsValue !== null && pointsValue !== undefined && !isNaN(Number(pointsValue)) && Number(pointsValue) > 0;
+                    return isRedeemable;
+                });
+                console.log('Redeemable vouchers (pointsRequired > 0) from API:', redeemableVouchers.length);
+                if (redeemableVouchers.length > 0) {
+                    console.log('Details:', redeemableVouchers.map(p => ({ 
+                        id: p.id, 
+                        title: p.title, 
+                        pointsRequired: p.pointsRequired,
+                        pointsRequiredType: typeof p.pointsRequired
+                    })));
+                } else {
+                    console.log('⚠️ No redeemable vouchers (pointsRequired > 0) found in API response!');
+                    console.log('[DEBUG] All promotions from API:', fetchedPromotions.map(p => ({
+                        id: p.id,
+                        title: p.title.substring(0, 30),
+                        pointsRequired: p.pointsRequired,
+                        pointsRequiredType: typeof p.pointsRequired
+                    })));
+                }
+                
                 setPromotions(fetchedPromotions);
 
                 // Fetch wallets to calculate tier levels
@@ -113,6 +142,19 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
         fetchPromoData();
     }, [allServices, allTiers, allUsers, allAppointments, allReviews]); // Depend on global props to trigger re-fetch if they change
 
+    // Debug: Log when promotions state changes
+    useEffect(() => {
+        console.log('[STATE CHANGE] Promotions state updated:', promotions.length);
+        if (promotions.length > 0) {
+            const redeemableCount = promotions.filter(p => {
+                const pointsValue = p.pointsRequired;
+                const isRedeemable = pointsValue !== null && pointsValue !== undefined && !isNaN(Number(pointsValue)) && Number(pointsValue) > 0;
+                return isRedeemable;
+            }).length;
+            console.log('[STATE CHANGE] Redeemable vouchers (pointsRequired > 0) in state:', redeemableCount);
+        }
+    }, [promotions]);
+
     // --- Promotions Tab Logic ---
     const allServiceCategories = useMemo(() => {
         const categories = new Set(allServices.map(s => {
@@ -126,15 +168,123 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
     }, [allServices]);
 
     const filteredPromotions = useMemo(() => {
-        return promotions
-            .filter(promo => promo.title.toLowerCase().includes(promoSearchTerm.toLowerCase()) || promo.code.toLowerCase().includes(promoSearchTerm.toLowerCase()))
-            .filter(promo => promoFilterAudience === 'All' || promo.targetAudience === promoFilterAudience)
+        console.log('[FILTER] Starting filter with promotions:', promotions.length);
+        console.log('[FILTER] Active tab:', activeTab);
+        
+        // Normalize isPublic for all promotions first
+        const normalizedPromotions = promotions.map(promo => {
+            // Normalize isPublic: convert 0/1/'0'/'1'/true/false to boolean
+            let normalizedIsPublic: boolean;
+            const rawIsPublic = promo.isPublic;
+            
+            // Check if it's already a boolean
+            if (typeof rawIsPublic === 'boolean') {
+                normalizedIsPublic = rawIsPublic;
+            } else if (rawIsPublic === true || rawIsPublic === 1 || rawIsPublic === '1' || String(rawIsPublic).toLowerCase() === 'true') {
+                normalizedIsPublic = true;
+            } else {
+                normalizedIsPublic = false;
+            }
+            
+            // Also normalize pointsRequired
+            let normalizedPointsRequired: number | null = null;
+            if (promo.pointsRequired !== undefined && promo.pointsRequired !== null) {
+                const numPoints = Number(promo.pointsRequired);
+                normalizedPointsRequired = !isNaN(numPoints) ? numPoints : null;
+            }
+            
+            return {
+                ...promo,
+                isPublic: normalizedIsPublic,
+                pointsRequired: normalizedPointsRequired
+            };
+        });
+        
+        console.log('=== FILTERING PROMOTIONS ===');
+        console.log('Active tab:', activeTab);
+        console.log('Total promotions:', normalizedPromotions.length);
+        console.log('Normalized promotions:', normalizedPromotions.map(p => ({
+            id: p.id,
+            title: p.title.substring(0, 30),
+            isPublic: p.isPublic,
+            isPublicType: typeof p.isPublic,
+            pointsRequired: p.pointsRequired,
+            pointsRequiredType: typeof p.pointsRequired
+        })));
+        
+        const filtered = normalizedPromotions
+            // Filter by tab: vouchers (public) or redeemable (private)
+            // HƯỚNG ĐI MỚI: Sử dụng pointsRequired để phân biệt
+            // - pointsRequired > 0 → Voucher đổi thưởng (tab "Voucher đổi thưởng")
+            // - pointsRequired = 0 hoặc NULL → Voucher thông thường (tab "Voucher")
+            .filter(promo => {
+                if (activeTab === 'vouchers') {
+                    // Show vouchers that are NOT redeemable (pointsRequired = 0 or NULL)
+                    const pointsValue = promo.pointsRequired;
+                    const isRedeemable = pointsValue !== null && pointsValue !== undefined && !isNaN(Number(pointsValue)) && Number(pointsValue) > 0;
+                    const isNormalVoucher = !isRedeemable;
+                    return isNormalVoucher;
+                } else {
+                    // Show redeemable vouchers (pointsRequired > 0)
+                    const pointsValue = promo.pointsRequired;
+                    const isRedeemable = pointsValue !== null && pointsValue !== undefined && !isNaN(Number(pointsValue)) && Number(pointsValue) > 0;
+                    
+                    // Always log when checking for redeemable tab
+                    console.log(`[REDEEMABLE TAB] Checking: ${promo.id} "${promo.title.substring(0, 30)}" | pointsRequired: ${promo.pointsRequired} (${typeof promo.pointsRequired}) | isRedeemable: ${isRedeemable} | Result: ${isRedeemable}`);
+                    
+                    return isRedeemable;
+                }
+            })
+            // Apply search filter
+            .filter(promo => {
+                const matchesSearch = promo.title.toLowerCase().includes(promoSearchTerm.toLowerCase()) || 
+                                    promo.code.toLowerCase().includes(promoSearchTerm.toLowerCase());
+                if (!matchesSearch && activeTab === 'redeemable') {
+                    console.log(`[SEARCH FILTER] Excluding: ${promo.id} "${promo.title.substring(0, 30)}" - doesn't match search: "${promoSearchTerm}"`);
+                }
+                return matchesSearch;
+            })
+            // Apply audience filter
+            .filter(promo => {
+                const matchesAudience = promoFilterAudience === 'All' || promo.targetAudience === promoFilterAudience;
+                if (!matchesAudience && activeTab === 'redeemable') {
+                    console.log(`[AUDIENCE FILTER] Excluding: ${promo.id} "${promo.title.substring(0, 30)}" - doesn't match audience: "${promoFilterAudience}"`);
+                }
+                return matchesAudience;
+            })
+            // Apply category filter
             .filter(promo => {
                 if (promoFilterCategory === 'All') return true;
                 const applicableIds = promo.applicableServiceIds || [];
-                return applicableIds.some(id => allServices.find(s => s.id === id)?.category === promoFilterCategory);
+                const matchesCategory = applicableIds.some(id => allServices.find(s => s.id === id)?.category === promoFilterCategory);
+                if (!matchesCategory && activeTab === 'redeemable') {
+                    console.log(`[CATEGORY FILTER] Excluding: ${promo.id} "${promo.title.substring(0, 30)}" - doesn't match category: "${promoFilterCategory}"`);
+                }
+                return matchesCategory;
             });
-    }, [promotions, promoSearchTerm, promoFilterAudience, promoFilterCategory, allServices]);
+        
+        console.log(`[FILTER RESULT] Filtered ${filtered.length} promotions for tab "${activeTab}"`);
+        if (activeTab === 'redeemable') {
+            if (filtered.length > 0) {
+                console.log('[SUCCESS] Redeemable vouchers found:', filtered.map(p => ({
+                    id: p.id,
+                    title: p.title,
+                    isPublic: p.isPublic,
+                    pointsRequired: p.pointsRequired
+                })));
+            } else {
+                console.log('[WARNING] No redeemable vouchers found!');
+                console.log('[DEBUG] All normalized promotions:', normalizedPromotions.map(p => ({
+                    id: p.id,
+                    title: p.title.substring(0, 30),
+                    isPublic: p.isPublic,
+                    isPublicType: typeof p.isPublic
+                })));
+            }
+        }
+        
+        return filtered;
+    }, [promotions, activeTab, promoSearchTerm, promoFilterAudience, promoFilterCategory, allServices]);
 
     const promoTotalPages = Math.ceil(filteredPromotions.length / PROMOTIONS_PER_PAGE);
     const paginatedPromotions = useMemo<Promotion[]>(() => {
@@ -144,7 +294,7 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
 
     useEffect(() => {
         setPromoCurrentPage(1);
-    }, [promoSearchTerm, promoFilterAudience, promoFilterCategory]);
+    }, [promoSearchTerm, promoFilterAudience, promoFilterCategory, activeTab]);
 
     const handleAddPromotion = () => { setEditingPromotion(null); setIsPromotionModalOpen(true); };
     const handleEditPromotion = (promo: Promotion) => { setEditingPromotion(promo); setIsPromotionModalOpen(true); };
@@ -153,10 +303,28 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
             let savedPromo: Promotion;
             if (promoData.id) {
                 savedPromo = await apiService.updatePromotion(promoData.id, promoData);
-                setPromotions(prev => prev.map(p => p.id === savedPromo.id ? savedPromo : p));
+                // Normalize the saved promotion data before updating state
+                const normalizedSavedPromo = {
+                    ...savedPromo,
+                    isPublic: savedPromo.isPublic === true || 
+                             savedPromo.isPublic === 1 || 
+                             savedPromo.isPublic === '1' ||
+                             String(savedPromo.isPublic).toLowerCase() === 'true',
+                    pointsRequired: savedPromo.pointsRequired ? Number(savedPromo.pointsRequired) : null
+                };
+                setPromotions(prev => prev.map(p => p.id === normalizedSavedPromo.id ? normalizedSavedPromo : p));
             } else {
                 savedPromo = await apiService.createPromotion(promoData);
-                setPromotions(prev => [savedPromo, ...prev]);
+                // Normalize the saved promotion data before updating state
+                const normalizedSavedPromo = {
+                    ...savedPromo,
+                    isPublic: savedPromo.isPublic === true || 
+                             savedPromo.isPublic === 1 || 
+                             savedPromo.isPublic === '1' ||
+                             String(savedPromo.isPublic).toLowerCase() === 'true',
+                    pointsRequired: savedPromo.pointsRequired ? Number(savedPromo.pointsRequired) : null
+                };
+                setPromotions(prev => [normalizedSavedPromo, ...prev]);
             }
             setToast({ visible: true, message: `Lưu khuyến mãi ${savedPromo.title} thành công!` });
         } catch (err: any) {
@@ -233,6 +401,30 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
             )}
 
             <h1 className="text-3xl font-bold text-gray-800 mb-6">Quản lý Khuyến mãi</h1>
+            
+            {/* Tab Navigation */}
+            <div className="mb-6 flex border-b border-gray-200">
+                <button
+                    onClick={() => setActiveTab('vouchers')}
+                    className={`px-6 py-3 font-medium text-lg transition-colors ${
+                        activeTab === 'vouchers'
+                            ? 'border-b-2 border-brand-primary text-brand-dark'
+                            : 'text-gray-500 hover:text-brand-dark'
+                    }`}
+                >
+                    Voucher
+                </button>
+                <button
+                    onClick={() => setActiveTab('redeemable')}
+                    className={`px-6 py-3 font-medium text-lg transition-colors ${
+                        activeTab === 'redeemable'
+                            ? 'border-b-2 border-brand-primary text-brand-dark'
+                            : 'text-gray-500 hover:text-brand-dark'
+                    }`}
+                >
+                    Voucher đổi thưởng
+                </button>
+            </div>
             
             {isLoading ? (
                 <div className="text-center py-10 bg-white rounded-lg shadow-md">

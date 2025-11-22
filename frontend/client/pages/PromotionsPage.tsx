@@ -72,7 +72,7 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
     const [showConfetti, setShowConfetti] = useState(false);
     const [qrModalData, setQrModalData] = useState<{ code: string; title: string } | null>(null);
 
-    const [activeTab, setActiveTab] = useState<'my_offers' | 'general' | 'history'>('my_offers');
+    const [activeTab, setActiveTab] = useState<'my_offers' | 'general' | 'history' | 'redeem'>('my_offers');
     
     // Lucky Wheel State
     const [isSpinning, setIsSpinning] = useState(false);
@@ -83,15 +83,16 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
         const fetchData = async () => {
             try {
                 const [fetchedPromotions, fetchedRedeemable, fetchedLuckyPrizes, fetchedServices, userAppointments] = await Promise.all([
-                    apiService.getPromotions(),
+                    apiService.getPromotions(currentUser ? { userId: currentUser.id } : undefined),
                     apiService.getRedeemableVouchers(),
                     apiService.getLuckyWheelPrizes(),
                     apiService.getServices(),
                     currentUser ? apiService.getUserAppointments(currentUser.id) : Promise.resolve([]),
                 ]);
 
+                console.log('Fetched redeemable vouchers:', fetchedRedeemable);
                 setPromotions(fetchedPromotions);
-                setRedeemableVouchers(fetchedRedeemable);
+                setRedeemableVouchers(fetchedRedeemable || []);
                 setLuckyWheelPrizes(fetchedLuckyPrizes);
                 setAllServices(fetchedServices);
                 setAllAppointments(userAppointments);
@@ -102,7 +103,11 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                     const fetchedWallet = await apiService.getUserWallet(currentUser.id);
                     setWallet(fetchedWallet);
                 }
-            } catch (error) { console.error("Failed to fetch promotions page data:", error); }
+            } catch (error) { 
+                console.error("Failed to fetch promotions page data:", error); 
+                // Set empty array on error to prevent undefined
+                setRedeemableVouchers([]);
+            }
         };
         fetchData();
     }, [currentUser, setWallet]);
@@ -124,12 +129,75 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
         }
     }, [currentUser, allServices, allAppointments, promotions]);
 
-    const isBirthdayMonth = useMemo(() => {
+    // Check if today is user's birthday
+    const isBirthdayToday = useMemo(() => {
         if (!currentUser?.birthday) return false;
         const today = new Date();
         const birthDate = new Date(currentUser.birthday);
-        return today.getMonth() === birthDate.getMonth();
+        return today.getMonth() === birthDate.getMonth() && today.getDate() === birthDate.getDate();
     }, [currentUser]);
+    
+    // Check if user has used a service (for New Clients vouchers)
+    const hasUsedService = useMemo(() => {
+        if (!currentUser || allAppointments.length === 0) return false;
+        // Check if user has any completed/paid appointments
+        return allAppointments.some(app => 
+            (app.status === 'completed' || app.status === 'upcoming' || app.status === 'scheduled') && 
+            app.paymentStatus === 'Paid'
+        );
+    }, [currentUser, allAppointments]);
+    
+    // Get available vouchers for "Ưu đãi của tôi" tab
+    const myAvailableVouchers = useMemo(() => {
+        if (!currentUser) return [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        return promotions.filter(promo => {
+            // Only show active, non-expired promotions
+            if (!promo.isActive) return false;
+            const expiryDate = new Date(promo.expiryDate);
+            expiryDate.setHours(0, 0, 0, 0);
+            if (today > expiryDate) return false;
+            if (promo.stock !== null && promo.stock <= 0) return false;
+            
+            // Show birthday vouchers if today is birthday
+            if (promo.targetAudience === 'Birthday' && isBirthdayToday) {
+                return true;
+            }
+            
+            // Show new client vouchers if user hasn't used any service
+            if (promo.targetAudience === 'New Clients' && !hasUsedService) {
+                return true;
+            }
+            
+            return false;
+        });
+    }, [currentUser, promotions, isBirthdayToday, hasUsedService]);
+    
+    // Get all public promotions for "Ưu đãi chung" tab
+    const generalPromotions = useMemo(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        return promotions.filter(promo => {
+            if (!promo.isActive) return false;
+            if (promo.isPublic !== true) return false; // Only show public promotions
+            const expiryDate = new Date(promo.expiryDate);
+            expiryDate.setHours(0, 0, 0, 0);
+            if (today > expiryDate) return false;
+            if (promo.stock !== null && promo.stock <= 0) return false;
+            return true;
+        });
+    }, [promotions]);
+    
+    // Get private vouchers that can be redeemed with points
+    // Use redeemableVouchers from API - display ALL vouchers regardless of user points
+    const redeemablePrivateVouchers = useMemo(() => {
+        // Display all redeemable vouchers, even if user is not logged in or doesn't have enough points
+        // The API already filters for isPublic: false, pointsRequired > 0, isActive: true, not expired, and has stock
+        return redeemableVouchers || [];
+    }, [redeemableVouchers]);
     
     const handleOpenBirthdayGift = () => {
         setIsBirthdayGiftOpened(true);
@@ -231,6 +299,50 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
     const handleRedeemVoucher = async (voucher: RedeemableVoucher) => { /* existing logic */ };
     const handleClaimPromotion = async (promoToClaim: Promotion) => { /* existing logic */ };
     
+    const handleRedeemWithPoints = async (promotion: Promotion) => {
+        if (!currentUser || !wallet) return;
+        
+        if (wallet.points < (promotion.pointsRequired || 0)) {
+            alert(`Bạn cần ${promotion.pointsRequired} điểm để đổi voucher này. Bạn hiện có ${wallet.points} điểm.`);
+            return;
+        }
+        
+        if (!window.confirm(`Bạn có chắc muốn đổi ${promotion.pointsRequired} điểm để lấy voucher "${promotion.title}"?`)) {
+            return;
+        }
+        
+        try {
+            const result = await apiService.redeemVoucherWithPoints(promotion.id, currentUser.id);
+            alert(result.message);
+            
+            // Refresh wallet, promotions, and redeemable vouchers
+            const [updatedWallet, updatedRedeemable] = await Promise.all([
+                apiService.getUserWallet(currentUser.id),
+                apiService.getRedeemableVouchers()
+            ]);
+            setWallet(updatedWallet);
+            setRedeemableVouchers(updatedRedeemable);
+            
+            const updatedPromotions = await apiService.getPromotions({ userId: currentUser.id });
+            setPromotions(updatedPromotions);
+            
+            // Add to user vouchers
+            setUserVouchers(prev => [...prev, result.promotion]);
+        } catch (error: any) {
+            console.error('Error redeeming voucher:', error);
+            alert(error.message || 'Có lỗi xảy ra khi đổi voucher');
+        }
+    };
+    
+    const handleUsePromotion = (promotion: Promotion) => {
+        // Navigate to booking page with serviceId if applicable
+        if (promotion.applicableServiceIds && promotion.applicableServiceIds.length > 0) {
+            navigate(`/booking?serviceId=${promotion.applicableServiceIds[0]}&promoCode=${promotion.code}`);
+        } else {
+            navigate(`/booking?promoCode=${promotion.code}`);
+        }
+    };
+    
     // ... (rest of component JSX)
     return (
       <div className="container mx-auto px-4 py-12">
@@ -241,6 +353,7 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
             <div className="mb-8 flex justify-center border-b border-gray-200">
                 <button onClick={() => setActiveTab('my_offers')} className={`px-6 py-3 font-medium text-lg transition-colors ${activeTab === 'my_offers' ? 'border-b-2 border-brand-primary text-brand-dark' : 'text-gray-500 hover:text-brand-dark'}`}>Ưu đãi của tôi</button>
                 <button onClick={() => setActiveTab('general')} className={`px-6 py-3 font-medium text-lg transition-colors ${activeTab === 'general' ? 'border-b-2 border-brand-primary text-brand-dark' : 'text-gray-500 hover:text-brand-dark'}`}>Ưu đãi chung</button>
+                <button onClick={() => setActiveTab('redeem')} className={`px-6 py-3 font-medium text-lg transition-colors ${activeTab === 'redeem' ? 'border-b-2 border-brand-primary text-brand-dark' : 'text-gray-500 hover:text-brand-dark'}`}>Đổi điểm lấy voucher</button>
                 <button onClick={() => setActiveTab('history')} className={`px-6 py-3 font-medium text-lg transition-colors ${activeTab === 'history' ? 'border-b-2 border-brand-primary text-brand-dark' : 'text-gray-500 hover:text-brand-dark'}`}>Lịch sử điểm</button>
             </div>
             
@@ -254,24 +367,51 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                             <div className="text-center md:text-left mb-4 md:mb-0">
                                 <p className="text-xl font-semibold">Xin chào, {currentUser.name}!</p>
                                 <p className="text-3xl font-bold mt-1">{wallet.points.toLocaleString()} điểm</p>
-                                {/* Calculate tier from wallet points since tierLevel is not in users table */}
-                                <p className="text-sm">Bạn đang ở hạng {(() => {
-                                    if (!wallet) return 'Đồng';
-                                    const userPoints = wallet.points || 0;
-                                    const sortedTiers = [...allTiers].sort((a, b) => (a.pointsRequired || 0) - (b.pointsRequired || 0));
-                                    let tierLevel = 1;
-                                    for (let i = sortedTiers.length - 1; i >= 0; i--) {
-                                        if (userPoints >= (sortedTiers[i].pointsRequired || 0)) {
-                                            tierLevel = sortedTiers[i].level;
-                                            break;
-                                        }
-                                    }
-                                    return allTiers.find(t => t.level === tierLevel)?.name || 'Đồng';
-                                })()}</p>
                             </div>
                             <Link to="/profile" className="bg-white text-brand-dark px-6 py-3 rounded-full font-bold shadow-lg hover:bg-gray-100 transition-colors">
                                 Quản lý hồ sơ
                             </Link>
+                        </div>
+                    )}
+                    
+                    {/* Birthday & New Client Vouchers */}
+                    {myAvailableVouchers.length > 0 && (
+                        <div className="space-y-4">
+                            <h2 className="text-2xl font-serif font-bold text-gray-800">Voucher dành cho bạn</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {myAvailableVouchers.map(promo => (
+                                    <div key={promo.id} className="bg-white rounded-lg shadow-md overflow-hidden flex flex-col border-2 border-brand-primary/50">
+                                        <div className="p-5 flex flex-col flex-grow">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                {promo.targetAudience === 'Birthday' && (
+                                                    <span className="bg-pink-100 text-pink-600 text-xs font-bold px-2 py-1 rounded">🎂 Sinh nhật</span>
+                                                )}
+                                                {promo.targetAudience === 'New Clients' && (
+                                                    <span className="bg-blue-100 text-blue-600 text-xs font-bold px-2 py-1 rounded">🆕 Khách mới</span>
+                                                )}
+                                            </div>
+                                            <h3 className="font-bold text-lg text-gray-800 mb-2">{promo.title}</h3>
+                                            <p className="text-gray-600 text-sm mb-4 line-clamp-2">{promo.description}</p>
+                                            <div className="flex gap-2 mt-auto">
+                                                <Link 
+                                                    to={`/booking?promoCode=${promo.code}${promo.applicableServiceIds && promo.applicableServiceIds.length > 0 ? `&serviceId=${promo.applicableServiceIds[0]}` : ''}`}
+                                                    className="flex-1 text-center bg-brand-primary text-white py-2 px-4 rounded-md font-semibold hover:bg-brand-dark transition-colors"
+                                                >
+                                                    Sử dụng ngay
+                                                </Link>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {myAvailableVouchers.length === 0 && (
+                        <div className="text-center text-gray-500 py-6">
+                            <p>Hiện tại không có voucher nào dành cho bạn.</p>
+                            {isBirthdayToday && <p className="mt-2">🎂 Chúc mừng sinh nhật! Voucher sinh nhật sẽ xuất hiện ở đây.</p>}
+                            {!hasUsedService && <p className="mt-2">🆕 Voucher dành cho khách hàng mới sẽ xuất hiện ở đây.</p>}
                         </div>
                     )}
 
@@ -297,60 +437,6 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                         </section>
                     )}
                     
-                    {/* Birthday & Group & Tier Offers */}
-                    <div className="space-y-6">
-                        {/* Calculate tier from wallet points since tierLevel is not in users table */}
-                        {promotions.filter(p => {
-                            // Only show public promotions
-                            if (p.isPublic === false) return false;
-                            if (p.targetAudience === 'Group') return true;
-                            if (!wallet) return p.targetAudience === 'Tier Level 1';
-                            const userPoints = wallet.points || 0;
-                            const sortedTiers = [...allTiers].sort((a, b) => (a.pointsRequired || 0) - (b.pointsRequired || 0));
-                            let tierLevel = 1;
-                            for (let i = sortedTiers.length - 1; i >= 0; i--) {
-                                if (userPoints >= (sortedTiers[i].pointsRequired || 0)) {
-                                    tierLevel = sortedTiers[i].level;
-                                    break;
-                                }
-                            }
-                            return p.targetAudience === `Tier Level ${tierLevel}`;
-                        }).map(promo => {
-                            const tier = allTiers.find(t => `Tier Level ${t.level}` === promo.targetAudience);
-                            const glowStyle = tier ? { '--glow-color-start': hexToRgba(tier.color, 0.2), '--glow-color-end': hexToRgba(tier.color, 0.6) } as React.CSSProperties : {};
-                            return (
-                                <div key={promo.id} style={glowStyle} className={`bg-white p-6 rounded-lg shadow-soft-lg border ${tier ? 'animate-pulse-glow-dynamic' : ''}`}>
-                                    <h3 className="font-bold text-xl text-gray-800 mb-2">{promo.title}</h3>
-                                    <p className="text-gray-600 text-sm mb-4">{promo.description}</p>
-                                    {promo.targetAudience === 'Group' ? (
-                                        <div className="flex gap-2"><button className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2"><PaperAirplaneIcon className="w-4 h-4"/> Chia sẻ</button></div>
-                                    ) : (
-                                        <button onClick={() => handleClaimPromotion(promo)} className="bg-brand-dark text-white px-4 py-2 rounded-md text-sm font-semibold">Nhận đặc quyền</button>
-                                    )}
-                                </div>
-                            );
-                        })}
-                        {isBirthdayMonth && promotions.find(p => p.targetAudience === 'Birthday') && (
-                            <div className="bg-pink-50 p-6 rounded-lg shadow-soft-lg relative overflow-hidden">
-                                {showConfetti && Array.from({ length: 50 }).map((_, i) => (
-                                    <div key={i} className="absolute top-0 animate-confetti" style={{ left: `${Math.random() * 100}%`, animationDelay: `${Math.random() * 2}s`, backgroundColor: ['#fde047', '#f97316', '#ec4899'][i % 3], width: '8px', height: '16px' }}></div>
-                                ))}
-                                {!isBirthdayGiftOpened ? (
-                                    <div className="text-center">
-                                        <h3 className="text-2xl font-bold font-serif text-pink-600">Một món quà đặc biệt!</h3>
-                                        <p className="text-pink-800/80 my-2">Anh Thơ Spa có một món quà bất ngờ dành cho bạn nhân tháng sinh nhật.</p>
-                                        <button onClick={handleOpenBirthdayGift} className="bg-pink-500 text-white font-bold py-3 px-6 rounded-lg mt-2 shadow-lg">Mở quà ngay 🎁</button>
-                                    </div>
-                                ) : (
-                                    <div>
-                                        <h3 className="font-bold text-xl text-gray-800 mb-2">{promotions.find(p=>p.targetAudience === 'Birthday')?.title}</h3>
-                                        <p className="text-gray-600 text-sm mb-4">{promotions.find(p=>p.targetAudience === 'Birthday')?.description}</p>
-                                        <button onClick={() => handleClaimPromotion(promotions.find(p=>p.targetAudience === 'Birthday')!)} className="bg-pink-500 text-white px-4 py-2 rounded-md text-sm font-semibold">Nhận ngay!</button>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
 
                     {/* My Vouchers */}
                     <div>
@@ -380,13 +466,182 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
             
             {activeTab === 'general' && (
                 <div className="space-y-12 animate-fadeInUp">
-                    {/* ... (JSX for Available Promotions and Redeemable Vouchers from old page) ... */}
+                    <h2 className="text-2xl font-serif font-bold text-gray-800">Tất cả ưu đãi</h2>
+                    {generalPromotions.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {generalPromotions.map(promo => {
+                                const discountDisplay = promo.discountType === 'percentage' 
+                                    ? `${promo.discountValue}%` 
+                                    : formatCurrency(promo.discountValue);
+                                return (
+                                    <div key={promo.id} className="bg-white rounded-lg shadow-md overflow-hidden flex flex-col border-2 border-brand-primary/50">
+                                        {promo.imageUrl && (
+                                            <img src={promo.imageUrl} alt={promo.title} className="w-full h-48 object-cover" />
+                                        )}
+                                        <div className="p-5 flex flex-col flex-grow">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">ƯU ĐÃI -{discountDisplay}</span>
+                                            </div>
+                                            <h3 className="font-bold text-lg text-gray-800 mb-2">{promo.title}</h3>
+                                            <p className="text-gray-600 text-sm mb-4 line-clamp-2">{promo.description}</p>
+                                            <div className="text-xs text-gray-500 mb-4">
+                                                <span className="flex items-center gap-1">
+                                                    <ClockIcon className="w-4 h-4" />
+                                                    Hết hạn: {new Date(promo.expiryDate).toLocaleDateString('vi-VN')}
+                                                </span>
+                                            </div>
+                                            <button 
+                                                onClick={() => handleUsePromotion(promo)}
+                                                className="w-full bg-brand-primary text-white py-2 px-4 rounded-md font-semibold hover:bg-brand-dark transition-colors mt-auto"
+                                            >
+                                                Sử dụng ngay
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="text-center text-gray-500 py-6">
+                            <p>Hiện tại không có ưu đãi nào.</p>
+                        </div>
+                    )}
+                </div>
+            )}
+            
+            {activeTab === 'redeem' && (
+                <div className="space-y-12 animate-fadeInUp">
+                    {wallet ? (
+                        <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-6 rounded-lg shadow-md">
+                            <p className="text-xl font-semibold mb-2">Điểm hiện có</p>
+                            <p className="text-4xl font-bold">{wallet.points.toLocaleString()} điểm</p>
+                            <p className="text-sm mt-2 opacity-90">Đổi điểm để nhận voucher độc quyền</p>
+                        </div>
+                    ) : (
+                        <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-6 rounded-lg shadow-md">
+                            <p className="text-xl font-semibold mb-2">Điểm hiện có</p>
+                            <p className="text-4xl font-bold">0 điểm</p>
+                            <p className="text-sm mt-2 opacity-90">Đăng nhập để tích điểm và đổi voucher độc quyền</p>
+                        </div>
+                    )}
+                    
+                    <h2 className="text-2xl font-serif font-bold text-gray-800">Voucher có thể đổi bằng điểm</h2>
+                    {redeemablePrivateVouchers.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {redeemablePrivateVouchers.map(promo => {
+                                const discountDisplay = promo.discountType === 'percentage' 
+                                    ? `${promo.discountValue}%` 
+                                    : formatCurrency(promo.discountValue);
+                                const canAfford = wallet && wallet.points >= (promo.pointsRequired || 0);
+                                return (
+                                    <div key={promo.id} className={`bg-white rounded-lg shadow-md overflow-hidden flex flex-col border-2 ${canAfford ? 'border-purple-500' : 'border-gray-300'}`}>
+                                        {promo.imageUrl && (
+                                            <img src={promo.imageUrl} alt={promo.title} className="w-full h-48 object-cover" />
+                                        )}
+                                        <div className="p-5 flex flex-col flex-grow">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <span className="bg-purple-500 text-white text-xs font-bold px-2 py-1 rounded">🔒 PRIVATE</span>
+                                                <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">-{discountDisplay}</span>
+                                            </div>
+                                            <h3 className="font-bold text-lg text-gray-800 mb-2">{promo.title}</h3>
+                                            <p className="text-gray-600 text-sm mb-4 line-clamp-2">{promo.description}</p>
+                                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-4">
+                                                <p className="text-sm font-semibold text-purple-800">
+                                                    💎 {promo.pointsRequired} điểm
+                                                </p>
+                                                {wallet ? (
+                                                    <p className={`text-xs mt-1 ${canAfford ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {canAfford 
+                                                            ? `✓ Bạn có đủ điểm (${wallet.points} điểm)` 
+                                                            : `✗ Bạn cần thêm ${(promo.pointsRequired || 0) - wallet.points} điểm`}
+                                                    </p>
+                                                ) : (
+                                                    <p className="text-xs mt-1 text-gray-600">
+                                                        Đăng nhập để xem số điểm của bạn
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <button 
+                                                onClick={() => {
+                                                    if (!currentUser) {
+                                                        alert('Vui lòng đăng nhập để đổi voucher');
+                                                        return;
+                                                    }
+                                                    handleRedeemWithPoints(promo);
+                                                }}
+                                                disabled={!currentUser || !canAfford}
+                                                className={`w-full py-2 px-4 rounded-md font-semibold transition-colors mt-auto ${
+                                                    currentUser && canAfford
+                                                        ? 'bg-purple-600 text-white hover:bg-purple-700' 
+                                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                }`}
+                                            >
+                                                {!currentUser ? 'Đăng nhập để đổi' : (canAfford ? 'Đổi ngay' : 'Không đủ điểm')}
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="text-center text-gray-500 py-6">
+                            <p>Hiện tại không có voucher nào có thể đổi bằng điểm.</p>
+                        </div>
+                    )}
                 </div>
             )}
 
             {activeTab === 'history' && (
                  <div className="animate-fadeInUp">
-                    {/* ... (JSX for Points History from old page) ... */}
+                    <h2 className="text-2xl font-serif font-bold text-gray-800 mb-6">Lịch sử điểm</h2>
+                    {wallet && (
+                        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm text-gray-600">Điểm hiện có</p>
+                                    <p className="text-3xl font-bold text-brand-primary">{wallet.points.toLocaleString()} điểm</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-sm text-gray-600">Tổng đã chi tiêu</p>
+                                    <p className="text-xl font-semibold text-gray-800">{formatCurrency(parseFloat(wallet.totalSpent?.toString() || '0'))}</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {pointsHistory.length > 0 ? (
+                        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                            <table className="w-full">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ngày</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mô tả</th>
+                                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Thay đổi</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {pointsHistory.map((entry, index) => (
+                                        <tr key={index}>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                {new Date(entry.date).toLocaleDateString('vi-VN')}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-600">
+                                                {entry.description}
+                                            </td>
+                                            <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-semibold ${entry.pointsChange > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                {entry.pointsChange > 0 ? '+' : ''}{entry.pointsChange} điểm
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-lg shadow-md p-12 text-center">
+                            <p className="text-gray-500">Chưa có lịch sử điểm.</p>
+                            <p className="text-sm text-gray-400 mt-2">Bạn sẽ nhận được điểm khi thanh toán dịch vụ (1000 VNĐ = 1 điểm)</p>
+                        </div>
+                    )}
                 </div>
             )}
 
