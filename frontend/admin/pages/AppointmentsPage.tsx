@@ -382,9 +382,21 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             setRejectionReason('');
             setAppointmentToApprove(null);
             setSelectedTherapistId('');
+            
+            // Show success message
+            if (newStatus === 'upcoming' && therapistId) {
+                alert('Đã xác nhận lịch hẹn và phân công nhân viên thành công!');
+            }
         } catch (err: any) {
             console.error(`Error updating appointment ${appointmentToUpdate.id} status to ${newStatus}:`, err);
-            alert(`Cập nhật lịch hẹn thất bại: ${err.message || String(err)}`);
+            
+            // Check if error is about schedule conflict
+            const errorMessage = err.response?.data?.message || err.message || String(err);
+            if (errorMessage.includes('đã được phân công') || errorMessage.includes('trùng lịch') || errorMessage.includes('conflict')) {
+                alert(`⚠️ ${errorMessage}\n\nVui lòng chọn nhân viên khác hoặc thay đổi thời gian.`);
+            } else {
+                alert(`Cập nhật lịch hẹn thất bại: ${errorMessage}`);
+            }
         }
     };
 
@@ -1302,19 +1314,38 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         setCurrentDate(newDate);
     };
 
-    // Get staff list for therapist assignment
+    // Get staff list for therapist assignment with conflict checking
     const staffList = useMemo(() => {
         // Use localUsers first, fallback to allUsers if localUsers is empty
         const usersToSearch = localUsers.length > 0 ? localUsers : allUsers;
         const staff = usersToSearch.filter(u => u.role === 'Staff' && u.status === 'Active');
-        console.log('Staff list for assignment:', {
-            localUsersCount: localUsers.length,
-            allUsersCount: allUsers.length,
-            staffCount: staff.length,
-            staffNames: staff.map(s => s.name)
-        });
+        
+        // If we have an appointment to approve, check for conflicts
+        if (appointmentToApprove) {
+            const appointmentDate = appointmentToApprove.date;
+            const appointmentTime = appointmentToApprove.time;
+            
+            // Map staff with conflict information
+            return staff.map(s => {
+                // Check if this staff has a conflicting appointment (same date, same time, different appointment)
+                const conflictingAppointment = appointments.find(apt => 
+                    apt.therapistId === s.id &&
+                    apt.date === appointmentDate &&
+                    apt.time === appointmentTime &&
+                    apt.id !== appointmentToApprove.id && // Exclude current appointment
+                    (apt.status === 'pending' || apt.status === 'upcoming' || apt.status === 'scheduled' || apt.status === 'in-progress')
+                );
+                
+                return {
+                    ...s,
+                    hasConflict: !!conflictingAppointment,
+                    conflictingAppointment: conflictingAppointment || null
+                };
+            });
+        }
+        
         return staff;
-    }, [localUsers, allUsers]);
+    }, [localUsers, allUsers, appointmentToApprove, appointments]);
 
     return (
         <div>
@@ -1359,20 +1390,51 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                     </label>
                                     <select
                                         value={selectedTherapistId}
-                                        onChange={(e) => setSelectedTherapistId(e.target.value)}
+                                        onChange={(e) => {
+                                            const selectedId = e.target.value;
+                                            const selectedStaff = staffList.find(s => s.id === selectedId);
+                                            if (selectedStaff && (selectedStaff as any).hasConflict) {
+                                                const conflict = (selectedStaff as any).conflictingAppointment;
+                                                const conflictClient = conflict?.Client || localUsers.find(u => u.id === conflict?.userId) || allUsers.find(u => u.id === conflict?.userId);
+                                                const conflictClientName = conflictClient?.name || 'khách hàng';
+                                                const conflictDate = conflict?.date ? new Date(conflict.date).toLocaleDateString('vi-VN') : '';
+                                                if (confirm(`⚠️ Cảnh báo: Nhân viên này đã được phân công cho lịch hẹn khác vào ${conflictDate} lúc ${conflict?.time} (khách hàng: ${conflictClientName}).\n\nBạn có chắc chắn muốn chọn nhân viên này? Hệ thống sẽ từ chối nếu trùng lịch.`)) {
+                                                    setSelectedTherapistId(selectedId);
+                                                }
+                                            } else {
+                                                setSelectedTherapistId(selectedId);
+                                            }
+                                        }}
                                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                                     >
                                         <option value="">-- Chọn nhân viên --</option>
                                         {staffList.length > 0 ? (
-                                            staffList.map(staff => (
-                                                <option key={staff.id} value={staff.id}>
-                                                    {staff.name} {staff.phone ? `(${staff.phone})` : ''}
-                                                </option>
-                                            ))
+                                            staffList.map(staff => {
+                                                const hasConflict = (staff as any).hasConflict;
+                                                const conflict = (staff as any).conflictingAppointment;
+                                                const conflictClient = conflict?.Client || localUsers.find(u => u.id === conflict?.userId) || allUsers.find(u => u.id === conflict?.userId);
+                                                const conflictClientName = conflictClient?.name || 'khách hàng';
+                                                const conflictDate = conflict?.date ? new Date(conflict.date).toLocaleDateString('vi-VN') : '';
+                                                return (
+                                                    <option 
+                                                        key={staff.id} 
+                                                        value={staff.id}
+                                                        style={hasConflict ? { color: '#dc2626', fontWeight: 'bold' } : {}}
+                                                    >
+                                                        {staff.name} {staff.phone ? `(${staff.phone})` : ''} 
+                                                        {hasConflict ? ` ⚠️ Đã bận (${conflictDate} ${conflict?.time} - ${conflictClientName})` : ''}
+                                                    </option>
+                                                );
+                                            })
                                         ) : (
                                             <option value="" disabled>Đang tải danh sách nhân viên...</option>
                                         )}
                                     </select>
+                                    {staffList.some(s => (s as any).hasConflict) && (
+                                        <p className="text-sm text-red-600 mt-1">
+                                            ⚠️ Nhân viên có dấu ⚠️ đã được phân công cho lịch hẹn khác vào cùng thời gian. Vui lòng chọn nhân viên khác.
+                                        </p>
+                                    )}
                                     {staffList.length === 0 && (
                                         <p className="text-sm text-gray-500 mt-1">
                                             {localUsers.length === 0 && allUsers.length === 0

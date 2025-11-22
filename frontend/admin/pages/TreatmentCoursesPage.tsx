@@ -33,22 +33,36 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
         loadData();
     }, []);
 
+    // Helper function to check if a course has pending appointments
+    const hasPendingAppointments = (course: TreatmentCourse): boolean => {
+        // Check if course has any appointments with status 'pending'
+        const courseAppointments = appointments.filter(apt => 
+            apt.serviceId === course.serviceId && 
+            apt.userId === course.clientId &&
+            apt.status === 'pending'
+        );
+        return courseAppointments.length > 0;
+    };
+
     useEffect(() => {
         // Filter courses based on active tab
         if (activeTab === 'active') {
             // Show active, completed, expired courses
-            const activeCourses = allCourses.filter(course => 
-                ['active', 'completed', 'expired'].includes(course.status)
-            );
+            // BUT exclude courses that have pending appointments (they should be in pending tab)
+            const activeCourses = allCourses.filter(course => {
+                const hasStatus = ['active', 'completed', 'expired'].includes(course.status);
+                const hasPending = hasPendingAppointments(course);
+                return hasStatus && !hasPending; // Exclude if has pending appointments
+            });
             setCourses(activeCourses);
         } else {
-            // Show pending courses
+            // Show pending courses: either status is 'pending' OR has pending appointments
             const pendingCourses = allCourses.filter(course => 
-                course.status === 'pending'
+                course.status === 'pending' || hasPendingAppointments(course)
             );
             setCourses(pendingCourses);
         }
-    }, [allCourses, activeTab]);
+    }, [allCourses, activeTab, appointments]);
 
     useEffect(() => {
         applyFilters();
@@ -189,6 +203,11 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
 
     // Stats - calculate based on allCourses, not filtered courses
     const stats = useMemo(() => {
+        // Count courses with pending appointments (either status is 'pending' OR has pending appointments)
+        const coursesWithPendingAppointments = allCourses.filter(c => 
+            c.status === 'pending' || hasPendingAppointments(c)
+        );
+        
         return {
             total: allCourses.length,
             active: allCourses.filter(c => c.status === 'active').length,
@@ -199,9 +218,9 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                 const days = getDaysUntilExpiry(c.expiryDate);
                 return days > 0 && days <= 7;
             }).length,
-            pending: allCourses.filter(c => c.status === 'pending').length
+            pending: coursesWithPendingAppointments.length
         };
-    }, [allCourses]);
+    }, [allCourses, appointments]);
 
     if (isLoading) {
         return (

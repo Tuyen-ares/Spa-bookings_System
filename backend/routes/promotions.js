@@ -12,7 +12,7 @@ router.get('/', async (req, res) => {
         const { userId, serviceId } = req.query;
         
         // If no userId provided, only return public promotions (for client pages)
-        const whereClause: any = { isActive: true };
+        const whereClause = { isActive: true };
         if (!userId) {
             whereClause.isPublic = true; // Only show public promotions on client pages
         }

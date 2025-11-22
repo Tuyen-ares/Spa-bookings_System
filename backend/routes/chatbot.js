@@ -4,8 +4,15 @@ const router = express.Router();
 
 // Use REST API directly instead of SDK (more reliable)
 // API key will be loaded from environment variable GEMINI_API_KEY
-const apiKey = process.env.GEMINI_API_KEY;
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+// Use gemini-2.0-flash (latest model) as default
+// Other options: gemini-pro, gemini-1.5-pro
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+// Try v1beta first, fallback to v1 if needed
+const GEMINI_API_VERSION = process.env.GEMINI_API_VERSION || 'v1beta';
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/${GEMINI_API_VERSION}/models/${GEMINI_MODEL}:generateContent`;
+
+// Get API key dynamically (in case it's updated)
+const getApiKey = () => process.env.GEMINI_API_KEY;
 
 // Use node-fetch for Node.js (Node.js 18+ has fetch built-in, but we'll use node-fetch for compatibility)
 // Check if fetch is available globally (Node.js 18+)
@@ -18,7 +25,7 @@ const fetch = globalThis.fetch || (() => {
     }
 })();
 
-if (!apiKey) {
+if (!getApiKey()) {
     console.error('WARNING: GEMINI_API_KEY is not set in environment variables');
 }
 
@@ -143,7 +150,9 @@ router.get('/test', (req, res) => {
         message: 'Chatbot endpoint is working',
         hasApiKey: !!process.env.GEMINI_API_KEY,
         apiKeyLength: process.env.GEMINI_API_KEY?.length || 0,
-        apiKeyPrefix: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.substring(0, 10) + '...' : 'none'
+        apiKeyPrefix: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.substring(0, 10) + '...' : 'none',
+        model: GEMINI_MODEL,
+        apiUrl: GEMINI_API_URL
     });
 });
 
@@ -151,8 +160,10 @@ router.get('/test', (req, res) => {
 router.post('/chat', async (req, res) => {
     try {
         console.log('=== Chatbot Endpoint Called ===');
-        console.log('GEMINI_API_KEY exists:', !!process.env.GEMINI_API_KEY);
-        console.log('API key length:', process.env.GEMINI_API_KEY?.length || 0);
+        const apiKey = getApiKey();
+        console.log('GEMINI_API_KEY exists:', !!apiKey);
+        console.log('API key length:', apiKey?.length || 0);
+        console.log('Model:', GEMINI_MODEL);
         console.log('Request body keys:', Object.keys(req.body));
         
         if (!apiKey) {
@@ -189,35 +200,117 @@ router.post('/chat', async (req, res) => {
         }));
 
         console.log('Calling Gemini API via REST...');
+        console.log('Using model:', GEMINI_MODEL);
+        console.log('API version:', GEMINI_API_VERSION);
+        console.log('API URL:', GEMINI_API_URL);
         
         // Call Gemini API using REST API directly (as per official documentation)
-        const geminiResponse = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-goog-api-key': apiKey
+        const requestBody = {
+            contents: contents,
+            systemInstruction: {
+                parts: [{ text: systemInstruction }]
             },
-            body: JSON.stringify({
-                contents: contents,
-                systemInstruction: {
-                    parts: [{ text: systemInstruction }]
-                }
-            })
-        });
+            generationConfig: {
+                temperature: 0.7,
+                topK: 40,
+                topP: 0.95,
+                maxOutputTokens: 1024,
+            }
+        };
+        
+        console.log('Request body size:', JSON.stringify(requestBody).length, 'bytes');
+        
+        let geminiResponse;
+        let lastError;
+        
+        // Try v1beta first, then fallback to v1 if model not found
+        const apiVersions = [GEMINI_API_VERSION, 'v1'];
+        
+        for (const apiVersion of apiVersions) {
+            const apiUrl = `https://generativelanguage.googleapis.com/${apiVersion}/models/${GEMINI_MODEL}:generateContent`;
+            
+            try {
+                console.log(`Trying API version: ${apiVersion}`);
+                geminiResponse = await fetch(`${apiUrl}?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
 
-        if (!geminiResponse.ok) {
-            const errorText = await geminiResponse.text();
+                if (geminiResponse.ok) {
+                    console.log(`✅ Success with API version: ${apiVersion}`);
+                    break; // Success, exit loop
+                } else {
+                    const errorText = await geminiResponse.text();
+                    console.warn(`⚠️ API version ${apiVersion} failed:`, errorText);
+                    
+                    try {
+                        const errorData = JSON.parse(errorText);
+                        if (errorData.error?.message?.includes('not found') && apiVersion === 'v1beta' && apiVersions.length > 1) {
+                            // Model not found in v1beta, try v1
+                            lastError = errorData.error.message;
+                            continue;
+                        }
+                    } catch (e) {
+                        // If parsing fails, continue to next version
+                    }
+                    
+                    lastError = errorText;
+                }
+            } catch (fetchError) {
+                console.error(`Error with API version ${apiVersion}:`, fetchError.message);
+                lastError = fetchError.message;
+                if (apiVersion === apiVersions[apiVersions.length - 1]) {
+                    // Last version, throw error
+                    throw fetchError;
+                }
+            }
+        }
+
+        if (!geminiResponse || !geminiResponse.ok) {
+            const errorText = lastError || await geminiResponse?.text() || 'Unknown error';
             console.error('Gemini API error response:', errorText);
-            throw new Error(`Gemini API error: ${geminiResponse.status} ${geminiResponse.statusText}`);
+            let errorMessage = `Gemini API error: ${geminiResponse?.status || 'Unknown'} ${geminiResponse?.statusText || 'Unknown'}`;
+            
+            try {
+                const errorData = typeof errorText === 'string' ? JSON.parse(errorText) : errorText;
+                if (errorData.error?.message) {
+                    errorMessage = errorData.error.message;
+                }
+            } catch (e) {
+                // If parsing fails, use the text as is
+                if (typeof errorText === 'string') {
+                    errorMessage = errorText;
+                }
+            }
+            
+            throw new Error(errorMessage);
         }
 
         const geminiData = await geminiResponse.json();
         console.log('Gemini API response received successfully');
+        console.log('Response structure:', Object.keys(geminiData));
         
-        // Extract text from response
-        const replyText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || 
-                         geminiData.text || 
-                         'Xin lỗi, không nhận được phản hồi từ AI.';
+        // Extract text from response - handle different response formats
+        let replyText = null;
+        
+        if (geminiData.candidates && geminiData.candidates.length > 0) {
+            const candidate = geminiData.candidates[0];
+            if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+                replyText = candidate.content.parts[0].text;
+            }
+        }
+        
+        if (!replyText && geminiData.text) {
+            replyText = geminiData.text;
+        }
+        
+        if (!replyText) {
+            console.error('No text found in Gemini response:', JSON.stringify(geminiData, null, 2));
+            replyText = 'Xin lỗi, không nhận được phản hồi từ AI. Vui lòng thử lại.';
+        }
         
         res.json({
             reply: replyText,
@@ -229,9 +322,21 @@ router.post('/chat', async (req, res) => {
         console.error('Error message:', error.message);
         console.error('Error stack:', error.stack);
         console.error('Error name:', error.name);
+        
+        // Provide more specific error messages
+        let userMessage = 'Xin lỗi, tôi đang gặp sự cố. Vui lòng thử lại sau hoặc liên hệ với chúng tôi qua hotline: 098-765-4321.';
+        
+        if (error.message.includes('API key')) {
+            userMessage = 'Xin lỗi, dịch vụ chatbot hiện không khả dụng do lỗi cấu hình. Vui lòng liên hệ với chúng tôi qua hotline: 098-765-4321.';
+        } else if (error.message.includes('quota') || error.message.includes('limit')) {
+            userMessage = 'Xin lỗi, dịch vụ chatbot tạm thời quá tải. Vui lòng thử lại sau vài phút.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+            userMessage = 'Xin lỗi, không thể kết nối đến dịch vụ AI. Vui lòng kiểm tra kết nối mạng và thử lại.';
+        }
+        
         res.status(500).json({
             error: error.message || 'Internal server error',
-            message: 'Xin lỗi, tôi đang gặp sự cố. Vui lòng thử lại sau hoặc liên hệ với chúng tôi qua hotline: 098-765-4321.'
+            message: userMessage
         });
     }
 });

@@ -11,6 +11,7 @@ import {
   Modal,
   Linking,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -204,27 +205,39 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
       const appointment = await apiService.createAppointment(appointmentData);
 
       if (paymentMethod === 'VNPay') {
-        // Create VNPay payment URL
-        const amount = selectedService.price;
-        const returnUrl = 'myapp://payment-result'; // Deep link for mobile
+        // Process VNPay payment - backend will create payment URL
+        const amount = selectedService.price * numberOfSessions;
         
-        const result = await apiService.createVNPayUrl(appointment.id, amount, returnUrl);
+        const result = await apiService.processPayment(appointment.id, 'VNPay', amount);
         
         if (result.paymentUrl) {
-          // Open VNPay payment page in browser
-          const supported = await Linking.canOpenURL(result.paymentUrl);
-          if (supported) {
-            await Linking.openURL(result.paymentUrl);
+          // Open VNPay payment page in browser using expo-web-browser
+          try {
+            await WebBrowser.openBrowserAsync(result.paymentUrl, {
+              showTitle: true,
+              toolbarColor: '#8b5cf6',
+              enableBarCollapsing: false,
+            });
+            
             Alert.alert(
               'Thanh toán VNPay',
-              'Vui lòng hoàn tất thanh toán trên trình duyệt. Sau khi thanh toán, bạn có thể quay lại ứng dụng để kiểm tra lịch hẹn.',
+              'Vui lòng hoàn tất thanh toán trên trình duyệt. Sau khi thanh toán xong, bạn sẽ được chuyển về ứng dụng.',
               [
                 { text: 'OK', onPress: () => navigation.navigate('AppointmentsTab') }
               ]
             );
-          } else {
-            throw new Error('Không thể mở link thanh toán');
+          } catch (error) {
+            console.error('Error opening browser:', error);
+            // Fallback to Linking if expo-web-browser fails
+            const supported = await Linking.canOpenURL(result.paymentUrl);
+            if (supported) {
+              await Linking.openURL(result.paymentUrl);
+            } else {
+              throw new Error('Không thể mở link thanh toán');
+            }
           }
+        } else {
+          throw new Error('Không thể tạo link thanh toán VNPay');
         }
       } else {
         // Cash payment

@@ -148,3 +148,8 @@ export interface RegisterData {
   birthday?: string;
   gender?: string;
 }
+
+export interface ChatMessage {
+  sender: 'user' | 'bot';
+  text: string;
+}

@@ -11,7 +11,8 @@ import type {
   AuthResponse,
   LoginCredentials,
   RegisterData,
-  TreatmentCourse
+  TreatmentCourse,
+  ChatMessage
 } from '../types';
 
 // Auto-detect API URL based on platform
@@ -35,7 +36,54 @@ const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
-let apiClient: AxiosInstance;
+let apiClient: AxiosInstance | null = null;
+let isInitializing = false;
+let initPromise: Promise<AxiosInstance> | null = null;
+
+// Pre-initialize API client to avoid race conditions
+// This ensures apiClient is always available, even if initializeApi() hasn't been called yet
+let preInitialized = false;
+
+// Ensure API client is initialized before use
+const ensureApiClient = async (): Promise<AxiosInstance> => {
+  // If already initialized, return it
+  if (apiClient) {
+    return apiClient;
+  }
+
+  // If currently initializing, wait for it
+  if (isInitializing && initPromise) {
+    console.log('⏳ API client is initializing, waiting...');
+    try {
+      return await initPromise;
+    } catch (error) {
+      // If initialization failed, try again
+      console.log('⚠️ Previous initialization failed, retrying...');
+      isInitializing = false;
+      initPromise = null;
+    }
+  }
+
+  // Start initialization
+  console.log('🔄 Ensuring API client is initialized...');
+  isInitializing = true;
+  initPromise = initializeApi();
+
+  try {
+    const client = await initPromise;
+    apiClient = client; // Store for future use
+    console.log('✅ API client initialized successfully');
+    isInitializing = false;
+    initPromise = null;
+    return client;
+  } catch (error) {
+    console.error('❌ Failed to initialize API client:', error);
+    // Reset state on error so we can retry
+    isInitializing = false;
+    initPromise = null;
+    throw error;
+  }
+};
 
 // Initialize API client
 export const initializeApi = async () => {
@@ -43,7 +91,7 @@ export const initializeApi = async () => {
 
   console.log('🔗 API Base URL:', API_BASE_URL); // Debug log
 
-  apiClient = axios.create({
+  const client = axios.create({
     baseURL: API_BASE_URL,
     headers: {
       'Content-Type': 'application/json',
@@ -53,7 +101,7 @@ export const initializeApi = async () => {
   });
 
   // Add response interceptor for error handling
-  apiClient.interceptors.response.use(
+  client.interceptors.response.use(
     (response) => response,
     async (error) => {
       if (error.response?.status === 401) {
@@ -81,12 +129,15 @@ export const initializeApi = async () => {
     console.error('❌ API initialization error:', error);
   }
 
-  return apiClient;
+  // Update global apiClient
+  apiClient = client;
+  return client;
 };
 
 // --- AUTHENTICATION ---
 export const login = async (credentials: LoginCredentials): Promise<AuthResponse> => {
-  const response = await apiClient.post('/auth/login', credentials);
+  const client = await ensureApiClient();
+  const response = await client.post('/auth/login', credentials);
   const data = response.data;
 
   // Save token & user to AsyncStorage
@@ -97,7 +148,8 @@ export const login = async (credentials: LoginCredentials): Promise<AuthResponse
 };
 
 export const register = async (data: RegisterData): Promise<AuthResponse> => {
-  const response = await apiClient.post('/auth/register', data);
+  const client = await ensureApiClient();
+  const response = await client.post('/auth/register', data);
   const result = response.data;
 
   // Save token & user to AsyncStorage
@@ -127,149 +179,170 @@ export const changePassword = async (data: {
   currentPassword: string;
   newPassword: string;
 }): Promise<{ message: string }> => {
-  const response = await apiClient.post('/auth/change-password', data);
+  const client = await ensureApiClient();
+  const response = await client.post('/auth/change-password', data);
   return response.data;
 };
 
 // --- APPOINTMENTS ---
 export const getUserAppointments = async (userId: string): Promise<Appointment[]> => {
-  const response = await apiClient.get(`/appointments/user/${userId}`);
+  const client = await ensureApiClient();
+  const response = await client.get(`/appointments/user/${userId}`);
   return response.data;
 };
 
 export const getAppointments = async (): Promise<Appointment[]> => {
-  const response = await apiClient.get('/appointments');
+  const client = await ensureApiClient();
+  const response = await client.get('/appointments');
   return response.data;
 };
 
 export const getAppointmentById = async (id: string): Promise<Appointment> => {
-  const response = await apiClient.get(`/appointments/${id}`);
+  const client = await ensureApiClient();
+  const response = await client.get(`/appointments/${id}`);
   return response.data;
 };
 
 export const createAppointment = async (data: Partial<Appointment>) => {
-  const response = await apiClient.post('/appointments', data);
+  const client = await ensureApiClient();
+  const response = await client.post('/appointments', data);
   return response.data;
 };
 
 export const updateAppointment = async (id: string, data: Partial<Appointment>) => {
-  const response = await apiClient.put(`/appointments/${id}`, data);
+  const client = await ensureApiClient();
+  const response = await client.put(`/appointments/${id}`, data);
   return response.data;
 };
 
 export const cancelAppointment = async (id: string) => {
-  const response = await apiClient.put(`/appointments/${id}`, { status: 'cancelled' });
+  const client = await ensureApiClient();
+  const response = await client.put(`/appointments/${id}`, { status: 'cancelled' });
   return response.data;
 };
 
 // --- SERVICES ---
 export const getServices = async (): Promise<Service[]> => {
-  const response = await apiClient.get('/services');
-  return response.data;
+  try {
+    const client = await ensureApiClient();
+    const response = await client.get('/services');
+    return response.data;
+  } catch (error: any) {
+    console.error('Error in getServices:', error);
+    throw error;
+  }
 };
 
 export const getServiceById = async (id: string): Promise<Service> => {
-  const response = await apiClient.get(`/services/${id}`);
+  const client = await ensureApiClient();
+  const response = await client.get(`/services/${id}`);
   return response.data;
 };
 
 export const getServiceCategories = async (): Promise<ServiceCategory[]> => {
-  const response = await apiClient.get('/services/categories');
+  const client = await ensureApiClient();
+  const response = await client.get('/services/categories');
   return response.data;
 };
 
 // --- PROMOTIONS ---
 export const getPromotions = async (): Promise<Promotion[]> => {
-  const response = await apiClient.get('/promotions');
+  const client = await ensureApiClient();
+  const response = await client.get('/promotions');
   return response.data;
 };
 
 // --- REVIEWS ---
 export const getReviews = async (): Promise<Review[]> => {
-  const response = await apiClient.get('/reviews');
+  const client = await ensureApiClient();
+  const response = await client.get('/reviews');
   return response.data;
 };
 
 export const createReview = async (data: Partial<Review>) => {
-  const response = await apiClient.post('/reviews', data);
+  const client = await ensureApiClient();
+  const response = await client.post('/reviews', data);
   return response.data;
 };
 
 // --- USERS ---
 export const getUsers = async (): Promise<User[]> => {
-  const response = await apiClient.get('/users');
+  const client = await ensureApiClient();
+  const response = await client.get('/users');
   return response.data;
 };
 
 export const getUserById = async (id: string): Promise<User> => {
-  const response = await apiClient.get(`/users/${id}`);
+  const client = await ensureApiClient();
+  const response = await client.get(`/users/${id}`);
   return response.data;
 };
 
 export const updateUser = async (id: string, data: Partial<User>) => {
-  const response = await apiClient.put(`/users/${id}`, data);
+  const client = await ensureApiClient();
+  const response = await client.put(`/users/${id}`, data);
   return response.data;
 };
 
 // --- STAFF SHIFTS ---
 export const getStaffShifts = async (staffId: string) => {
-  const response = await apiClient.get(`/staff/shifts/${staffId}`);
+  const client = await ensureApiClient();
+  const response = await client.get(`/staff/shifts/${staffId}`);
   return response.data;
 };
 
 export const createStaffShift = async (data: any) => {
-  const response = await apiClient.post('/staff/shifts', data);
+  const client = await ensureApiClient();
+  const response = await client.post('/staff/shifts', data);
   return response.data;
 };
 
 // --- PAYMENTS ---
-export const processPayment = async (appointmentId: string, paymentMethod: string, amount: number) => {
-  const response = await apiClient.post('/payments/process-payment', {
+export const processPayment = async (appointmentId: string, method: 'VNPay' | 'Cash', amount: number) => {
+  const client = await ensureApiClient();
+  const response = await client.post('/payments/process', {
     appointmentId,
-    paymentMethod,
+    method,
     amount
-  });
-  return response.data;
-};
-
-export const createVNPayUrl = async (appointmentId: string, amount: number, returnUrl: string) => {
-  const response = await apiClient.post('/payments/create-vnpay-url', {
-    appointmentId,
-    amount,
-    returnUrl
   });
   return response.data;
 };
 
 // --- SERVICES (ADMIN CRUD) ---
 export const createService = async (data: Partial<Service>) => {
-  const response = await apiClient.post('/services', data);
+  const client = await ensureApiClient();
+  const response = await client.post('/services', data);
   return response.data;
 };
 
 export const updateService = async (id: string, data: Partial<Service>) => {
-  const response = await apiClient.put(`/services/${id}`, data);
+  const client = await ensureApiClient();
+  const response = await client.put(`/services/${id}`, data);
   return response.data;
 };
 
 export const deleteService = async (id: string) => {
-  const response = await apiClient.delete(`/services/${id}`);
+  const client = await ensureApiClient();
+  const response = await client.delete(`/services/${id}`);
   return response.data;
 };
 
 // --- TREATMENT COURSES ---
 export const getTreatmentCourses = async (params?: { clientId?: string; status?: string }) => {
-  const response = await apiClient.get('/treatment-courses', { params });
+  const client = await ensureApiClient();
+  const response = await client.get('/treatment-courses', { params });
   return response.data as TreatmentCourse[];
 };
 
 export const getTreatmentCourseById = async (id: string) => {
-  const response = await apiClient.get(`/treatment-courses/${id}`);
+  const client = await ensureApiClient();
+  const response = await client.get(`/treatment-courses/${id}`);
   return response.data as TreatmentCourse;
 };
 
 export const confirmTreatmentCoursePayment = async (id: string) => {
-  const response = await apiClient.put(`/treatment-courses/${id}/confirm-payment`);
+  const client = await ensureApiClient();
+  const response = await client.put(`/treatment-courses/${id}/confirm-payment`);
   return response.data;
 };
 
@@ -277,16 +350,41 @@ export const completeTreatmentSession = async (
   courseId: string,
   payload: { sessionNumber: number; customerStatusNotes?: string; adminNotes?: string }
 ) => {
-  const response = await apiClient.put(`/treatment-courses/${courseId}/complete-session`, payload);
+  const client = await ensureApiClient();
+  const response = await client.put(`/treatment-courses/${courseId}/complete-session`, payload);
   return response.data;
 };
 
 export const updateTreatmentSession = async (sessionId: string, data: any) => {
-  const response = await apiClient.put(`/treatment-sessions/${sessionId}`, data);
+  const client = await ensureApiClient();
+  const response = await client.put(`/treatment-sessions/${sessionId}`, data);
   return response.data;
 };
 
 export const updateTreatmentCourse = async (courseId: string, data: any) => {
-  const response = await apiClient.put(`/treatment-courses/${courseId}`, data);
+  const client = await ensureApiClient();
+  const response = await client.put(`/treatment-courses/${courseId}`, data);
   return response.data;
+};
+
+// --- CHATBOT ---
+export const getChatbotResponse = async (
+  history: ChatMessage[],
+  services: Service[] = [],
+  treatmentCourses: TreatmentCourse[] = []
+): Promise<string> => {
+  try {
+    const client = await ensureApiClient();
+    const response = await client.post('/chatbot/chat', {
+      history,
+      services,
+      treatmentCourses,
+    });
+
+    return response.data.reply || response.data.message || 'Xin lỗi, không nhận được phản hồi từ chatbot.';
+  } catch (error: any) {
+    console.error('Error calling chatbot API:', error);
+    const errorMessage = error.response?.data?.message || error.response?.data?.error || error.message;
+    return errorMessage || 'Xin lỗi, không thể kết nối đến dịch vụ chatbot. Vui lòng thử lại sau hoặc liên hệ với chúng tôi qua hotline: 098-765-4321.';
+  }
 };

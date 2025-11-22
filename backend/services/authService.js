@@ -87,20 +87,46 @@ class AuthService {
      * Login user
      */
     async login(email, password) {
-        // Find user
-        const user = await db.User.findOne({ where: { email } });
+        // Normalize email (trim and lowercase)
+        const normalizedEmail = (email || '').trim().toLowerCase();
+        
+        console.log('🔐 Login attempt:', {
+            email: normalizedEmail,
+            passwordLength: password ? password.length : 0
+        });
+        
+        // Find user (case-insensitive email search)
+        const user = await db.User.findOne({ 
+            where: db.sequelize.where(
+                db.sequelize.fn('LOWER', db.sequelize.col('email')),
+                normalizedEmail
+            )
+        });
+        
         if (!user) {
+            console.log('❌ User not found for email:', normalizedEmail);
             throw new Error('Invalid email or password');
         }
+        
+        console.log('✅ User found:', {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            status: user.status
+        });
 
         // Verify password
         const isValidPassword = await bcrypt.compare(password, user.password);
         if (!isValidPassword) {
+            console.log('❌ Invalid password for user:', user.email);
             throw new Error('Invalid email or password');
         }
+        
+        console.log('✅ Password verified successfully');
 
         // Check if user is active
         if (user.status !== 'Active') {
+            console.log('❌ User account is not active:', user.status);
             throw new Error('Account is inactive or locked');
         }
 

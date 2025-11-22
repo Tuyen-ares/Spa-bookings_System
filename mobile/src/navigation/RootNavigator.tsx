@@ -34,7 +34,10 @@ export const RootNavigator = () => {
         setError(null);
       } catch (error: any) {
         console.error('Error checking auth:', error);
-        setError(error);
+        // Don't set error state - allow app to continue
+        // Auth check failures should not block UI
+        console.warn('⚠️ Auth check failed, showing login screen');
+        setError(null);
         setIsLoggedIn(false);
       }
     };

@@ -619,6 +619,43 @@ router.put('/:id', async (req, res) => {
             return res.status(404).json({ message: 'Appointment not found' });
         }
         
+        // Check for schedule conflict when assigning therapist
+        if (updatedData.therapistId && (updatedData.status === 'upcoming' || updatedData.status === 'scheduled')) {
+            const therapistId = updatedData.therapistId;
+            const appointmentDate = updatedData.date || appointment.date;
+            const appointmentTime = updatedData.time || appointment.time;
+            
+            // Find conflicting appointments (same therapist, same date, same time, different appointment)
+            const conflictingAppointment = await db.Appointment.findOne({
+                where: {
+                    therapistId: therapistId,
+                    date: appointmentDate,
+                    time: appointmentTime,
+                    id: { [Op.ne]: id }, // Exclude current appointment
+                    status: { [Op.in]: ['pending', 'upcoming', 'scheduled', 'in-progress'] } // Only check active appointments
+                },
+                include: [{
+                    model: db.User,
+                    as: 'Client',
+                    attributes: ['id', 'name', 'email']
+                }]
+            });
+            
+            if (conflictingAppointment) {
+                const clientName = conflictingAppointment.Client?.name || 'khách hàng';
+                const conflictDate = new Date(conflictingAppointment.date).toLocaleDateString('vi-VN');
+                return res.status(400).json({ 
+                    message: `Nhân viên đã được phân công cho lịch hẹn khác vào ${conflictDate} lúc ${conflictingAppointment.time} (khách hàng: ${clientName}). Vui lòng chọn nhân viên khác hoặc thay đổi thời gian.`,
+                    conflict: {
+                        appointmentId: conflictingAppointment.id,
+                        clientName: clientName,
+                        date: conflictDate,
+                        time: conflictingAppointment.time
+                    }
+                });
+            }
+        }
+        
         const oldStatus = appointment.status;
         const oldPaymentStatus = appointment.paymentStatus;
         await appointment.update(updatedData);

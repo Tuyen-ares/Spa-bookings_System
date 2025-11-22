@@ -26,7 +26,10 @@ export default function App() {
         setError(null);
       } catch (error: any) {
         console.error('Error preparing app:', error);
-        setError(error);
+        // Don't set error state - allow app to continue
+        // API initialization failures should not block UI
+        console.warn('⚠️ App will continue despite initialization warning');
+        setError(null);
         // Still set ready even if there's an error
         setIsReady(true);
       }

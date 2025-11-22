@@ -237,6 +237,10 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
             const appointmentsForDay = allAppointments.filter(a => a.date === dateStr && a.status !== 'cancelled');
             const shiftsForDay = staffShifts.filter(s => s.date === dateStr && s.shiftType !== 'leave' && s.status === 'approved');
             
+            // Get all active staff (not just those with shifts)
+            // Use staffMembers instead of filteredStaff to get all staff, not filtered by dropdown
+            const allActiveStaff = staffMembers.filter(s => s.status === 'Active');
+            
             // Group appointments by time
             const appointmentsByTime = new Map<string, Appointment[]>();
             appointmentsForDay.forEach(apt => {
@@ -257,20 +261,45 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                     return; // No conflicts if all appointments are assigned
                 }
                 
-                // Check if enough staff available for the time slot
-                const availableStaff = shiftsForDay.filter(shift => {
-                    // Safe check for shiftHours
-                    if (!shift.shiftHours || !shift.shiftHours.start || !shift.shiftHours.end) {
-                        return false;
-                    }
-                    const shiftStart = shift.shiftHours.start;
-                    const shiftEnd = shift.shiftHours.end;
-                    return time >= shiftStart && time < shiftEnd;
-                });
-                
                 // Count how many staff are already busy with assigned appointments at this time
                 const busyStaffIds = new Set(assignedAppointments.map(apt => apt.therapistId).filter(Boolean));
-                const availableStaffForUnassigned = availableStaff.filter(shift => !busyStaffIds.has(shift.staffId));
+                
+                // Calculate available staff:
+                // 1. All active staff (not just those with shifts, because admin can create shifts when assigning)
+                // 2. Exclude staff who are already busy (have assigned appointments at this time)
+                // 3. Exclude staff who have leave shifts on this day
+                const leaveStaffIds = new Set(
+                    staffShifts
+                        .filter(s => s.date === dateStr && s.shiftType === 'leave')
+                        .map(s => s.staffId)
+                );
+                
+                const availableStaffForUnassigned = allActiveStaff.filter(staff => {
+                    // Exclude busy staff
+                    if (busyStaffIds.has(staff.id)) {
+                        return false;
+                    }
+                    // Exclude staff on leave
+                    if (leaveStaffIds.has(staff.id)) {
+                        return false;
+                    }
+                    // Staff is available if:
+                    // - They don't have a shift (can create one when assigning), OR
+                    // - They have a shift that covers this time slot
+                    const staffShift = shiftsForDay.find(s => s.staffId === staff.id);
+                    if (!staffShift) {
+                        // No shift = can create one, so available
+                        return true;
+                    }
+                    // Has shift, check if time is within shift hours
+                    if (!staffShift.shiftHours || !staffShift.shiftHours.start || !staffShift.shiftHours.end) {
+                        // Shift without hours = available (can be updated)
+                        return true;
+                    }
+                    const shiftStart = staffShift.shiftHours.start;
+                    const shiftEnd = staffShift.shiftHours.end;
+                    return time >= shiftStart && time < shiftEnd;
+                });
                 
                 // Only report conflict if there are unassigned appointments and not enough staff
                 if (unassignedAppointments.length > availableStaffForUnassigned.length) {
@@ -284,7 +313,7 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
         });
         
         return conflicts;
-    }, [weekDays, allAppointments, staffShifts, allUsers]);
+    }, [weekDays, allAppointments, staffShifts, staffMembers]);
 
     const handleCellClick = (staff: User, date: Date, shift?: StaffShift) => {
         // Format date to YYYY-MM-DD in local timezone to avoid date shift

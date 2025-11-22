@@ -13,6 +13,7 @@ import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { ChangePasswordScreen } from '../screens/profile/ChangePasswordScreen';
 import { TreatmentCoursesScreen } from '../screens/treatments/TreatmentCoursesScreen';
 import { TreatmentCourseDetailScreen } from '../screens/treatments/TreatmentCourseDetailScreen';
+import { ChatbotScreen } from '../screens/chatbot/ChatbotScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -46,6 +47,11 @@ const HomeStack = () => {
         component={BookingScreen}
         options={{ title: 'Đặt lịch' }}
       />
+      <Stack.Screen
+        name="Chatbot"
+        component={ChatbotScreen}
+        options={{ title: 'Trợ lý Anh Thơ Spa' }}
+      />
     </Stack.Navigator>
   );
 };
@@ -78,6 +84,11 @@ const ServicesStack = () => {
         name="Booking"
         component={BookingScreen}
         options={{ title: 'Đặt lịch' }}
+      />
+      <Stack.Screen
+        name="Chatbot"
+        component={ChatbotScreen}
+        options={{ title: 'Trợ lý Anh Thơ Spa' }}
       />
     </Stack.Navigator>
   );
@@ -268,6 +279,16 @@ export const MainNavigator = () => {
           title: 'Hồ sơ',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person" color={color} size={size} />
+          )
+        }}
+      />
+      <Tab.Screen
+        name="ChatbotTab"
+        component={ChatbotScreen}
+        options={{
+          title: 'Trợ lý',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbubbles" color={color} size={size} />
           )
         }}
       />
