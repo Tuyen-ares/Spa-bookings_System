@@ -236,7 +236,7 @@
 | `discountType` (ENUM: 'percentage', 'fixed') | Loại giảm giá (Phần trăm hoặc Số tiền cố định) |
 | `discountValue` (DECIMAL(10,2)) | Giá trị giảm giá (phần trăm hoặc số tiền) |
 | `termsAndConditions` (TEXT) | Điều khoản và điều kiện |
-| `targetAudience` (ENUM: 'All', 'New Clients', 'Birthday', 'Group', 'VIP', 'Tier Level 1', 'Tier Level 2', 'Tier Level 3') | Đối tượng áp dụng (Tất cả, Khách hàng mới, Sinh nhật, Nhóm, VIP, Cấp độ 1-3) |
+| `targetAudience` (ENUM: 'All', 'New Clients', 'Birthday') | Đối tượng áp dụng (Tất cả, Khách hàng mới, Sinh nhật, Nhóm, VIP, Cấp độ 1-3) |
 | `applicableServiceIds` (JSON) | Mảng JSON các ID dịch vụ áp dụng (rỗng = tất cả dịch vụ) |
 | `minOrderValue` (DECIMAL(10,2)) | Giá trị đơn hàng tối thiểu để áp dụng |
 | `usageCount` (INT) | Số lần đã sử dụng |

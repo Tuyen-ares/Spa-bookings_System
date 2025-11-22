@@ -12,7 +12,6 @@ module.exports = {
       { id: 6, name: 'Triệt Lông' },
       { id: 7, name: 'Clinic' },
       { id: 8, name: 'Nail' },
-      { id: 9, name: 'Khác' },
     ];
 
     await queryInterface.bulkInsert('service_categories', categories, {});
