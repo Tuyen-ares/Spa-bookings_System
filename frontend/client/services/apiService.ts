@@ -109,6 +109,14 @@ export const redeemVoucherWithPoints = async (promotionId: string, userId: strin
         body: JSON.stringify({ userId })
     }).then(handleResponse);
 };
+
+// Get user's redeemed vouchers (vouchers đã đổi bằng điểm, chưa sử dụng)
+export const getMyRedeemedVouchers = async (userId: string): Promise<Array<Promotion & { redeemedCount: number }>> => {
+    return fetch(`${API_BASE_URL}/promotions/my-redeemed/${userId}`, {
+        headers: getAuthHeaders()
+    }).then(handleResponse);
+};
+
 export const getTiers = async (): Promise<Tier[]> => Promise.resolve([]);
 export const getUserWallet = async (userId: string): Promise<Wallet> => fetch(`${API_BASE_URL}/wallets/${userId}`).then(handleResponse);
 export const getUserPointsHistory = async (userId: string): Promise<Array<{date: string; pointsChange: number; type: string; source: string; description: string}>> => fetch(`${API_BASE_URL}/wallets/${userId}/points-history`).then(handleResponse);

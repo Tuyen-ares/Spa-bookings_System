@@ -126,7 +126,6 @@ export interface Promotion {
   description: string;
   code: string;
   expiryDate: string;
-  imageUrl?: string;
   discountType: 'percentage' | 'fixed';
   discountValue: number;
   termsAndConditions?: string;

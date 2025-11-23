@@ -25,10 +25,6 @@ module.exports = {
         type: Sequelize.DATEONLY,
         allowNull: false,
       },
-      imageUrl: {
-        type: Sequelize.STRING(500),
-        allowNull: true,
-      },
       discountType: {
         type: Sequelize.ENUM('percentage', 'fixed'),
         allowNull: false,
@@ -77,6 +73,18 @@ module.exports = {
         type: Sequelize.BOOLEAN,
         allowNull: false,
         defaultValue: true,
+      },
+      isPublic: {
+        type: Sequelize.BOOLEAN,
+        allowNull: true,
+        defaultValue: true,
+        comment: 'true = public (hiển thị trên trang khách hàng), false = private (chỉ dùng khi biết mã)',
+      },
+      pointsRequired: {
+        type: Sequelize.INTEGER,
+        allowNull: true,
+        defaultValue: null,
+        comment: 'Số điểm cần thiết để đổi voucher (chỉ áp dụng cho voucher private)',
       },
     });
   },

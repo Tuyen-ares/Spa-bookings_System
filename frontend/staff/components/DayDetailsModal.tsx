@@ -182,23 +182,23 @@ const DayDetailsModal: React.FC<DayDetailsModalProps> = ({
                             {dayInfo.shifts.length > 0 && (
                                 <div className="space-y-2">
                                     <h3 className="text-sm font-semibold text-gray-700 mb-2">Ca làm việc ({dayInfo.shifts.length})</h3>
-                                    {dayInfo.shifts.map(shift => (
-                                        <div key={shift.id} className="p-3 rounded-md border flex justify-between items-center">
-                                            <div>
-                                                <p className="font-semibold text-gray-800">{getShiftTypeDisplay(shift.shiftType)}</p>
-                                                {shift.notes && <p className="text-xs text-gray-500 italic">Ghi chú: {shift.notes}</p>}
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                {getShiftStatusBadge(shift.status)}
-                                                {shift.status === 'pending' && !isPastDate && (
-                                                    <>
-                                                        <button onClick={() => handleEditClick(shift)} className="p-1.5 rounded-full hover:bg-gray-100"><EditIcon className="w-4 h-4" /></button>
-                                                        <button onClick={() => handleConfirmDelete(shift)} className="p-1.5 rounded-full text-red-600 hover:bg-red-100"><TrashIcon className="w-4 h-4" /></button>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
+                            {dayInfo.shifts.map(shift => (
+                                <div key={shift.id} className="p-3 rounded-md border flex justify-between items-center">
+                                    <div>
+                                        <p className="font-semibold text-gray-800">{getShiftTypeDisplay(shift.shiftType)}</p>
+                                        {shift.notes && <p className="text-xs text-gray-500 italic">Ghi chú: {shift.notes}</p>}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {getShiftStatusBadge(shift.status)}
+                                        {shift.status === 'pending' && !isPastDate && (
+                                            <>
+                                                <button onClick={() => handleEditClick(shift)} className="p-1.5 rounded-full hover:bg-gray-100"><EditIcon className="w-4 h-4" /></button>
+                                                <button onClick={() => handleConfirmDelete(shift)} className="p-1.5 rounded-full text-red-600 hover:bg-red-100"><TrashIcon className="w-4 h-4" /></button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
                                 </div>
                             )}
                         </div>

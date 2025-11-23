@@ -210,7 +210,19 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
                                                     <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-1"></span>
                                                 )}
                                             </div>
-                                            <p className="text-sm text-gray-600 mt-1 break-words">{notif.message}</p>
+                                            <div className="text-sm text-gray-600 mt-1 break-words">
+                                                {notif.type === 'appointment_cancelled' && notif.message.includes('Lý do:') ? (
+                                                    <>
+                                                        <p className="mb-2">{notif.message.split('Lý do:')[0].trim()}</p>
+                                                        <div className="bg-red-50 border-l-4 border-red-400 p-2 rounded">
+                                                            <p className="text-xs font-semibold text-red-800 mb-1">Lý do hủy:</p>
+                                                            <p className="text-sm text-red-700">{notif.message.split('Lý do:')[1].trim()}</p>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <p>{notif.message}</p>
+                                                )}
+                                            </div>
                                             <div className="flex justify-between items-center mt-2">
                                                 <span className="text-xs text-gray-400">
                                                     {formatTime(notif.createdAt)}

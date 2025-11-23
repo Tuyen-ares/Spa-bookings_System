@@ -28,6 +28,14 @@ module.exports = {
         totalSpent: 5500000,
         lastUpdated: new Date('2024-08-10T09:30:00.000Z')
       },
+      {
+        id: 'wallet-client-4',
+        userId: 'user-client-4',
+        points: 10000,
+        tierLevel: 5,
+        totalSpent: 10000000,
+        lastUpdated: new Date('2024-08-15T14:00:00.000Z')
+      },
     ];
 
     await queryInterface.bulkInsert('wallets', wallets, {});

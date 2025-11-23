@@ -16,7 +16,6 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
         description: '',
         code: '',
         expiryDate: '',
-        imageUrl: '',
         discountType: 'percentage',
         discountValue: 0,
         termsAndConditions: '',
@@ -26,7 +25,6 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
         isPublic: true, // Default to public
         pointsRequired: null,
     });
-    const [imagePreview, setImagePreview] = useState<string>(promotion?.imageUrl || '');
 
     const serviceCategories = useMemo(() => {
         const categories = new Set(allServices.map(s => s.category));
@@ -46,21 +44,25 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
                 normalizedIsPublic = false;
             }
             
+            const applicableServiceIds = promotion.applicableServiceIds || [];
+            // Nếu applicableServiceIds = null hoặc rỗng => áp dụng cho tất cả
+            const isSelectAll = !applicableServiceIds || applicableServiceIds.length === 0;
+            setSelectAllServices(isSelectAll);
+            
             setFormData({
                 ...promotion,
                 isPublic: normalizedIsPublic, // Ensure it's a boolean
                 pointsRequired: promotion.pointsRequired ? Number(promotion.pointsRequired) : null,
-                applicableServiceIds: promotion.applicableServiceIds || [],
+                applicableServiceIds: applicableServiceIds,
             });
-            setImagePreview(promotion.imageUrl || '');
         } else {
             // Reset form when no promotion (creating new)
+            setSelectAllServices(true); // Mặc định chọn "Tất cả"
             setFormData({
                 title: '',
                 description: '',
                 code: '',
                 expiryDate: '',
-                imageUrl: '',
                 discountType: 'percentage',
                 discountValue: 0,
                 termsAndConditions: '',
@@ -70,7 +72,6 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
                 isPublic: true, // Default to public
                 pointsRequired: null,
             });
-            setImagePreview('');
         }
     }, [promotion]);
 
@@ -79,48 +80,118 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
         if (type === 'number') {
             // For pointsRequired, allow null/empty (user can leave it blank)
             if (name === 'pointsRequired') {
+                const numValue = value === '' ? null : parseInt(value);
+                // Không được âm
+                if (numValue !== null && numValue < 0) {
+                    return; // Không cập nhật nếu giá trị âm
+                }
                 setFormData(prev => ({ 
                     ...prev, 
-                    [name]: value === '' ? null : (parseInt(value) || null) 
+                    [name]: numValue
                 }));
+            } else if (name === 'stock') {
+                // Stock: cho phép null/empty hoặc số >= 0
+                const numValue = value === '' ? null : parseInt(value);
+                if (numValue !== null && numValue < 0) {
+                    return; // Không cập nhật nếu giá trị âm
+                }
+                setFormData(prev => ({ ...prev, [name]: numValue }));
+            } else if (name === 'minOrderValue') {
+                // minOrderValue: không được âm
+                const numValue = parseFloat(value) || 0;
+                if (numValue < 0) {
+                    return; // Không cập nhật nếu giá trị âm
+                }
+                setFormData(prev => ({ ...prev, [name]: numValue }));
             } else {
-                setFormData(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+                const numValue = parseFloat(value) || 0;
+                // Không được âm cho các trường số khác
+                if (numValue < 0) {
+                    return;
+                }
+                setFormData(prev => ({ ...prev, [name]: numValue }));
             }
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
 
-        if (name === 'imageUrl') {
-            setImagePreview(value);
+    };
+
+    // State để track checkbox "Tất cả"
+    const [selectAllServices, setSelectAllServices] = useState(false);
+    const [isManuallySelectingAll, setIsManuallySelectingAll] = useState(false);
+
+    useEffect(() => {
+        // Chỉ tự động update nếu không phải đang manually select all
+        if (isManuallySelectingAll) {
+            return;
         }
+        
+        // Kiểm tra nếu applicableServiceIds = [] hoặc null => áp dụng cho tất cả
+        // Hoặc nếu tất cả dịch vụ đều được chọn => set selectAllServices = true
+        const serviceIds = formData.applicableServiceIds || [];
+        if (serviceIds.length === 0 || (serviceIds.length === allServices.length && allServices.length > 0)) {
+            setSelectAllServices(true);
+        } else {
+            setSelectAllServices(false);
+        }
+    }, [formData.applicableServiceIds, allServices, isManuallySelectingAll]);
+
+    const handleSelectAllChange = (checked: boolean) => {
+        setIsManuallySelectingAll(true);
+        setSelectAllServices(checked);
+        if (checked) {
+            // Chọn tất cả => xóa tất cả các dịch vụ khác (để trống = áp dụng cho tất cả)
+            setFormData(prev => ({ ...prev, applicableServiceIds: [] }));
+        } else {
+            // Bỏ chọn "Tất cả" => giữ nguyên các dịch vụ đã chọn (nếu có)
+            // Nếu không có dịch vụ nào được chọn, giữ nguyên []
+        }
+        // Reset flag sau một chút để useEffect có thể hoạt động lại
+        setTimeout(() => setIsManuallySelectingAll(false), 100);
     };
 
     const handleServiceSelectionChange = (serviceId: string, checked: boolean) => {
+        setIsManuallySelectingAll(true);
         setFormData(prev => {
             const currentServiceIds = prev.applicableServiceIds ? [...prev.applicableServiceIds] : [];
             if (checked) {
+                // Nếu đang chọn dịch vụ, bỏ chọn "Tất cả"
+                setSelectAllServices(false);
                 return { ...prev, applicableServiceIds: [...currentServiceIds, serviceId] };
             } else {
+                // Nếu bỏ chọn dịch vụ, bỏ chọn "Tất cả"
+                setSelectAllServices(false);
                 return { ...prev, applicableServiceIds: currentServiceIds.filter(id => id !== serviceId) };
             }
         });
+        // Reset flag sau một chút để useEffect có thể hoạt động lại
+        setTimeout(() => setIsManuallySelectingAll(false), 100);
     };
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const result = reader.result as string;
-                setImagePreview(result);
-                setFormData(prev => ({ ...prev, imageUrl: result }));
-            };
-            reader.readAsDataURL(file);
-        }
-    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        
+        // Validation: Không được âm
+        if (formData.minOrderValue !== undefined && formData.minOrderValue < 0) {
+            alert('Giá trị đơn hàng tối thiểu không được âm.');
+            return;
+        }
+        if (formData.stock !== null && formData.stock !== undefined && formData.stock < 0) {
+            alert('Số lượng không được âm.');
+            return;
+        }
+        if (formData.pointsRequired !== null && formData.pointsRequired !== undefined && formData.pointsRequired < 0) {
+            alert('Số điểm cần thiết không được âm.');
+            return;
+        }
+        
+        // Validation: Phải chọn ít nhất 1 dịch vụ hoặc chọn "Tất cả"
+        // Nếu selectAllServices = true hoặc applicableServiceIds rỗng => áp dụng cho tất cả (OK)
+        // Nếu applicableServiceIds có ít nhất 1 phần tử => OK
+        // Không cần validation vì để trống = áp dụng cho tất cả
+        
         // Ensure isPublic is properly set (boolean, not undefined)
         // formData.isPublic should already be a boolean from the checkbox
         const isPublicValue = formData.isPublic !== false && formData.isPublic !== undefined;
@@ -141,7 +212,11 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
             // If isPublic is true, pointsRequired should be null
             pointsRequired: !isPublicValue 
                 ? (formData.pointsRequired && formData.pointsRequired > 0 ? Number(formData.pointsRequired) : null)
-                : null
+                : null,
+            // Nếu selectAllServices = true, set applicableServiceIds = null (áp dụng cho tất cả)
+            applicableServiceIds: selectAllServices || !formData.applicableServiceIds || formData.applicableServiceIds.length === 0
+                ? null
+                : formData.applicableServiceIds
         };
         console.log('Submitting promotion data:', JSON.stringify(submitData, null, 2));
         onSave(submitData as Promotion);
@@ -186,30 +261,6 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
                                 <input type="date" name="expiryDate" value={formData.expiryDate?.split('T')[0] || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded" required />
                             </div>
                             
-                            {/* Image Upload Section */}
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-medium text-gray-700">Hình ảnh</label>
-                                <div className="mt-1 flex items-center gap-4">
-                                    <div className="w-24 h-24 flex-shrink-0 bg-gray-100 rounded-md flex items-center justify-center">
-                                        {imagePreview ? (
-                                            <img src={imagePreview} alt="Xem trước" className="w-full h-full object-cover rounded-md" />
-                                        ) : (
-                                            <span className="text-xs text-gray-500 text-center">Xem trước</span>
-                                        )}
-                                    </div>
-                                    <div className="flex-grow">
-                                        <label htmlFor="imageUrl" className="block text-xs font-medium text-gray-500">Dán liên kết ảnh</label>
-                                        <input type="text" name="imageUrl" id="imageUrl" value={formData.imageUrl || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded text-sm" placeholder="https://picsum.photos/..." />
-                                        <div className="relative text-center my-2">
-                                            <div className="absolute inset-y-1/2 left-0 w-full h-px bg-gray-200"></div>
-                                            <span className="relative text-xs text-gray-400 bg-white px-2">hoặc</span>
-                                        </div>
-                                        <label htmlFor="file-upload" className="cursor-pointer bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 w-full text-center block">Tải lên từ máy</label>
-                                        <input id="file-upload" name="file-upload" type="file" className="sr-only" onChange={handleFileChange} accept="image/*" />
-                                    </div>
-                                </div>
-                            </div>
-
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Loại giảm giá</label>
                                 <select name="discountType" value={formData.discountType} onChange={handleChange} className="mt-1 w-full p-2 border rounded">
@@ -234,28 +285,39 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
                             <div className="md:col-span-2">
                                 <label className="block text-sm font-medium text-gray-700 mb-2">Dịch vụ áp dụng (Chọn nhiều)</label>
                                 <div className="grid grid-cols-2 gap-2 bg-gray-50 p-3 rounded-md border border-gray-200 max-h-40 overflow-y-auto">
+                                    {/* Checkbox "Tất cả" */}
+                                    <label className="flex items-center gap-2 text-sm text-gray-800 font-semibold col-span-2 border-b pb-2 mb-1">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectAllServices}
+                                            onChange={(e) => handleSelectAllChange(e.target.checked)}
+                                            className="rounded text-brand-primary focus:ring-brand-primary"
+                                        />
+                                        Tất cả dịch vụ
+                                    </label>
                                     {allServices.map(service => (
                                         <label key={service.id} className="flex items-center gap-2 text-sm text-gray-800">
                                             <input
                                                 type="checkbox"
                                                 checked={formData.applicableServiceIds?.includes(service.id) || false}
                                                 onChange={(e) => handleServiceSelectionChange(service.id, e.target.checked)}
-                                                className="rounded text-brand-primary focus:ring-brand-primary"
+                                                disabled={selectAllServices}
+                                                className="rounded text-brand-primary focus:ring-brand-primary disabled:opacity-50 disabled:cursor-not-allowed"
                                             />
                                             {service.name} ({service.category})
                                         </label>
                                     ))}
                                 </div>
-                                <p className="text-xs text-gray-500 mt-1">Để trống nếu áp dụng cho tất cả dịch vụ.</p>
+                                <p className="text-xs text-gray-500 mt-1">Chọn "Tất cả dịch vụ" hoặc chọn các dịch vụ cụ thể. Phải chọn ít nhất 1.</p>
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Giá trị đơn hàng tối thiểu (VND)</label>
-                                <input type="number" name="minOrderValue" value={formData.minOrderValue} onChange={handleChange} className="mt-1 w-full p-2 border rounded" />
+                                <input type="number" name="minOrderValue" value={formData.minOrderValue} onChange={handleChange} min="0" step="0.01" className="mt-1 w-full p-2 border rounded" />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Số lượng (lượt sử dụng)</label>
-                                <input type="number" name="stock" value={formData.stock || ''} onChange={handleChange} placeholder="Để trống = không giới hạn" className="mt-1 w-full p-2 border rounded" />
+                                <input type="number" name="stock" value={formData.stock || ''} onChange={handleChange} min="0" placeholder="Để trống = không giới hạn" className="mt-1 w-full p-2 border rounded" />
                             </div>
                             
                             <div className="md:col-span-2">
@@ -290,6 +352,7 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
                                         name="pointsRequired" 
                                         value={formData.pointsRequired || ''} 
                                         onChange={handleChange} 
+                                        min="0"
                                         placeholder="Nhập số điểm (ví dụ: 100)"
                                         className="mt-1 w-full p-2 border rounded" 
                                     />

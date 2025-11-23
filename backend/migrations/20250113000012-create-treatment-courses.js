@@ -86,6 +86,12 @@ module.exports = {
         defaultValue: 'active',
         comment: 'Trạng thái liệu trình',
       },
+      paymentStatus: {
+        type: Sequelize.ENUM('Paid', 'Unpaid'),
+        allowNull: false,
+        defaultValue: 'Unpaid',
+        comment: 'Trạng thái thanh toán (Đã thanh toán, Chưa thanh toán)',
+      },
       notes: {
         type: Sequelize.TEXT,
         allowNull: true,

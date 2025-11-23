@@ -280,7 +280,6 @@ File `db.txt` chứa script SQL để khởi tạo database cho hệ thống Anh
 | `description` | text NOT NULL | Mô tả |
 | `code` | varchar(100) NOT NULL | Mã code (DUY NHẤT) |
 | `expiryDate` | date NOT NULL | Ngày hết hạn |
-| `imageUrl` | varchar(500) DEFAULT NULL | URL ảnh |
 | `discountType` | enum('percentage','fixed') NOT NULL | Loại giảm giá: Phần trăm (%) hoặc số tiền cố định (VNĐ) |
 | `discountValue` | decimal(10,2) NOT NULL | Giá trị giảm (VNĐ hoặc %) |
 | `termsAndConditions` | text | Điều khoản và điều kiện |

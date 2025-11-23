@@ -73,6 +73,28 @@ module.exports = {
         type: Sequelize.STRING,
         allowNull: true,
       },
+      promotionId: {
+        type: Sequelize.STRING,
+        allowNull: true,
+        references: {
+          model: 'promotions',
+          key: 'id',
+        },
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE',
+        comment: 'ID mã khuyến mãi/voucher được áp dụng',
+      },
+    });
+
+    // Add indexes
+    await queryInterface.addIndex('appointments', ['date', 'time'], {
+      name: 'date_time',
+    });
+    await queryInterface.addIndex('appointments', ['status'], {
+      name: 'status',
+    });
+    await queryInterface.addIndex('appointments', ['promotionId'], {
+      name: 'promotionId',
     });
   },
 

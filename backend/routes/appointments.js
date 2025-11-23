@@ -13,7 +13,7 @@ const bcrypt = require('bcryptjs');
 const notifyAdmins = async (type, title, message, relatedId = null) => {
     try {
         console.log(`[notifyAdmins] Starting notification creation - Type: ${type}, Title: ${title}`);
-        
+
         // Get all admin users
         const admins = await db.User.findAll({
             where: { role: 'Admin', status: 'Active' }
@@ -41,9 +41,9 @@ const notifyAdmins = async (type, title, message, relatedId = null) => {
         }));
 
         console.log(`[notifyAdmins] Attempting to create ${notifications.length} notifications`);
-        
+
         await db.Notification.bulkCreate(notifications);
-        
+
         console.log(`[notifyAdmins] ✅ Successfully created ${notifications.length} admin notifications`);
     } catch (error) {
         console.error('[notifyAdmins] ❌ Error creating admin notifications:', error.message);
@@ -56,11 +56,11 @@ const updateUserAndWalletAfterAppointment = async (userId, appointment) => { /* 
 
 const findBestTherapist = async (serviceId, userId, date, time) => {
     // 1. Get service and its category name (use association ServiceCategory)
-    const service = await db.Service.findByPk(serviceId, { 
-        include: [{ 
+    const service = await db.Service.findByPk(serviceId, {
+        include: [{
             model: db.ServiceCategory,
             attributes: ['id', 'name', 'description', 'displayOrder']
-        }] 
+        }]
     });
     const serviceCategory = service && service.ServiceCategory ? service.ServiceCategory.name : null;
     if (!service || !serviceCategory) {
@@ -77,8 +77,8 @@ const findBestTherapist = async (serviceId, userId, date, time) => {
                 [Op.like]: `%"time":"${time}"%`
             }
         },
-        include: [{ 
-            model: db.User, 
+        include: [{
+            model: db.User,
             where: { role: 'Staff', status: 'Active' }
         }]
     });
@@ -106,7 +106,7 @@ const findBestTherapist = async (serviceId, userId, date, time) => {
         where: { date, time, status: { [Op.notIn]: ['cancelled', 'completed'] } },
         attributes: ['therapistId']
     })).map(app => app.therapistId);
-    
+
     eligibleTechnicians = eligibleTechnicians.filter(tech => {
         // Note: Staff table removed - specialty and staffRole info not available
         // For now, accept all staff with role 'Staff' and status 'Active'
@@ -143,8 +143,8 @@ const findBestTherapist = async (serviceId, userId, date, time) => {
         });
         score += Math.max(0, 50 - (dailyWorkload * 10)); // Higher score for less work
 
-    // Note: StaffTier table removed - tier scoring disabled
-        
+        // Note: StaffTier table removed - tier scoring disabled
+
         scoredTechnicians.push({ tech, score });
     }
 
@@ -153,7 +153,7 @@ const findBestTherapist = async (serviceId, userId, date, time) => {
 
     scoredTechnicians.sort((a, b) => b.score - a.score);
 
-    console.log("Smart Assignment Scoring:", scoredTechnicians.map(s => ({name: s.tech.name, score: s.score})));
+    console.log("Smart Assignment Scoring:", scoredTechnicians.map(s => ({ name: s.tech.name, score: s.score })));
 
     return scoredTechnicians[0].tech;
 };
@@ -235,7 +235,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         const appointment = await db.Appointment.findByPk(id, {
             include: [
                 {
@@ -286,8 +286,8 @@ router.get('/user/:userId', async (req, res) => {
     const { Op } = require('sequelize');
     try {
         // Get appointments where user is the client OR the therapist
-        const userAppointments = await db.Appointment.findAll({ 
-            where: { 
+        const userAppointments = await db.Appointment.findAll({
+            where: {
                 [Op.or]: [
                     { userId: userId },
                     { therapistId: userId }
@@ -317,16 +317,16 @@ router.get('/user/:userId', async (req, res) => {
             ],
             order: [['date', 'DESC'], ['time', 'ASC']]
         });
-        
+
         // Map appointments to include client, therapist info, and treatment session
         const mappedAppointments = userAppointments.map(apt => {
             const appointmentData = apt.toJSON();
-            
+
             // Map price from Service to top level for mobile app
             if (appointmentData.Service && appointmentData.Service.price) {
                 appointmentData.price = appointmentData.Service.price;
             }
-            
+
             if (appointmentData.Client) {
                 appointmentData.Client = {
                     id: appointmentData.Client.id,
@@ -355,9 +355,9 @@ router.get('/user/:userId', async (req, res) => {
             }
             return appointmentData;
         });
-        
+
         console.log(`✅ Fetched ${mappedAppointments.length} appointments for user ${userId} (as client or therapist)`);
-        
+
         res.json(mappedAppointments);
     } catch (error) {
         console.error('Error fetching user appointments:', error);
@@ -368,6 +368,20 @@ router.get('/user/:userId', async (req, res) => {
 // POST /api/appointments
 router.post('/', async (req, res) => {
     const newAppointmentData = req.body;
+
+    // LOG REQUEST BODY để debug
+    console.log(`\n📝 [POST /api/appointments] ==========================================`);
+    console.log(`   Request body:`, {
+        id: newAppointmentData.id,
+        userId: newAppointmentData.userId,
+        serviceId: newAppointmentData.serviceId,
+        promotionId: newAppointmentData.promotionId,
+        date: newAppointmentData.date,
+        time: newAppointmentData.time,
+        paymentStatus: newAppointmentData.paymentStatus
+    });
+    console.log(`📝 [POST /api/appointments] ==========================================\n`);
+
     if (!newAppointmentData.serviceId || !newAppointmentData.date || !newAppointmentData.time) {
         return res.status(400).json({ message: 'Missing required appointment data' });
     }
@@ -393,7 +407,7 @@ router.post('/', async (req, res) => {
                 // Generate a random password and hash it
                 const tempPassword = `temp-${Date.now()}-${Math.random().toString(36).substring(7)}`;
                 const hashedPassword = await bcrypt.hash(tempPassword, 10);
-                
+
                 const newUser = await db.User.create({
                     id: `user-${uuidv4()}`,
                     name: newAppointmentData.customerName,
@@ -438,12 +452,117 @@ router.post('/', async (req, res) => {
                 finalTherapistId = bestTherapist.id;
             } else {
                 console.log('Smart assignment could not find an ideal therapist. Leaving unassigned.');
-                finalTherapistId = null; 
+                finalTherapistId = null;
             }
         }
-        
+
         const service = await db.Service.findByPk(newAppointmentData.serviceId);
         if (!service) return res.status(404).json({ message: 'Service not found' });
+
+        // Validate promotion if provided
+        if (newAppointmentData.promotionId) {
+            const promotion = await db.Promotion.findByPk(newAppointmentData.promotionId);
+            if (!promotion) {
+                return res.status(400).json({ message: 'Mã khuyến mãi không hợp lệ' });
+            }
+
+            // Normalize isActive to boolean (database may store 0/1)
+            const isActive = promotion.isActive === true || promotion.isActive === 1 || promotion.isActive === '1';
+
+            // Check if promotion is active
+            if (!isActive) {
+                return res.status(400).json({ message: 'Mã khuyến mãi này không còn hoạt động' });
+            }
+
+            // Check expiry
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const expiryDate = new Date(promotion.expiryDate);
+            expiryDate.setHours(0, 0, 0, 0);
+            if (today > expiryDate) {
+                return res.status(400).json({ message: 'Mã khuyến mãi đã hết hạn' });
+            }
+
+            // Normalize isPublic to boolean
+            const isPublic = promotion.isPublic === true || promotion.isPublic === 1 || promotion.isPublic === '1';
+
+            // For public promotions, check stock
+            if (isPublic && promotion.stock !== null && promotion.stock <= 0) {
+                return res.status(400).json({ message: 'Mã khuyến mãi đã hết lượt sử dụng' });
+            }
+
+            // For redeemed vouchers (private vouchers), check if user has available vouchers
+            if (!isPublic && finalUserId) {
+                const unusedRedeemedVouchers = await db.PromotionUsage.findAll({
+                    where: {
+                        userId: finalUserId,
+                        promotionId: promotion.id,
+                        appointmentId: { [Op.is]: null }
+                    }
+                });
+
+                if (unusedRedeemedVouchers.length === 0) {
+                    return res.status(400).json({ message: 'Bạn không còn voucher này để sử dụng. Vui lòng đổi điểm để lấy thêm voucher.' });
+                }
+            }
+
+            // Validate "New Clients" promotion: chỉ được dùng 1 lần cho 1 dịch vụ mà khách chưa đặt lịch dịch vụ đó lần nào
+            if (promotion.targetAudience === 'New Clients' && finalUserId) {
+                console.log(`\n🔍 [NEW CLIENTS VALIDATION] ==========================================`);
+                console.log(`   Checking if user can use New Clients voucher for this service`);
+                console.log(`   userId: ${finalUserId}`);
+                console.log(`   serviceId: ${newAppointmentData.serviceId}`);
+                console.log(`   promotionId: ${promotion.id}`);
+
+                // Kiểm tra xem user đã từng đặt lịch dịch vụ này chưa (bất kỳ status nào, trừ cancelled)
+                const hasBookedService = await db.Appointment.findOne({
+                    where: {
+                        userId: finalUserId,
+                        serviceId: newAppointmentData.serviceId,
+                        status: { [Op.ne]: 'cancelled' } // Bất kỳ status nào trừ cancelled
+                    }
+                });
+
+                if (hasBookedService) {
+                    console.log(`   ❌ [NEW CLIENTS] User has already booked this service before`);
+                    console.log(`   - Existing appointment ID: ${hasBookedService.id}`);
+                    console.log(`   - Status: ${hasBookedService.status}`);
+                    console.log(`🔍 [NEW CLIENTS VALIDATION] ==========================================\n`);
+                    return res.status(400).json({
+                        message: 'Voucher "Khách hàng mới" chỉ áp dụng cho dịch vụ mà bạn chưa từng đặt lịch. Bạn đã đặt lịch dịch vụ này trước đó.'
+                    });
+                }
+
+                // Kiểm tra xem user đã dùng voucher "Khách hàng mới" cho dịch vụ này chưa
+                const hasUsedNewClientVoucherForService = await db.PromotionUsage.findOne({
+                    where: {
+                        userId: finalUserId,
+                        serviceId: newAppointmentData.serviceId,
+                        appointmentId: { [Op.ne]: null } // Đã được dùng (có appointmentId)
+                    },
+                    include: [{
+                        model: db.Promotion,
+                        where: {
+                            targetAudience: 'New Clients'
+                        },
+                        required: true
+                    }]
+                });
+
+                if (hasUsedNewClientVoucherForService) {
+                    console.log(`   ❌ [NEW CLIENTS] User has already used New Clients voucher for this service`);
+                    console.log(`   - PromotionUsage ID: ${hasUsedNewClientVoucherForService.id}`);
+                    console.log(`   - Appointment ID: ${hasUsedNewClientVoucherForService.appointmentId}`);
+                    console.log(`🔍 [NEW CLIENTS VALIDATION] ==========================================\n`);
+                    return res.status(400).json({
+                        message: 'Bạn đã sử dụng voucher "Khách hàng mới" cho dịch vụ này rồi. Mỗi dịch vụ chỉ được dùng voucher này 1 lần.'
+                    });
+                }
+
+                console.log(`   ✅ [NEW CLIENTS] User can use New Clients voucher for this service`);
+                console.log(`🔍 [NEW CLIENTS VALIDATION] ==========================================\n`);
+            }
+        }
 
         // Use provided status or default to 'pending' (admin-added appointments use 'upcoming')
         const appointmentStatus = newAppointmentData.status || 'pending';
@@ -489,7 +608,7 @@ router.post('/', async (req, res) => {
 
             for (let i = 1; i <= quantity; i++) {
                 let sessionDate = new Date(startDateObj);
-                
+
                 // Calculate session date based on frequency
                 if (frequencyType === 'sessions_per_week' && frequencyValue) {
                     // e.g., 2 sessions per week = every 3-4 days
@@ -552,6 +671,149 @@ router.post('/', async (req, res) => {
             }
         }
 
+        // ==========================================
+        // TRỪ VOUCHER NGAY KHI ĐẶT LỊCH
+        // Logic: Khi đặt lịch và áp dụng voucher đã đổi điểm, voucher bị trừ ngay lập tức
+        // KHÔNG phụ thuộc vào thanh toán (thanh toán tại quầy hay VNPay đều trừ ngay)
+        // ==========================================
+        console.log(`\n🔍 [VOUCHER DEDUCTION CHECK] ==========================================`);
+        console.log(`   Checking conditions for voucher deduction:`);
+        console.log(`   - promotionId: ${newAppointmentData.promotionId || 'null/undefined'}`);
+        console.log(`   - finalUserId: ${finalUserId || 'null/undefined'}`);
+        console.log(`   - Condition: ${newAppointmentData.promotionId && finalUserId ? '✅ PASS' : '❌ FAIL'}`);
+        console.log(`🔍 [VOUCHER DEDUCTION CHECK] ==========================================\n`);
+
+        if (newAppointmentData.promotionId && finalUserId) {
+            try {
+                console.log(`\n🔍 [VOUCHER DEDUCTION] ==========================================`);
+                console.log(`   ⚡ TRỪ VOUCHER NGAY KHI ĐẶT LỊCH (không phụ thuộc thanh toán)`);
+                console.log(`   userId: ${finalUserId}`);
+                console.log(`   promotionId: ${newAppointmentData.promotionId}`);
+                console.log(`   appointmentId (new): ${createdAppointment.id}`);
+
+                // Kiểm tra xem promotion này có phải là redeemed voucher không (isPublic = false)
+                const promotion = await db.Promotion.findByPk(newAppointmentData.promotionId);
+
+                if (!promotion) {
+                    console.log(`   ⚠️ [WARNING] Promotion not found: ${newAppointmentData.promotionId}`);
+                    throw new Error(`Promotion not found: ${newAppointmentData.promotionId}`);
+                }
+
+                // Normalize isPublic: có thể là boolean, 0/1, hoặc '0'/'1'
+                const promoData = promotion.toJSON ? promotion.toJSON() : promotion;
+                const normalizedIsPublic = promoData.isPublic === true || promoData.isPublic === 1 || promoData.isPublic === '1';
+                const isRedeemedVoucher = !normalizedIsPublic; // isPublic = false nghĩa là redeemed voucher
+
+                console.log(`   Promotion check:`, {
+                    promotionId: promotion.id,
+                    code: promotion.code,
+                    title: promotion.title,
+                    isPublic_raw: promoData.isPublic,
+                    isPublic_type: typeof promoData.isPublic,
+                    normalizedIsPublic: normalizedIsPublic,
+                    isRedeemedVoucher: isRedeemedVoucher
+                });
+
+                if (isRedeemedVoucher) {
+                    console.log(`   ✅ This is a redeemed voucher (isPublic: ${promotion.isPublic})`);
+
+                    // Query tất cả PromotionUsage cho promotion này để debug
+                    const allUsages = await db.PromotionUsage.findAll({
+                        where: {
+                            userId: finalUserId,
+                            promotionId: newAppointmentData.promotionId
+                        }
+                    });
+                    console.log(`   Total PromotionUsage records: ${allUsages.length}`);
+                    allUsages.forEach((u, idx) => {
+                        const uData = u.toJSON ? u.toJSON() : u;
+                        console.log(`     [${idx + 1}] id: ${uData.id}, appointmentId: ${uData.appointmentId || 'NULL'}, usedAt: ${uData.usedAt}`);
+                    });
+
+                    // Query trực tiếp để tìm voucher chưa dùng (appointmentId IS NULL)
+                    // Sử dụng raw SQL query để đảm bảo chính xác
+                    const { QueryTypes } = require('sequelize');
+                    const unusedRedeemedUsages = await db.sequelize.query(
+                        `SELECT * FROM promotion_usage 
+                         WHERE userId = :userId 
+                         AND promotionId = :promotionId 
+                         AND appointmentId IS NULL 
+                         ORDER BY usedAt ASC 
+                         LIMIT 1`,
+                        {
+                            replacements: {
+                                userId: finalUserId,
+                                promotionId: newAppointmentData.promotionId
+                            },
+                            type: QueryTypes.SELECT
+                        }
+                    );
+
+                    console.log(`   Found ${unusedRedeemedUsages.length} unused PromotionUsage records (raw SQL)`);
+
+                    if (unusedRedeemedUsages.length > 0) {
+                        const unusedRedeemed = unusedRedeemedUsages[0];
+                        console.log(`   ✅ Found unused voucher: ${unusedRedeemed.id}`);
+                        console.log(`   - Current appointmentId: ${unusedRedeemed.appointmentId || 'NULL'}`);
+
+                        // Đánh dấu voucher đã được dùng cho appointment này (trừ voucher)
+                        // Sử dụng raw SQL update để đảm bảo update được commit
+                        const [updateResult, metadata] = await db.sequelize.query(
+                            `UPDATE promotion_usage 
+                             SET appointmentId = :appointmentId, serviceId = :serviceId 
+                             WHERE id = :id AND appointmentId IS NULL`,
+                            {
+                                replacements: {
+                                    id: unusedRedeemed.id,
+                                    appointmentId: createdAppointment.id,
+                                    serviceId: newAppointmentData.serviceId
+                                },
+                                type: QueryTypes.UPDATE
+                            }
+                        );
+
+                        console.log(`   Update result:`, updateResult);
+                        console.log(`   Metadata:`, metadata);
+
+                        // Verify update
+                        const [updated] = await db.sequelize.query(
+                            `SELECT * FROM promotion_usage WHERE id = :id`,
+                            {
+                                replacements: { id: unusedRedeemed.id },
+                                type: QueryTypes.SELECT
+                            }
+                        );
+
+                        if (updated && updated.appointmentId === createdAppointment.id) {
+                            console.log(`   ✅ [SUCCESS] Voucher deducted successfully!`);
+                            console.log(`   - Before update: appointmentId = NULL`);
+                            console.log(`   - After update: appointmentId = ${updated.appointmentId}`);
+                            console.log(`   - Linked to appointment: ${createdAppointment.id}`);
+                        } else {
+                            console.log(`   ⚠️ [WARNING] Update verification failed`);
+                            console.log(`   - Updated record:`, updated);
+                        }
+                    } else {
+                        console.log(`   ⚠️ [WARNING] No unused redeemed voucher found!`);
+                        console.log(`   - This may be a public voucher (not redeemed with points)`);
+                        console.log(`   - Or all vouchers have been used`);
+                    }
+                } else {
+                    console.log(`   ℹ️ [INFO] This is a public voucher (isPublic: ${promotion ? promotion.isPublic : 'N/A'})`);
+                    console.log(`   - Public vouchers are not deducted here (handled separately)`);
+                }
+                console.log(`🔍 [VOUCHER DEDUCTION] ==========================================\n`);
+            } catch (voucherError) {
+                console.error('❌ [VOUCHER DEDUCTION] Error deducting voucher when creating appointment:', voucherError);
+                console.error('   Error stack:', voucherError.stack);
+                // Don't fail appointment creation if voucher deduction fails
+            }
+        } else {
+            console.log(`\n🔍 [VOUCHER DEDUCTION] Skipped:`);
+            console.log(`   - promotionId: ${newAppointmentData.promotionId || 'null/undefined'}`);
+            console.log(`   - finalUserId: ${finalUserId || 'null/undefined'}`);
+        }
+
         res.status(201).json({
             ...createdAppointment.toJSON(),
             treatmentCourseId: treatmentCourseId,
@@ -586,7 +848,7 @@ const getShiftHoursFromTime = (time) => {
     const [hours, minutes] = time.split(':').map(Number);
     let startHour = 9;
     let endHour = 16;
-    
+
     // Determine shift based on time
     if (hours >= 9 && hours < 16) {
         // Morning shift: 9:00 - 16:00
@@ -601,7 +863,7 @@ const getShiftHoursFromTime = (time) => {
         startHour = Math.max(9, Math.min(hours, 22));
         endHour = Math.min(22, startHour + 4);
     }
-    
+
     return {
         start: `${String(startHour).padStart(2, '0')}:00`,
         end: `${String(endHour).padStart(2, '0')}:00`
@@ -618,13 +880,13 @@ router.put('/:id', async (req, res) => {
         if (!appointment) {
             return res.status(404).json({ message: 'Appointment not found' });
         }
-        
+
         // Check for schedule conflict when assigning therapist
         if (updatedData.therapistId && (updatedData.status === 'upcoming' || updatedData.status === 'scheduled')) {
             const therapistId = updatedData.therapistId;
             const appointmentDate = updatedData.date || appointment.date;
             const appointmentTime = updatedData.time || appointment.time;
-            
+
             // Find conflicting appointments (same therapist, same date, same time, different appointment)
             const conflictingAppointment = await db.Appointment.findOne({
                 where: {
@@ -640,11 +902,11 @@ router.put('/:id', async (req, res) => {
                     attributes: ['id', 'name', 'email']
                 }]
             });
-            
+
             if (conflictingAppointment) {
                 const clientName = conflictingAppointment.Client?.name || 'khách hàng';
                 const conflictDate = new Date(conflictingAppointment.date).toLocaleDateString('vi-VN');
-                return res.status(400).json({ 
+                return res.status(400).json({
                     message: `Nhân viên đã được phân công cho lịch hẹn khác vào ${conflictDate} lúc ${conflictingAppointment.time} (khách hàng: ${clientName}). Vui lòng chọn nhân viên khác hoặc thay đổi thời gian.`,
                     conflict: {
                         appointmentId: conflictingAppointment.id,
@@ -655,12 +917,75 @@ router.put('/:id', async (req, res) => {
                 });
             }
         }
-        
+
         const oldStatus = appointment.status;
         const oldPaymentStatus = appointment.paymentStatus;
         await appointment.update(updatedData);
-        
-        // Record promotion usage when payment status changes to Paid
+
+        // ==========================================
+        // TRỪ VOUCHER THƯỜNG KHI ADMIN CHẤP NHẬN LỊCH HẸN
+        // Logic: Khi admin chấp nhận lịch hẹn (status từ pending -> upcoming/scheduled), trừ stock của voucher thường
+        // ==========================================
+        const isBeingAccepted = (oldStatus === 'pending' && (updatedData.status === 'upcoming' || updatedData.status === 'scheduled'));
+
+        if (isBeingAccepted && appointment.promotionId && appointment.userId) {
+            try {
+                console.log(`\n🔍 [PUBLIC VOUCHER DEDUCTION] ==========================================`);
+                console.log(`   Admin accepted appointment - checking if public voucher needs stock deduction`);
+                console.log(`   Appointment ID: ${id}`);
+                console.log(`   User ID: ${appointment.userId}`);
+                console.log(`   Promotion ID: ${appointment.promotionId}`);
+                console.log(`   Status change: ${oldStatus} -> ${updatedData.status}`);
+
+                const promotion = await db.Promotion.findByPk(appointment.promotionId);
+                if (promotion) {
+                    const promoData = promotion.toJSON ? promotion.toJSON() : promotion;
+                    const normalizedIsPublic = promoData.isPublic === true || promoData.isPublic === 1 || promoData.isPublic === '1';
+
+                    // Chỉ trừ stock cho voucher thường (isPublic = true)
+                    if (normalizedIsPublic && promotion.stock !== null) {
+                        // Kiểm tra xem đã có PromotionUsage chưa (tránh trừ 2 lần)
+                        const existingUsage = await db.PromotionUsage.findOne({
+                            where: {
+                                userId: appointment.userId,
+                                promotionId: appointment.promotionId,
+                                appointmentId: id
+                            }
+                        });
+
+                        if (!existingUsage) {
+                            // Tạo PromotionUsage record
+                            await db.PromotionUsage.create({
+                                id: `promo-usage-${uuidv4()}`,
+                                userId: appointment.userId,
+                                promotionId: appointment.promotionId,
+                                appointmentId: id,
+                                serviceId: appointment.serviceId,
+                            });
+
+                            // Trừ stock
+                            await promotion.decrement('stock', { by: 1 });
+                            const updatedPromo = await db.Promotion.findByPk(appointment.promotionId);
+                            console.log(`   ✅ [SUCCESS] Public voucher stock deducted!`);
+                            console.log(`   - Before: stock = ${promotion.stock}`);
+                            console.log(`   - After: stock = ${updatedPromo.stock}`);
+                        } else {
+                            console.log(`   ℹ️ [INFO] PromotionUsage already exists, skipping stock deduction`);
+                        }
+                    } else {
+                        console.log(`   ℹ️ [INFO] This is not a public voucher or has unlimited stock`);
+                        console.log(`   - isPublic: ${normalizedIsPublic}`);
+                        console.log(`   - stock: ${promotion.stock}`);
+                    }
+                }
+                console.log(`🔍 [PUBLIC VOUCHER DEDUCTION] ==========================================\n`);
+            } catch (voucherError) {
+                console.error('❌ [PUBLIC VOUCHER DEDUCTION] Error deducting public voucher stock:', voucherError);
+                // Don't fail appointment update if voucher deduction fails
+            }
+        }
+
+        // Record promotion usage when payment status changes to Paid (for tracking purposes)
         if (oldPaymentStatus !== 'Paid' && updatedData.paymentStatus === 'Paid' && appointment.promotionId && appointment.userId) {
             try {
                 const existingUsage = await db.PromotionUsage.findOne({
@@ -670,8 +995,9 @@ router.put('/:id', async (req, res) => {
                         appointmentId: appointment.id
                     }
                 });
-                
+
                 if (!existingUsage) {
+                    // Chỉ tạo PromotionUsage nếu chưa có (có thể đã được tạo ở trên)
                     await db.PromotionUsage.create({
                         id: `promo-usage-${uuidv4()}`,
                         userId: appointment.userId,
@@ -686,25 +1012,107 @@ router.put('/:id', async (req, res) => {
                 // Don't fail the appointment update if promotion usage recording fails
             }
         }
-        
+
+        // ==========================================
+        // HOÀN LẠI VOUCHER KHI APPOINTMENT BỊ HỦY HOẶC BỊ TỪ CHỐI
+        // Logic: Nếu admin hủy/không chấp nhận lịch hẹn, voucher được hoàn lại
+        // - Voucher thường: hoàn lại stock + xóa PromotionUsage (nếu từ pending)
+        // - Voucher đổi điểm: hoàn lại bằng cách set appointmentId = null
+        // ==========================================
+        const isBeingCancelled = (updatedData.status === 'cancelled');
+        const isBeingRejected = (updatedData.rejectionReason && updatedData.rejectionReason.trim() !== '');
+        const isBeingRejectedFromPending = (oldStatus === 'pending' && (isBeingCancelled || isBeingRejected));
+
+        if ((isBeingCancelled || isBeingRejected) && appointment.promotionId && appointment.userId) {
+            try {
+                console.log(`\n🔄 [VOUCHER REFUND] ==========================================`);
+                console.log(`   Appointment ID: ${id}`);
+                console.log(`   User ID: ${appointment.userId}`);
+                console.log(`   Promotion ID: ${appointment.promotionId}`);
+                console.log(`   Status change: ${oldStatus} -> ${updatedData.status}`);
+                console.log(`   Rejection reason: ${updatedData.rejectionReason || 'N/A'}`);
+
+                // Tìm PromotionUsage record được link với appointment này
+                const usedVoucher = await db.PromotionUsage.findOne({
+                    where: {
+                        userId: appointment.userId,
+                        promotionId: appointment.promotionId,
+                        appointmentId: id
+                    }
+                });
+
+                const promotion = await db.Promotion.findByPk(appointment.promotionId);
+                if (!promotion) {
+                    console.log(`   ⚠️ [WARNING] Promotion not found: ${appointment.promotionId}`);
+                    return;
+                }
+
+                const promoData = promotion.toJSON ? promotion.toJSON() : promotion;
+                const normalizedIsPublic = promoData.isPublic === true || promoData.isPublic === 1 || promoData.isPublic === '1';
+
+                if (usedVoucher) {
+                    console.log(`   ✅ Found used voucher: ${usedVoucher.id}`);
+                    console.log(`   - Current appointmentId: ${usedVoucher.appointmentId}`);
+                    console.log(`   - Is public voucher: ${normalizedIsPublic}`);
+                    console.log(`   - Is rejected from pending: ${isBeingRejectedFromPending}`);
+
+                    if (normalizedIsPublic && isBeingRejectedFromPending) {
+                        // Voucher thường: hoàn lại stock + xóa PromotionUsage
+                        console.log(`   🔄 Refunding public voucher - restoring stock and removing PromotionUsage`);
+
+                        // Hoàn lại stock
+                        if (promotion.stock !== null) {
+                            await promotion.increment('stock', { by: 1 });
+                            const updatedPromo = await db.Promotion.findByPk(appointment.promotionId);
+                            console.log(`   ✅ Stock restored: ${promotion.stock} -> ${updatedPromo.stock}`);
+                        }
+
+                        // Xóa PromotionUsage
+                        await usedVoucher.destroy();
+                        console.log(`   ✅ PromotionUsage deleted`);
+                    } else {
+                        // Voucher đổi điểm: hoàn lại bằng cách set appointmentId = null
+                        console.log(`   🔄 Refunding redeemed voucher - setting appointmentId to null`);
+
+                        await usedVoucher.update({
+                            appointmentId: null,
+                            serviceId: null
+                        });
+
+                        console.log(`   ✅ Voucher refunded - appointmentId set to null`);
+                    }
+
+                    console.log(`   ✅ [SUCCESS] Voucher refunded successfully!`);
+                } else {
+                    console.log(`   ℹ️ [INFO] No used voucher found for this appointment`);
+                    console.log(`   - This may be a public voucher that was not yet accepted`);
+                    console.log(`   - Or voucher was not used for this appointment`);
+                }
+                console.log(`🔄 [VOUCHER REFUND] ==========================================\n`);
+            } catch (refundError) {
+                console.error('❌ [VOUCHER REFUND] Error refunding voucher:', refundError);
+                // Don't fail appointment update if voucher refund fails
+            }
+        }
+
         // Sync treatment course status with appointment status
         // When appointment is accepted (pending -> upcoming/scheduled), update course from pending -> active
         // When appointment is cancelled/reverted (upcoming/scheduled -> cancelled/pending), update course from active -> pending
-        const isBeingAccepted = (oldStatus === 'pending' && (updatedData.status === 'upcoming' || updatedData.status === 'scheduled'));
-        const isBeingCancelled = ((oldStatus === 'upcoming' || oldStatus === 'scheduled') && updatedData.status === 'cancelled');
+        const isBeingAcceptedForCourse = (oldStatus === 'pending' && (updatedData.status === 'upcoming' || updatedData.status === 'scheduled'));
+        const isBeingCancelledForCourse = ((oldStatus === 'upcoming' || oldStatus === 'scheduled') && updatedData.status === 'cancelled');
         const isBackToPending = ((oldStatus === 'upcoming' || oldStatus === 'scheduled') && updatedData.status === 'pending');
-        
-        if (isBeingAccepted || isBeingCancelled || isBackToPending) {
+
+        if (isBeingAcceptedForCourse || isBeingCancelledForCourse || isBackToPending) {
             try {
                 // Find treatment session linked to this appointment
                 const linkedSession = await db.TreatmentSession.findOne({
                     where: { appointmentId: id }
                 });
-                
+
                 if (linkedSession) {
                     const treatmentCourse = await db.TreatmentCourse.findByPk(linkedSession.treatmentCourseId);
                     if (treatmentCourse) {
-                        if (isBeingCancelled) {
+                        if (isBeingCancelledForCourse) {
                             // Appointment is being cancelled, update course to cancelled
                             if (treatmentCourse.status === 'active') {
                                 await treatmentCourse.update({ status: 'cancelled' });
@@ -722,7 +1130,7 @@ router.put('/:id', async (req, res) => {
                         },
                         order: [['createdAt', 'DESC']]
                     });
-                    
+
                     if (treatmentCourse && isBeingCancelled) {
                         await treatmentCourse.update({ status: 'cancelled' });
                         console.log(`✅ Updated treatment course ${treatmentCourse.id} status from 'active' to 'cancelled' after appointment cancellation (no linked session)`);
@@ -733,13 +1141,13 @@ router.put('/:id', async (req, res) => {
                 // Don't fail the appointment update if sync fails
             }
         }
-        
+
         // Auto-create staff shift if therapist is assigned and status is 'upcoming'
         if (updatedData.therapistId && updatedData.status === 'upcoming') {
             const therapistId = updatedData.therapistId;
             const appointmentDate = appointment.date;
             const appointmentTime = appointment.time;
-            
+
             // Check if staff already has a shift for this date
             const existingShift = await db.StaffShift.findOne({
                 where: {
@@ -748,12 +1156,12 @@ router.put('/:id', async (req, res) => {
                     status: { [Op.in]: ['approved', 'pending'] }
                 }
             });
-            
+
             if (!existingShift) {
                 // Auto-create shift for the staff
                 const shiftType = getShiftTypeFromTime(appointmentTime);
                 const shiftHours = getShiftHoursFromTime(appointmentTime);
-                
+
                 try {
                     await db.StaffShift.create({
                         id: `shift-${uuidv4()}`,
@@ -774,7 +1182,7 @@ router.put('/:id', async (req, res) => {
                 const existingShiftType = existingShift.shiftType;
                 const requiredShiftType = getShiftTypeFromTime(appointmentTime);
                 const requiredHours = getShiftHoursFromTime(appointmentTime);
-                
+
                 // If appointment time doesn't match existing shift type, update shift
                 if (existingShiftType !== requiredShiftType) {
                     // Check if existing shift hours cover the appointment time
@@ -782,7 +1190,7 @@ router.put('/:id', async (req, res) => {
                     const appointmentHour = parseInt(appointmentTime.split(':')[0]);
                     const existingStart = existingHours.start ? parseInt(existingHours.start.split(':')[0]) : 9;
                     const existingEnd = existingHours.end ? parseInt(existingHours.end.split(':')[0]) : 16;
-                    
+
                     // If appointment time is outside existing shift hours, update shift
                     if (appointmentHour < existingStart || appointmentHour >= existingEnd) {
                         // Merge hours to cover both shifts
@@ -790,7 +1198,7 @@ router.put('/:id', async (req, res) => {
                             start: Math.min(existingStart, parseInt(requiredHours.start.split(':')[0])),
                             end: Math.max(existingEnd, parseInt(requiredHours.end.split(':')[0]))
                         };
-                        
+
                         try {
                             await existingShift.update({
                                 shiftType: 'custom',
@@ -798,7 +1206,7 @@ router.put('/:id', async (req, res) => {
                                     start: `${String(mergedHours.start).padStart(2, '0')}:00`,
                                     end: `${String(mergedHours.end).padStart(2, '0')}:00`
                                 },
-                                notes: existingShift.notes ? 
+                                notes: existingShift.notes ?
                                     `${existingShift.notes}; Cập nhật để bao gồm lịch hẹn ${appointment.serviceName}` :
                                     `Cập nhật để bao gồm lịch hẹn ${appointment.serviceName}`
                             });
@@ -810,7 +1218,7 @@ router.put('/:id', async (req, res) => {
                 }
             }
         }
-        
+
         // Update treatment session staffId when therapist is assigned
         if (updatedData.therapistId) {
             try {
@@ -818,14 +1226,14 @@ router.put('/:id', async (req, res) => {
                 const linkedSession = await db.TreatmentSession.findOne({
                     where: { appointmentId: id }
                 });
-                
+
                 if (linkedSession) {
                     // Update the linked session's staffId
                     await linkedSession.update({
                         staffId: updatedData.therapistId
                     });
                     console.log(`✅ Updated treatment session ${linkedSession.id} with staffId: ${updatedData.therapistId}`);
-                    
+
                     // Get treatment course
                     const treatmentCourse = await db.TreatmentCourse.findByPk(linkedSession.treatmentCourseId);
                     if (treatmentCourse) {
@@ -834,25 +1242,25 @@ router.put('/:id', async (req, res) => {
                             therapistId: updatedData.therapistId
                         });
                         console.log(`✅ Updated treatment course ${treatmentCourse.id} with therapistId: ${updatedData.therapistId}`);
-                        
+
                         // Khi admin xác nhận lịch (status thay đổi từ pending -> upcoming/scheduled) và chọn staff,
                         // tự động gán staff đó cho TẤT CẢ các buổi trong liệu trình và tạo appointments
-                        if (isBeingAccepted && (updatedData.status === 'upcoming' || updatedData.status === 'scheduled')) {
+                        if (isBeingAcceptedForCourse && (updatedData.status === 'upcoming' || updatedData.status === 'scheduled')) {
                             const allSessions = await db.TreatmentSession.findAll({
                                 where: { treatmentCourseId: treatmentCourse.id },
                                 order: [['sessionNumber', 'ASC']]
                             });
-                            
+
                             const service = await db.Service.findByPk(treatmentCourse.serviceId);
                             const serviceName = service ? service.name : treatmentCourse.serviceName;
-                            
+
                             console.log(`🔄 Auto-assigning staff ${updatedData.therapistId} to all ${allSessions.length} sessions in treatment course ${treatmentCourse.id}`);
-                            
+
                             for (const session of allSessions) {
                                 // Gán staff cho TẤT CẢ các buổi trong liệu trình
                                 await session.update({ staffId: updatedData.therapistId });
                                 console.log(`✅ Assigned staff ${updatedData.therapistId} to session ${session.id} (buổi ${session.sessionNumber})`);
-                                
+
                                 if (!session.appointmentId) {
                                     // Tạo appointment mới cho buổi này nếu chưa có
                                     const newAppointment = await db.Appointment.create({
@@ -884,7 +1292,7 @@ router.put('/:id', async (req, res) => {
                                     }
                                 }
                             }
-                            
+
                             console.log(`✅ Completed: Assigned staff ${updatedData.therapistId} to all ${allSessions.length} sessions in treatment course ${treatmentCourse.id}`);
                         }
                     }
@@ -904,27 +1312,27 @@ router.put('/:id', async (req, res) => {
                                 ['createdAt', 'DESC']
                             ]
                         });
-                        
+
                         if (treatmentCourse) {
                             // Update treatment course therapistId
                             await treatmentCourse.update({
                                 therapistId: updatedData.therapistId
                             });
-                            
+
                             // If appointment is being accepted, auto-assign staff to all sessions and create appointments
-                            if (isBeingAccepted && (updatedData.status === 'upcoming' || updatedData.status === 'scheduled')) {
+                            if (isBeingAcceptedForCourse && (updatedData.status === 'upcoming' || updatedData.status === 'scheduled')) {
                                 const allSessions = await db.TreatmentSession.findAll({
                                     where: { treatmentCourseId: treatmentCourse.id },
                                     order: [['sessionNumber', 'ASC']]
                                 });
-                                
+
                                 const service = await db.Service.findByPk(treatmentCourse.serviceId);
                                 const serviceName = service ? service.name : treatmentCourse.serviceName;
-                                
+
                                 for (const session of allSessions) {
                                     // Update staffId for all sessions
                                     await session.update({ staffId: updatedData.therapistId });
-                                    
+
                                     if (!session.appointmentId) {
                                         // Create new appointment for this session
                                         const newAppointment = await db.Appointment.create({
@@ -977,13 +1385,13 @@ router.put('/:id', async (req, res) => {
                 // Don't fail the appointment update if session update fails
             }
         }
-        
+
         // Gửi thông báo khi status thay đổi
         if (db.Notification && oldStatus !== updatedData.status) {
             let notifType = 'system';
             let notifTitle = 'Cập nhật lịch hẹn';
             let notifMessage = `Lịch hẹn ${appointment.serviceName} đã được cập nhật`;
-            
+
             if (updatedData.status === 'confirmed' || updatedData.status === 'in-progress') {
                 notifType = 'appointment_confirmed';
                 notifTitle = 'Lịch hẹn đã xác nhận';
@@ -991,19 +1399,25 @@ router.put('/:id', async (req, res) => {
             } else if (updatedData.status === 'cancelled') {
                 notifType = 'appointment_cancelled';
                 notifTitle = 'Lịch hẹn đã hủy';
-                notifMessage = `Lịch hẹn ${appointment.serviceName} vào ${appointment.date} lúc ${appointment.time} đã bị hủy`;
+                // Thêm ghi chú của admin (rejectionReason) vào message nếu có
+                const rejectionReason = updatedData.rejectionReason || appointment.rejectionReason;
+                if (rejectionReason && rejectionReason.trim() !== '') {
+                    notifMessage = `Lịch hẹn ${appointment.serviceName} vào ${appointment.date} lúc ${appointment.time} đã bị hủy.\n\nLý do: ${rejectionReason.trim()}`;
+                } else {
+                    notifMessage = `Lịch hẹn ${appointment.serviceName} vào ${appointment.date} lúc ${appointment.time} đã bị hủy`;
+                }
             } else if (updatedData.status === 'completed') {
                 notifType = 'appointment_completed';
                 notifTitle = 'Hoàn thành lịch hẹn';
                 notifMessage = `Lịch hẹn ${appointment.serviceName} đã hoàn thành`;
-                
+
                 // Update treatment session when appointment is completed
                 try {
                     // Find treatment session linked to this appointment
                     const linkedSession = await db.TreatmentSession.findOne({
                         where: { appointmentId: id }
                     });
-                    
+
                     if (linkedSession) {
                         // Update the session status to completed
                         await linkedSession.update({
@@ -1011,7 +1425,7 @@ router.put('/:id', async (req, res) => {
                             completedAt: new Date(),
                         });
                         console.log(`✅ Updated treatment session ${linkedSession.id} to completed`);
-                        
+
                         // Update course progress
                         const treatmentCourse = await db.TreatmentCourse.findByPk(linkedSession.treatmentCourseId);
                         if (treatmentCourse) {
@@ -1022,12 +1436,12 @@ router.put('/:id', async (req, res) => {
                                     status: 'completed',
                                 },
                             });
-                            
+
                             // Update course completedSessions
                             await treatmentCourse.update({
                                 completedSessions: completedCount,
                             });
-                            
+
                             // Only mark course as completed if all sessions are completed
                             if (completedCount >= treatmentCourse.totalSessions) {
                                 await treatmentCourse.update({
@@ -1035,7 +1449,7 @@ router.put('/:id', async (req, res) => {
                                 });
                                 console.log(`✅ Treatment course ${treatmentCourse.id} marked as completed`);
                             }
-                            
+
                             console.log(`✅ Updated treatment course ${treatmentCourse.id} progress: ${completedCount}/${treatmentCourse.totalSessions}`);
                         }
                     }
@@ -1044,7 +1458,7 @@ router.put('/:id', async (req, res) => {
                     // Don't fail the appointment update if session update fails
                 }
             }
-            
+
             try {
                 await db.Notification.create({
                     id: `notif-${uuidv4()}`,
@@ -1061,7 +1475,7 @@ router.put('/:id', async (req, res) => {
                 console.error('Error creating notification:', notifError);
             }
         }
-        
+
         res.json(appointment);
     } catch (error) {
         console.error('Error updating appointment:', error);
@@ -1074,7 +1488,7 @@ router.put('/:id/confirm', async (req, res) => {
     const transaction = await db.sequelize.transaction();
     try {
         const { id } = req.params;
-        
+
         const appointment = await db.Appointment.findByPk(id, { transaction });
         if (!appointment) {
             await transaction.rollback();

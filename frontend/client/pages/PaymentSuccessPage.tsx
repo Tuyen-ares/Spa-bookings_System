@@ -13,9 +13,10 @@ const PaymentSuccessPage: React.FC = () => {
         console.log('Payment ID:', paymentId);
         console.log('All search params:', Object.fromEntries(searchParams.entries()));
         
-        // Refresh appointments data by triggering a custom event
-        // This will notify App.tsx to refresh appointments
+        // Refresh appointments and vouchers data by triggering custom events
+        // This will notify App.tsx to refresh appointments and PromotionsPage to refresh vouchers
         window.dispatchEvent(new CustomEvent('refresh-appointments'));
+        window.dispatchEvent(new Event('refresh-vouchers')); // Refresh vouchers after successful payment
         
         // Auto redirect to appointments page after 5 seconds
         const timer = setTimeout(() => {

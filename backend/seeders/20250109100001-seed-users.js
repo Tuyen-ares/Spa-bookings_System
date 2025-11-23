@@ -123,6 +123,20 @@ module.exports = {
         status: 'Active',
         lastLogin: new Date(),
       },
+      {
+        id: 'user-client-4',
+        name: 'Trần Văn Đức',
+        email: 'client4@spa.vn',
+        password: hashedPassword,
+        phone: '0904445555',
+        profilePictureUrl: 'https://picsum.photos/seed/C004/200',
+        joinDate: '2024-06-01',
+        birthday: '1995-03-15',
+        gender: 'Nam',
+        role: 'Client',
+        status: 'Active',
+        lastLogin: new Date(),
+      },
     ];
 
     await queryInterface.bulkInsert('users', users, {});

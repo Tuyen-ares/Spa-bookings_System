@@ -14,7 +14,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify(['svc-facial-basic', 'svc-facial-deep-cleansing', 'svc-facial-whitening', 'svc-facial-anti-aging', 'svc-facial-hydrating', 'svc-facial-acne-treatment', 'svc-facial-collagen-boost']),
         termsAndConditions: 'Áp dụng cho tất cả khách hàng. Không áp dụng cùng các chương trình khuyến mãi khác.',
-        imageUrl: 'https://picsum.photos/seed/promo-facial/500/300',
         targetAudience: 'All',
         isPublic: true,
         isActive: true,
@@ -31,7 +30,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify(['svc-massage-body-herbal', 'svc-massage-thai-traditional', 'svc-massage-stone-hot', 'svc-massage-aromatherapy', 'svc-massage-swedish', 'svc-massage-deep-tissue', 'svc-massage-foot-reflexology']),
         termsAndConditions: 'Áp dụng cho tất cả khách hàng. Áp dụng cho đơn hàng từ 500,000 VNĐ trở lên.',
-        imageUrl: 'https://picsum.photos/seed/promo-massage/500/300',
         targetAudience: 'All',
         isPublic: true,
         isActive: true,
@@ -48,7 +46,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify([]), // Áp dụng cho tất cả dịch vụ
         termsAndConditions: 'Chỉ áp dụng cho khách hàng mới (chưa từng sử dụng dịch vụ). Mỗi khách hàng chỉ được sử dụng 1 lần.',
-        imageUrl: 'https://picsum.photos/seed/promo-new/500/300',
         targetAudience: 'New Clients',
         isPublic: true,
         isActive: true,
@@ -65,7 +62,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify([]), // Áp dụng cho tất cả dịch vụ
         termsAndConditions: 'Chỉ áp dụng trong tháng sinh nhật của khách hàng. Mỗi khách hàng chỉ được sử dụng 1 lần/năm. Giảm tối đa 2,000,000 VNĐ.',
-        imageUrl: 'https://picsum.photos/seed/promo-birthday/500/300',
         targetAudience: 'Birthday',
         isPublic: true,
         isActive: true,
@@ -82,7 +78,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify(['svc-combo-relax']),
         termsAndConditions: 'Áp dụng cho gói combo thư giãn. Không áp dụng cùng các chương trình khuyến mãi khác.',
-        imageUrl: 'https://picsum.photos/seed/promo-combo/500/300',
         targetAudience: 'All',
         isPublic: true,
         isActive: true,
@@ -99,7 +94,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify([]), // Áp dụng cho tất cả dịch vụ
         termsAndConditions: 'Áp dụng cho đơn hàng từ 1,000,000 VNĐ trở lên. Giảm trực tiếp 100,000 VNĐ.',
-        imageUrl: 'https://picsum.photos/seed/promo-100k/500/300',
         targetAudience: 'All',
         isPublic: true,
         isActive: true,
@@ -116,7 +110,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify([]),
         termsAndConditions: 'Voucher VIP. Áp dụng cho đơn hàng từ 2,000,000 VNĐ trở lên. Số lượng có hạn.',
-        imageUrl: 'https://picsum.photos/seed/promo-vip/500/300',
         targetAudience: 'VIP',
         isPublic: false, // Private voucher
         isActive: true,
@@ -134,7 +127,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify(['svc-hair-removal-armpit', 'svc-hair-removal-legs', 'svc-hair-removal-bikini', 'svc-hair-removal-face', 'svc-hair-removal-arms', 'svc-hair-removal-full-body', 'svc-hair-removal-back']),
         termsAndConditions: 'Áp dụng cho dịch vụ triệt lông. Không áp dụng cùng các chương trình khuyến mãi khác.',
-        imageUrl: 'https://picsum.photos/seed/promo-hair/500/300',
         targetAudience: 'All',
         isPublic: true,
         isActive: true,
@@ -151,7 +143,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify(['svc-combo-royal']),
         termsAndConditions: 'Áp dụng cho gói hoàng gia. Giảm trực tiếp 500,000 VNĐ.',
-        imageUrl: 'https://picsum.photos/seed/promo-royal/500/300',
         targetAudience: 'All',
         isPublic: true,
         isActive: true,
@@ -168,7 +159,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify([]),
         termsAndConditions: 'Voucher bí mật. Áp dụng cho đơn hàng từ 1,500,000 VNĐ trở lên. Số lượng có hạn.',
-        imageUrl: 'https://picsum.photos/seed/promo-secret/500/300',
         targetAudience: 'All',
         isPublic: false, // Private voucher
         isActive: true,
@@ -186,7 +176,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify([]),
         termsAndConditions: 'Áp dụng cho đơn hàng từ 300,000 VNĐ trở lên. Số lượng có hạn.',
-        imageUrl: 'https://picsum.photos/seed/promo-bronze/500/300',
         targetAudience: 'All',
         isPublic: false, // Private voucher
         isActive: true,
@@ -204,7 +193,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify([]),
         termsAndConditions: 'Áp dụng cho đơn hàng từ 500,000 VNĐ trở lên. Số lượng có hạn.',
-        imageUrl: 'https://picsum.photos/seed/promo-silver/500/300',
         targetAudience: 'All',
         isPublic: false, // Private voucher
         isActive: true,
@@ -222,7 +210,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify([]),
         termsAndConditions: 'Áp dụng cho đơn hàng từ 1,000,000 VNĐ trở lên. Số lượng có hạn.',
-        imageUrl: 'https://picsum.photos/seed/promo-gold/500/300',
         targetAudience: 'All',
         isPublic: false, // Private voucher
         isActive: true,
@@ -240,7 +227,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify([]),
         termsAndConditions: 'Áp dụng cho đơn hàng từ 800,000 VNĐ trở lên. Số lượng có hạn.',
-        imageUrl: 'https://picsum.photos/seed/promo-platinum/500/300',
         targetAudience: 'All',
         isPublic: false, // Private voucher
         isActive: true,
@@ -258,7 +244,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify([]),
         termsAndConditions: 'Áp dụng cho đơn hàng từ 1,200,000 VNĐ trở lên. Số lượng có hạn.',
-        imageUrl: 'https://picsum.photos/seed/promo-diamond/500/300',
         targetAudience: 'All',
         isPublic: false, // Private voucher
         isActive: true,
@@ -276,7 +261,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify(['svc-combo-relax', 'svc-combo-royal', 'svc-combo-beauty']),
         termsAndConditions: 'Áp dụng cho các gói combo spa. Áp dụng cho đơn hàng từ 1,000,000 VNĐ trở lên.',
-        imageUrl: 'https://picsum.photos/seed/promo-spaday/500/300',
         targetAudience: 'All',
         isPublic: false, // Private voucher
         isActive: true,
@@ -294,7 +278,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify(['svc-facial-basic', 'svc-facial-deep-cleansing', 'svc-facial-whitening', 'svc-facial-anti-aging', 'svc-facial-hydrating', 'svc-facial-acne-treatment', 'svc-facial-collagen-boost']),
         termsAndConditions: 'Áp dụng cho tất cả dịch vụ chăm sóc da mặt. Áp dụng cho đơn hàng từ 400,000 VNĐ trở lên.',
-        imageUrl: 'https://picsum.photos/seed/promo-facial-private/500/300',
         targetAudience: 'All',
         isPublic: false, // Private voucher
         isActive: true,
@@ -312,7 +295,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify(['svc-massage-body-herbal', 'svc-massage-thai-traditional', 'svc-massage-stone-hot', 'svc-massage-aromatherapy', 'svc-massage-swedish', 'svc-massage-deep-tissue', 'svc-massage-foot-reflexology']),
         termsAndConditions: 'Áp dụng cho các dịch vụ massage. Áp dụng cho đơn hàng từ 1,500,000 VNĐ trở lên.',
-        imageUrl: 'https://picsum.photos/seed/promo-massage-private/500/300',
         targetAudience: 'All',
         isPublic: false, // Private voucher
         isActive: true,
@@ -330,7 +312,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify(['svc-hair-removal-armpit', 'svc-hair-removal-legs', 'svc-hair-removal-bikini', 'svc-hair-removal-face', 'svc-hair-removal-arms', 'svc-hair-removal-full-body', 'svc-hair-removal-back']),
         termsAndConditions: 'Áp dụng cho dịch vụ triệt lông. Áp dụng cho đơn hàng từ 2,000,000 VNĐ trở lên.',
-        imageUrl: 'https://picsum.photos/seed/promo-hair-private/500/300',
         targetAudience: 'All',
         isPublic: false, // Private voucher
         isActive: true,
@@ -348,7 +329,6 @@ module.exports = {
         expiryDate: '2025-12-31',
         applicableServiceIds: JSON.stringify([]),
         termsAndConditions: 'Áp dụng cho đơn hàng từ 3,000,000 VNĐ trở lên. Số lượng rất hạn chế.',
-        imageUrl: 'https://picsum.photos/seed/promo-supervip/500/300',
         targetAudience: 'All',
         isPublic: false, // Private voucher
         isActive: true,

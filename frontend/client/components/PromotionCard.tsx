@@ -66,19 +66,12 @@ const PromotionCard: React.FC<PromotionCardProps> = ({ promotion }) => {
 
   return (
     <div className={`bg-white rounded-lg shadow-lg overflow-hidden flex flex-col group transition-all duration-300 ease-out ${isExpired ? 'opacity-60 grayscale' : ''}`}>
-      <div className="relative overflow-hidden">
-        <img 
-            className="w-full h-48 object-cover transform group-hover:scale-110 transition-transform duration-300" 
-            src={promotion.imageUrl} 
-            alt={promotion.title} 
-        />
-        <div className="absolute top-3 left-3 flex flex-col gap-2">
-            <span className="bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md">
+      <div className="p-5 flex flex-col flex-grow">
+        <div className="mb-3">
+            <span className="bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md inline-block">
                 ƯU ĐÃI -{discountDisplay}
             </span>
         </div>
-      </div>
-      <div className="p-5 flex flex-col flex-grow">
         <h3 className="text-lg font-bold font-serif text-brand-dark mb-2 h-14 line-clamp-2">
             {promotion.title}
         </h3>

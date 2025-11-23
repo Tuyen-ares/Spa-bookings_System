@@ -1,0 +1,14 @@
+đầu tiên tôi muốn fix về logic lịch hẹn tôi sẽ mô tả rõ ràng:
+
+đó là ban đầu khách A đặt dịch vụ B với thời gian C vào ngày D
+sau đó khách B cũng đặt dịch vụ B với thời gian C vào ngày D
+và trong phần xác nhận lịch hẹn của admin thì khi phân công cho staff 
+thì ví dụ ở đây là staff X ban đầu admin đã phân công cho staff X làm lịch thời gian C ngày D cho khách
+A rồi thì sau khi khách B đặt và admin phân công thì không thể tiếp tục chọn staff x
+để làm dịch vụ cho khách B được vì trùng thời gian mà staff X làm cho khách A rồi
+nên hệ thống phải thông báo cho admin biết là trùng lịch phải chọn nhân viên khác
+
+
+
+---promp lịch làm
+image.png

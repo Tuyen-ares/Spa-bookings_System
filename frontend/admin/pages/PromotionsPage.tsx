@@ -219,13 +219,11 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
             // - pointsRequired = 0 hoặc NULL → Voucher thông thường (tab "Voucher")
             .filter(promo => {
                 if (activeTab === 'vouchers') {
-                    // Show vouchers that are NOT redeemable (pointsRequired = 0 or NULL)
-                    const pointsValue = promo.pointsRequired;
-                    const isRedeemable = pointsValue !== null && pointsValue !== undefined && !isNaN(Number(pointsValue)) && Number(pointsValue) > 0;
-                    const isNormalVoucher = !isRedeemable;
-                    return isNormalVoucher;
+                    // Tab "Voucher": chỉ hiển thị voucher public (isPublic = true)
+                    const isPublic = promo.isPublic === true || promo.isPublic === 1 || promo.isPublic === '1' || String(promo.isPublic).toLowerCase() === 'true';
+                    return isPublic;
                 } else {
-                    // Show redeemable vouchers (pointsRequired > 0)
+                    // Tab "Voucher đổi thưởng": hiển thị voucher đổi điểm (pointsRequired > 0)
                     const pointsValue = promo.pointsRequired;
                     const isRedeemable = pointsValue !== null && pointsValue !== undefined && !isNaN(Number(pointsValue)) && Number(pointsValue) > 0;
                     
@@ -466,9 +464,8 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
                                     const isExpired = new Date(promo.expiryDate) < new Date();
                                     return (
                                         <div key={promo.id} className={`bg-white rounded-lg shadow-md flex flex-col ${isExpired ? 'opacity-50 grayscale' : ''}`}>
-                                            <div className="relative">
-                                                <img src={promo.imageUrl} alt={promo.title} className="w-full h-40 object-cover rounded-t-lg" />
-                                                <div className="absolute top-2 left-2 flex gap-2">
+                                            <div className="relative p-4">
+                                                <div className="flex gap-2">
                                                     <span className="px-2 py-1 text-xs font-bold rounded-full bg-blue-500 text-white">
                                                         {promo.discountType === 'percentage' ? `${promo.discountValue}% Off` : formatPrice(promo.discountValue)}
                                                     </span>
@@ -487,6 +484,55 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
                                                     <span className="flex items-center gap-1 text-gray-700">
                                                         <TimerIcon className="w-4 h-4" /> {getRemainingTime(promo.expiryDate)}
                                                     </span>
+                                                </div>
+                                                {/* Hiển thị số lượng còn lại */}
+                                                <div className="mt-2 text-sm">
+                                                    {(() => {
+                                                        // Ưu tiên sử dụng remainingQuantity từ backend
+                                                        // Nếu không có, fallback về stock (cho tương thích ngược)
+                                                        const remainingQty = promo.remainingQuantity !== undefined ? promo.remainingQuantity : (promo.stock !== null && promo.stock !== undefined ? promo.stock : null);
+                                                        const isRedeemable = promo.pointsRequired && Number(promo.pointsRequired) > 0;
+                                                        
+                                                        // Chỉ hiển thị "Không giới hạn" nếu stock = null và không phải voucher đổi điểm
+                                                        if (!isRedeemable && (promo.stock === null || promo.stock === undefined || promo.stock === '')) {
+                                                            return <span className="text-gray-500">Không giới hạn</span>;
+                                                        }
+                                                        
+                                                        // Nếu remainingQty là null/undefined nhưng có stock, sử dụng stock
+                                                        const displayQty = remainingQty !== null && remainingQty !== undefined ? remainingQty : (promo.stock !== null && promo.stock !== undefined ? promo.stock : null);
+                                                        
+                                                        if (displayQty === null || displayQty === undefined) {
+                                                            return <span className="text-gray-500">Không giới hạn</span>;
+                                                        }
+                                                        
+                                                        if (isRedeemable) {
+                                                            return (
+                                                                <div className="flex flex-col">
+                                                                    <span className={displayQty <= 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
+                                                                        Còn {displayQty} voucher
+                                                                    </span>
+                                                                    {promo.totalRedeemed !== undefined && (
+                                                                        <span className="text-xs text-gray-500">
+                                                                            (Đã đổi: {promo.totalRedeemed}, Đã dùng: {promo.usedCount || 0})
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        } else {
+                                                            return (
+                                                                <div className="flex flex-col">
+                                                                    <span className={displayQty <= 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
+                                                                        Còn {displayQty} lượt
+                                                                    </span>
+                                                                    {promo.usedCount !== undefined && promo.stock !== null && (
+                                                                        <span className="text-xs text-gray-500">
+                                                                            (Tổng: {Number(promo.stock) + Number(promo.usedCount || 0)}, Đã dùng: {promo.usedCount || 0})
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        }
+                                                    })()}
                                                 </div>
                                                 <div className="mt-auto pt-4 border-t flex flex-wrap gap-2 justify-end">
                                                     <button onClick={() => handleEditPromotion(promo)} className="p-2 text-gray-500 hover:text-green-600" title="Chỉnh sửa"><EditIcon className="w-5 h-5" /></button>
@@ -515,8 +561,7 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
                                     <tbody>
                                         {paginatedPromotions.map(promo => (
                                             <tr key={promo.id} className="border-b border-gray-200 hover:bg-gray-50">
-                                                <td className="p-4 flex items-center gap-3">
-                                                    <img src={promo.imageUrl} alt={promo.title} className="w-10 h-10 object-cover rounded-md" />
+                                                <td className="p-4">
                                                     <div>
                                                         <p className="font-semibold text-gray-800">{promo.title}</p>
                                                         <p className="text-sm text-gray-500">{promo.description}</p>
@@ -540,13 +585,54 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
                                                     )}
                                                 </td>
                                                 <td className="p-4 text-sm">
-                                                    {promo.stock === null || promo.stock === undefined ? (
-                                                        <span className="text-gray-500">Không giới hạn</span>
-                                                    ) : (
-                                                        <span className={promo.stock <= 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
-                                                            {promo.stock} lượt
-                                                        </span>
-                                                    )}
+                                                    {(() => {
+                                                        // Ưu tiên sử dụng remainingQuantity từ backend
+                                                        // Nếu không có, fallback về stock (cho tương thích ngược)
+                                                        const remainingQty = promo.remainingQuantity !== undefined ? promo.remainingQuantity : (promo.stock !== null && promo.stock !== undefined ? promo.stock : null);
+                                                        const isRedeemable = promo.pointsRequired && Number(promo.pointsRequired) > 0;
+                                                        
+                                                        // Chỉ hiển thị "Không giới hạn" nếu stock = null và không phải voucher đổi điểm
+                                                        if (!isRedeemable && (promo.stock === null || promo.stock === undefined || promo.stock === '')) {
+                                                            return <span className="text-gray-500">Không giới hạn</span>;
+                                                        }
+                                                        
+                                                        // Nếu remainingQty là null/undefined nhưng có stock, sử dụng stock
+                                                        const displayQty = remainingQty !== null && remainingQty !== undefined ? remainingQty : (promo.stock !== null && promo.stock !== undefined ? promo.stock : null);
+                                                        
+                                                        if (displayQty === null || displayQty === undefined) {
+                                                            return <span className="text-gray-500">Không giới hạn</span>;
+                                                        }
+                                                        
+                                                        if (isRedeemable) {
+                                                            // Voucher đổi điểm
+                                                            return (
+                                                                <div className="flex flex-col">
+                                                                    <span className={displayQty <= 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
+                                                                        Còn {displayQty} voucher
+                                                                    </span>
+                                                                    {promo.totalRedeemed !== undefined && (
+                                                                        <span className="text-xs text-gray-500">
+                                                                            (Đã đổi: {promo.totalRedeemed}, Đã dùng: {promo.usedCount || 0})
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        } else {
+                                                            // Voucher thường
+                                                            return (
+                                                                <div className="flex flex-col">
+                                                                    <span className={displayQty <= 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
+                                                                        Còn {displayQty} lượt
+                                                                    </span>
+                                                                    {promo.usedCount !== undefined && promo.stock !== null && (
+                                                                        <span className="text-xs text-gray-500">
+                                                                            (Tổng: {Number(promo.stock) + Number(promo.usedCount || 0)}, Đã dùng: {promo.usedCount || 0})
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        }
+                                                    })()}
                                                 </td>
                                                 <td className="p-4">
                                                     <div className="flex items-center gap-1">

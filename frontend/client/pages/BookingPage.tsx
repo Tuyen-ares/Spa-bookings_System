@@ -58,6 +58,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     const [selectedTime, setSelectedTime] = useState<string>('');
     const [promotions, setPromotions] = useState<Promotion[]>([]);
     const [applicablePromotions, setApplicablePromotions] = useState<Promotion[]>([]);
+    const [redeemedVouchers, setRedeemedVouchers] = useState<Array<Promotion & { redeemedCount: number }>>([]); // Vouchers đã đổi bằng điểm
     const [selectedPromotion, setSelectedPromotion] = useState<Promotion | null>(null);
     const [isBirthday, setIsBirthday] = useState<boolean>(false);
     const [treatmentCourses, setTreatmentCourses] = useState<TreatmentCourse[]>([]);
@@ -219,6 +220,15 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                            birthday.getDate() === today.getDate();
                     setIsBirthday(isTodayBirthday);
                 }
+                
+                // Fetch redeemed vouchers (vouchers đã đổi bằng điểm)
+                try {
+                    const redeemed = await apiService.getMyRedeemedVouchers(currentUser.id);
+                    setRedeemedVouchers(redeemed || []);
+                    console.log('✅ Loaded redeemed vouchers in BookingPage:', redeemed?.length || 0);
+                } catch (error) {
+                    console.error('Error loading redeemed vouchers:', error);
+                }
             }
 
             // Auto-select service from URL if provided
@@ -249,14 +259,15 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     };
 
     // Step 1: Select Service
+    // Only allow selecting ONE service at a time
     const handleServiceToggle = (service: Service) => {
         const existingIndex = selectedServices.findIndex(s => s.service.id === service.id);
         if (existingIndex >= 0) {
-            // Remove if already selected
-            setSelectedServices(selectedServices.filter((_, idx) => idx !== existingIndex));
+            // Remove if already selected (uncheck)
+            setSelectedServices([]);
         } else {
-            // Add with quantity 1
-            setSelectedServices([...selectedServices, { service, quantity: 1 }]);
+            // Replace any existing selection with the new one (only 1 service allowed)
+            setSelectedServices([{ service, quantity: 1 }]);
         }
     };
 
@@ -342,11 +353,39 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             
             // Validate promotion is still applicable
             if (selectedPromotion) {
-                const isStillApplicable = applicablePromotions.some(p => p.id === selectedPromotion.id);
-                if (!isStillApplicable) {
-                    alert('Mã khuyến mãi này không còn khả dụng. Vui lòng chọn mã khác.');
-                    setIsPaymentModalOpen(false);
-                    return;
+                // Check if it's a redeemed voucher
+                const redeemedVoucher = redeemedVouchers.find((v: any) => 
+                    v.id === selectedPromotion.id || 
+                    (v.code && selectedPromotion.code && v.code.toUpperCase().trim() === selectedPromotion.code.toUpperCase().trim())
+                );
+                
+                if (redeemedVoucher) {
+                    // For redeemed vouchers, check if user still has available vouchers
+                    if (!redeemedVoucher.redeemedCount || redeemedVoucher.redeemedCount <= 0) {
+                        alert('Bạn đã sử dụng hết voucher này. Vui lòng chọn mã khác.');
+                        setIsPaymentModalOpen(false);
+                        return;
+                    }
+                    
+                    // Check expiry for redeemed vouchers
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const expiryDate = new Date(redeemedVoucher.expiryDate);
+                    expiryDate.setHours(0, 0, 0, 0);
+                    if (today > expiryDate) {
+                        alert('Voucher này đã hết hạn. Vui lòng chọn mã khác.');
+                        setIsPaymentModalOpen(false);
+                        return;
+                    }
+                } else {
+                    // For public promotions, check if still in applicablePromotions
+                    const isStillApplicable = applicablePromotions.some(p => p.id === selectedPromotion.id) ||
+                                             promotions.some(p => p.id === selectedPromotion.id && p.isPublic === true);
+                    if (!isStillApplicable) {
+                        alert('Mã khuyến mãi này không còn khả dụng. Vui lòng chọn mã khác.');
+                        setIsPaymentModalOpen(false);
+                        return;
+                    }
                 }
             }
             
@@ -369,26 +408,63 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 frequencyType: 'sessions_per_week' as const, // Default frequency type
                 frequencyValue: 1 // Default: 1 session per week
             }));
-
-            // Record promotion usage after creating appointments (before payment)
-            if (selectedPromotion && appointmentsToCreate.length > 0) {
-                try {
-                    await apiService.applyPromotion(
-                        selectedPromotion.code,
-                        currentUser!.id,
-                        appointmentsToCreate[0].id,
-                        appointmentsToCreate[0].serviceId
-                    );
-                } catch (error: any) {
-                    console.error('Failed to record promotion usage:', error);
-                    // Don't block booking, just log error
-                }
-            }
+            
+            // LOG để debug
+            console.log('📤 [BookingPage] Creating appointments with promotion:', {
+                selectedPromotion: selectedPromotion ? {
+                    id: selectedPromotion.id,
+                    code: selectedPromotion.code,
+                    title: selectedPromotion.title,
+                    isPublic: selectedPromotion.isPublic
+                } : null,
+                appointmentsToCreate: appointmentsToCreate.map(apt => ({
+                    id: apt.id,
+                    serviceId: apt.serviceId,
+                    promotionId: apt.promotionId,
+                    userId: apt.userId
+                }))
+            });
 
             // Create all appointments (one per service)
+            // Backend will automatically deduct redeemed vouchers when creating appointment
+            // NOTE: Không cần gọi applyPromotion ở đây vì backend đã xử lý trừ voucher khi tạo appointment
+            console.log('📤 [BookingPage] Creating appointments with data:', appointmentsToCreate.map(apt => ({
+                id: apt.id,
+                serviceId: apt.serviceId,
+                promotionId: apt.promotionId,
+                userId: apt.userId
+            })));
+            
             const createdAppointments = await Promise.all(
                 appointmentsToCreate.map(apt => apiService.createAppointment(apt))
             );
+            
+            console.log('✅ [BookingPage] Appointments created:', createdAppointments.map(apt => ({
+                id: apt.id,
+                promotionId: apt.promotionId
+            })));
+
+            // Refresh redeemed vouchers immediately after creating appointment (voucher was deducted)
+            // QUAN TRỌNG: Voucher đã bị trừ khi tạo appointment, cần refresh ngay
+            if (currentUser) {
+                try {
+                    console.log('🔄 [BookingPage] Refreshing redeemed vouchers after creating appointment...');
+                    const updatedRedeemed = await apiService.getMyRedeemedVouchers(currentUser.id);
+                    setRedeemedVouchers(updatedRedeemed || []);
+                    console.log('✅ Refreshed redeemed vouchers after creating appointment:', updatedRedeemed?.length || 0);
+                    if (updatedRedeemed && updatedRedeemed.length > 0) {
+                        console.log('   Voucher details:', updatedRedeemed.map((v: any) => ({
+                            code: v.code,
+                            title: v.title,
+                            redeemedCount: v.redeemedCount
+                        })));
+                    }
+                    // Emit event to refresh PromotionsPage
+                    window.dispatchEvent(new Event('refresh-vouchers'));
+                } catch (error) {
+                    console.error('Error refreshing redeemed vouchers:', error);
+                }
+            }
 
             // Process payment
             const totalAmount = calculateTotal();
@@ -398,22 +474,35 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 totalAmount
             );
 
-            // Emit event to refresh appointments in App.tsx
+            // Emit events to refresh appointments and vouchers
             window.dispatchEvent(new Event('refresh-appointments'));
+            window.dispatchEvent(new Event('refresh-vouchers')); // Refresh vouchers after payment
 
             if (paymentMethod === 'VNPay' && result.paymentUrl) {
                 window.location.href = result.paymentUrl;
             } else if (paymentMethod === 'Cash') {
-                // Reload appointments before showing success message
+                // Reload appointments and vouchers before showing success message
                 try {
-                    const updatedAppointments = await apiService.getAppointments();
+                    const [updatedAppointments, updatedRedeemed] = await Promise.all([
+                        apiService.getAppointments(),
+                        currentUser ? apiService.getMyRedeemedVouchers(currentUser.id) : Promise.resolve([])
+                    ]);
                     console.log('Refreshed appointments:', updatedAppointments.length);
+                    console.log('Refreshed redeemed vouchers:', updatedRedeemed?.length || 0);
+                    
+                    // Update local state
+                    setRedeemedVouchers(updatedRedeemed || []);
+                    
                     // Trigger App.tsx to update via custom event with data
                     window.dispatchEvent(new CustomEvent('appointments-updated', { 
                         detail: { appointments: updatedAppointments } 
                     }));
+                    
+                    // Emit refresh events
+                    window.dispatchEvent(new Event('refresh-appointments'));
+                    window.dispatchEvent(new Event('refresh-vouchers'));
                 } catch (error) {
-                    console.error('Failed to refresh appointments:', error);
+                    console.error('Failed to refresh data:', error);
                 }
                 
                 alert('Đặt lịch thành công! Vui lòng thanh toán tại quầy.');
@@ -794,8 +883,15 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                     return;
                                 }
                                 
-                                // Find promotion by code from applicable promotions first, then from all public promotions
-                                const promo = applicablePromotions.find(p => 
+                                // Find promotion by code from:
+                                // 1. Redeemed vouchers (vouchers đã đổi bằng điểm)
+                                // 2. Applicable promotions
+                                // 3. All public promotions
+                                const promo = redeemedVouchers.find((v: any) => 
+                                    v.code && selectedCode && 
+                                    v.code.toUpperCase().trim() === selectedCode.toUpperCase().trim() &&
+                                    v.redeemedCount > 0 // Must have available vouchers
+                                ) || applicablePromotions.find(p => 
                                     p.code && selectedCode && 
                                     p.code.toUpperCase().trim() === selectedCode.toUpperCase().trim()
                                 ) || promotions.find(p => 
@@ -805,18 +901,33 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                 );
                                 
                                 if (promo) {
+                                    // Normalize isActive to boolean (may be 0/1 from database)
+                                    const isActive = promo.isActive === true || promo.isActive === 1 || promo.isActive === '1';
+                                    
                                     // Check if promotion is active
-                                    if (promo.isActive === false) {
+                                    if (!isActive) {
                                         alert('Mã khuyến mãi này không còn hoạt động');
                                         setPromoCode('');
                                         return;
                                     }
-                                    // Check if promotion has stock (số lượng còn lại)
-                                    if (promo.stock !== null && promo.stock <= 0) {
+                                    
+                                    // For redeemed vouchers, check if user still has available vouchers
+                                    const redeemedVoucher = redeemedVouchers.find((v: any) => v.code && v.code.toUpperCase().trim() === selectedCode.toUpperCase().trim());
+                                    if (redeemedVoucher && (!redeemedVoucher.redeemedCount || redeemedVoucher.redeemedCount <= 0)) {
+                                        alert('Bạn đã sử dụng hết voucher này');
+                                        setPromoCode('');
+                                        return;
+                                    }
+                                    
+                                    // Check if promotion has stock (số lượng còn lại) - only for public promotions
+                                    // Normalize isPublic to boolean
+                                    const isPublic = promo.isPublic === true || promo.isPublic === 1 || promo.isPublic === '1';
+                                    if (!redeemedVoucher && isPublic && promo.stock !== null && promo.stock <= 0) {
                                         alert('Mã khuyến mãi đã hết lượt sử dụng');
                                         setPromoCode('');
                                         return;
                                     }
+                                    
                                     // Check expiry
                                     const today = new Date();
                                     today.setHours(0, 0, 0, 0);
@@ -954,10 +1065,48 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                     return true;
                                 });
                                 
-                                // Combine both lists
+                                // Filter redeemed vouchers by selected services
+                                const filteredRedeemedVouchers = redeemedVouchers.filter((v: any) => {
+                                    // Must have available vouchers
+                                    if (!v.redeemedCount || v.redeemedCount <= 0) return false;
+                                    
+                                    // Check if voucher applies to selected services
+                                    if (v.applicableServiceIds && v.applicableServiceIds.length > 0) {
+                                        let applicableServiceIdsArray: string[] = [];
+                                        if (typeof v.applicableServiceIds === 'string') {
+                                            try {
+                                                applicableServiceIdsArray = JSON.parse(v.applicableServiceIds);
+                                            } catch (e) {
+                                                applicableServiceIdsArray = [];
+                                            }
+                                        } else if (Array.isArray(v.applicableServiceIds)) {
+                                            applicableServiceIdsArray = v.applicableServiceIds;
+                                        }
+                                        
+                                        if (applicableServiceIdsArray.length > 0) {
+                                            const matchesService = selectedServiceIds.some(serviceId => 
+                                                applicableServiceIdsArray.includes(serviceId)
+                                            );
+                                            if (!matchesService) return false;
+                                        }
+                                    }
+                                    
+                                    // Check expiry
+                                    const expiryDate = new Date(v.expiryDate);
+                                    expiryDate.setHours(0, 0, 0, 0);
+                                    if (today > expiryDate) return false;
+                                    
+                                    // Check if active
+                                    if (!v.isActive) return false;
+                                    
+                                    return true;
+                                });
+                                
+                                // Combine all lists: applicable promotions, public promotions, and redeemed vouchers
                                 const allAvailablePromotions = [
                                     ...filteredApplicablePromotions,
-                                    ...filteredPromotions
+                                    ...filteredPromotions,
+                                    ...filteredRedeemedVouchers
                                 ];
                                 
                                 // Remove duplicates by code
@@ -965,12 +1114,13 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                     new Map(allAvailablePromotions.map(p => [p.code, p])).values()
                                 );
                                 
-                                return uniquePromotions.map(promo => (
+                                return uniquePromotions.map((promo: any) => (
                                     <option key={promo.id} value={promo.code}>
                                         {promo.code} - {promo.title} 
                                         {promo.discountType === 'percentage' 
                                             ? ` (Giảm ${promo.discountValue}%)` 
                                             : ` (Giảm ${formatPrice(promo.discountValue)})`}
+                                        {promo.redeemedCount && promo.redeemedCount > 1 ? ` [Bạn có ${promo.redeemedCount} voucher]` : promo.redeemedCount ? ' [Voucher đã đổi]' : ''}
                                     </option>
                                 ));
                             })()}

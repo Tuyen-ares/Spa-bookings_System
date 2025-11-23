@@ -18,7 +18,7 @@ module.exports = {
       },
       {
         id: 'apt-2',
-        serviceId: 'svc-massage-body',
+        serviceId: 'svc-massage-body-herbal',
         serviceName: 'Massage body thảo dược',
         userId: 'user-client-2',
         therapistId: 'user-tech-2',

@@ -25,10 +25,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DATEONLY,
       allowNull: false,
     },
-    imageUrl: {
-      type: DataTypes.STRING(500),
-      allowNull: true,
-    },
     discountType: {
       type: DataTypes.ENUM('percentage', 'fixed'),
       allowNull: false,
