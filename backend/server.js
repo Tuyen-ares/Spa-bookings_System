@@ -78,13 +78,27 @@ db.sequelize.sync(syncOptions) // Removed `force: true` to make data persistent
 
     // Start the server
     // Listen on 0.0.0.0 to allow connections from emulator and devices on the same network
-    app.listen(PORT, '0.0.0.0', () => {
+    app.listen(PORT, '0.0.0.0', async () => {
       console.log(`Server is running on port ${PORT}`);
       console.log(`Access the API at http://localhost:${PORT}`);
       console.log(`Server listening on 0.0.0.0:${PORT} (accessible from network)`);
       console.log(`Mobile app (Android emulator) should use: http://10.0.2.2:${PORT}/api`);
       console.log(`Mobile app (iOS Simulator) should use: http://localhost:${PORT}/api`);
       console.log(`Mobile app (Physical device) should use: http://192.168.80.1:${PORT}/api`);
+      
+      // Verify email connection
+      try {
+        const emailService = require('./services/emailService');
+        const emailConnected = await emailService.verifyConnection();
+        if (emailConnected) {
+          console.log('✅ Email service is ready');
+        } else {
+          console.warn('⚠️  Email service is not configured. Please check EMAIL_SETUP.md for configuration instructions.');
+        }
+      } catch (error) {
+        console.warn('⚠️  Email service verification failed:', error.message);
+        console.warn('⚠️  Email verification feature will not work until SMTP is configured.');
+      }
       
       // Cron jobs removed - TreatmentCourse functionality removed
     });

@@ -9,7 +9,7 @@ import type {
     TreatmentSession, UserStatus, Notification, TreatmentSessionDetail
 } from '../../types';
 
-const API_BASE_URL = 'http://localhost:3001/api'; // Point to the backend server
+export const API_BASE_URL = 'http://localhost:3001/api'; // Point to the backend server
 
 // Helper to get authorization headers
 const getAuthHeaders = () => {
@@ -59,11 +59,54 @@ export const login = async (credentials: Pick<User, 'email' | 'password'>): Prom
     return handleResponse(response);
 };
 
-export const register = async (userData: Pick<User, 'name' | 'email' | 'password' | 'phone' | 'gender' | 'birthday'>): Promise<{ user: User, token: string }> => {
+export const register = async (userData: Pick<User, 'name' | 'email' | 'password' | 'phone' | 'gender' | 'birthday'>): Promise<{ message: string; email: string; requiresVerification: boolean } | { user: User, token: string }> => {
     const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userData),
+    });
+    return handleResponse(response);
+};
+
+export const verifyEmail = async (token: string): Promise<{ message: string; user?: User; token?: string; alreadyVerified?: boolean }> => {
+    const response = await fetch(`${API_BASE_URL}/auth/verify-email/${token}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+    });
+    return handleResponse(response);
+};
+
+export const resendVerificationEmail = async (email: string): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE_URL}/auth/resend-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+    });
+    return handleResponse(response);
+};
+
+export const forgotPassword = async (email: string): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+    });
+    return handleResponse(response);
+};
+
+export const verifyResetToken = async (token: string): Promise<{ valid: boolean; email?: string; name?: string }> => {
+    const response = await fetch(`${API_BASE_URL}/auth/reset-password/${token}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+    });
+    return handleResponse(response);
+};
+
+export const resetPasswordWithToken = async (token: string, newPassword: string): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE_URL}/auth/reset-password/${token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword }),
     });
     return handleResponse(response);
 };
@@ -140,6 +183,23 @@ const remove = (url: string): Promise<void> => fetch(url, { method: 'DELETE', he
 
 export const createUser = (data: Partial<User>) => create<User>(`${API_BASE_URL}/users`, data);
 export const updateUser = (id: string, data: Partial<User>) => update<User>(`${API_BASE_URL}/users/${id}`, data);
+
+export const uploadAvatar = async (userId: string, imageData: string): Promise<{ avatarUrl: string }> => {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE_URL}/users/${userId}/avatar`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ imageData })
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to upload avatar');
+    }
+    return response.json();
+};
 export const deleteUser = (id: string) => remove(`${API_BASE_URL}/users/${id}`);
 export const resetUserPassword = (id: string, newPassword: string) => update(`${API_BASE_URL}/users/${id}/password-reset`, { newPassword });
 // FIX: Added explicit return type to guide TypeScript's generic inference for the `update` function, resolving the error.

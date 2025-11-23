@@ -20,7 +20,9 @@ import TreatmentCourseDetailPage from './client/pages/TreatmentCourseDetailPage'
 import ProfilePage from './client/pages/ProfilePage';
 import LoginPage from './client/pages/LoginPage';
 import RegisterPage from './client/pages/RegisterPage';
+import VerifyEmailPage from './client/pages/VerifyEmailPage';
 import ForgotPasswordPage from './client/pages/ForgotPasswordPage';
+import ResetPasswordPage from './client/pages/ResetPasswordPage';
 import { PromotionsPage } from './client/pages/PromotionsPage';
 import PolicyPage from './client/pages/PolicyPage';
 import PaymentSuccessPage from './client/pages/PaymentSuccessPage';
@@ -138,6 +140,39 @@ const AppContent: React.FC = () => {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Listen for user-verified event from VerifyEmailPage
+    useEffect(() => {
+        const handleUserVerified = (event: CustomEvent) => {
+            const user = event.detail;
+            setCurrentUser(user);
+            console.log('✅ User verified and logged in:', user.email);
+        };
+
+        // Also check localStorage on mount in case page was reloaded after verification
+        const checkVerifiedUser = () => {
+            const token = localStorage.getItem('token');
+            const userJson = localStorage.getItem('currentUser');
+            if (token && userJson) {
+                try {
+                    const user = JSON.parse(userJson);
+                    // Only set if user is verified
+                    if (user.isEmailVerified) {
+                        setCurrentUser(user);
+                        console.log('✅ User loaded from localStorage after verification:', user.email);
+                    }
+                } catch (error) {
+                    console.error('Error parsing user from localStorage:', error);
+                }
+            }
+        };
+
+        checkVerifiedUser();
+        window.addEventListener('user-verified', handleUserVerified as EventListener);
+        return () => {
+            window.removeEventListener('user-verified', handleUserVerified as EventListener);
+        };
+    }, []);
 
     // Listen for refresh-treatment-courses event (e.g., after registration)
     useEffect(() => {
@@ -321,22 +356,32 @@ const AppContent: React.FC = () => {
         navigate('/', { replace: true });
     };
 
-    const handleRegister = (registerResponse: { user: User, token: string }) => {
-        const { user, token } = registerResponse;
-        localStorage.setItem('token', token);
-        const userRole = (user.role || '').toString().toLowerCase();
-        // Set a flag to show a welcome/profile update message
-        sessionStorage.setItem('isNewRegistration', 'true');
-        console.log('User registered:', { email: user.email, role: user.role, normalizedRole: userRole, id: user.id });
-        setCurrentUser(user);
+    const handleRegister = (registerResponse: { user: User, token: string } | { message: string; email: string; requiresVerification: boolean }) => {
+        // If requires verification, don't login - user needs to verify email first
+        if ('requiresVerification' in registerResponse && registerResponse.requiresVerification) {
+            // Don't login, just show message (already shown in RegisterPage)
+            console.log('Registration requires email verification:', registerResponse.email);
+            return;
+        }
         
-        // Immediately redirect based on role after registration
-        if (userRole === 'admin') {
-            navigate('/admin', { replace: true });
-        } else if (userRole === 'staff') {
-            navigate('/staff/dashboard', { replace: true });
-        } else {
-            navigate('/', { replace: true });
+        // Only proceed with login if token is present (old flow for backward compatibility)
+        if ('token' in registerResponse) {
+            const { user, token } = registerResponse;
+            localStorage.setItem('token', token);
+            const userRole = (user.role || '').toString().toLowerCase();
+            // Set a flag to show a welcome/profile update message
+            sessionStorage.setItem('isNewRegistration', 'true');
+            console.log('User registered:', { email: user.email, role: user.role, normalizedRole: userRole, id: user.id });
+            setCurrentUser(user);
+            
+            // Immediately redirect based on role after registration
+            if (userRole === 'admin') {
+                navigate('/admin', { replace: true });
+            } else if (userRole === 'staff') {
+                navigate('/staff/dashboard', { replace: true });
+            } else {
+                navigate('/', { replace: true });
+            }
         }
     };
 
@@ -393,6 +438,8 @@ const AppContent: React.FC = () => {
                         )
                     } />
                     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                    <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+                    <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
 
                     {/* Protected Client Routes */}
                     <Route path="/booking" element={<ProtectedRoute user={currentUser}><BookingPage currentUser={currentUser} /></ProtectedRoute>} />

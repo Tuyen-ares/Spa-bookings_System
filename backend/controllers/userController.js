@@ -144,6 +144,36 @@ class UserController {
             }
         }
     }
+
+    /**
+     * POST /api/users/:id/avatar - Upload avatar
+     */
+    async uploadAvatar(req, res) {
+        try {
+            const { id } = req.params;
+            const { imageData } = req.body; // Base64 image data
+
+            if (!imageData) {
+                return res.status(400).json({
+                    error: 'No image data provided',
+                    message: 'Vui lòng cung cấp dữ liệu ảnh'
+                });
+            }
+
+            const avatarUrl = await userService.uploadAvatar(id, imageData);
+            res.json({ avatarUrl });
+        } catch (error) {
+            console.error('Error uploading avatar:', error);
+            if (error.message === 'User not found') {
+                res.status(404).json({ error: error.message });
+            } else {
+                res.status(400).json({
+                    error: 'Failed to upload avatar',
+                    message: error.message
+                });
+            }
+        }
+    }
 }
 
 module.exports = new UserController();

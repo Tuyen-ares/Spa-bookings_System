@@ -7,7 +7,7 @@ import { EyeIcon, EyeSlashIcon } from '../../shared/icons';
 import * as apiService from '../services/apiService';
 
 interface RegisterPageProps {
-    onRegister: (response: { user: User, token: string }) => void;
+    onRegister: (response: { user: User, token: string } | { message: string; email: string; requiresVerification: boolean }) => void;
 }
 
 const RegisterPage: React.FC<RegisterPageProps> = ({ onRegister }) => {
@@ -63,8 +63,32 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onRegister }) => {
             };
             const registeredUserResponse = await apiService.register(newUser);
             
-            onRegister(registeredUserResponse);
-            // Navigation is now handled by the useEffect in App.tsx
+            // If requires verification, show success message
+            if ('requiresVerification' in registeredUserResponse && registeredUserResponse.requiresVerification) {
+                setError(''); // Clear any errors
+                // Show success message - user needs to check email
+                alert(registeredUserResponse.message + '\n\nVui lòng kiểm tra email để xác nhận tài khoản trước khi đăng nhập.');
+                // Don't call onRegister, just show message and redirect to login
+                // Clear form
+                setName('');
+                setEmail('');
+                setPassword('');
+                setConfirmPassword('');
+                setPhone('');
+                setGender('');
+                setBirthday('');
+                // Redirect to login page after 2 seconds
+                setTimeout(() => {
+                    window.location.href = '/login';
+                }, 2000);
+                return;
+            }
+            
+            // If token is present, proceed with normal registration flow
+            if ('token' in registeredUserResponse) {
+                onRegister(registeredUserResponse);
+                // Navigation is now handled by the useEffect in App.tsx
+            }
 
         } catch (err: any) {
             setError(err.message || 'Đăng ký thất bại. Vui lòng thử lại.');

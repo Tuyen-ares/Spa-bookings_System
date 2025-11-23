@@ -118,6 +118,18 @@
 </head>
 <body class="bg-brand-light">
 <div id="root"></div>
+<script>
+  // Redirect verify-email URLs without # to hash URLs before React app loads
+  if (window.location.pathname.startsWith('/verify-email/') && !window.location.hash) {
+    const pathToken = window.location.pathname.replace('/verify-email/', '');
+    window.location.href = `/#/verify-email/${pathToken}`;
+  }
+  // Redirect reset-password URLs without # to hash URLs before React app loads
+  if (window.location.pathname.startsWith('/reset-password/') && !window.location.hash) {
+    const pathToken = window.location.pathname.replace('/reset-password/', '');
+    window.location.href = `/#/reset-password/${pathToken}`;
+  }
+</script>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>

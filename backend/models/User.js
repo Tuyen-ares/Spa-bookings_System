@@ -47,11 +47,30 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: 'Client',
     },
     status: {
-      type: DataTypes.ENUM('Active', 'Inactive', 'Locked'),
+      type: DataTypes.ENUM('Active', 'Inactive', 'Locked', 'Pending'),
       allowNull: false,
       defaultValue: 'Active',
     },
     lastLogin: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    emailVerificationToken: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      unique: true,
+    },
+    isEmailVerified: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    passwordResetToken: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      unique: true,
+    },
+    passwordResetTokenExpires: {
       type: DataTypes.DATE,
       allowNull: true,
     },

@@ -49,10 +49,16 @@ CREATE TABLE `users` (
   `birthday` date DEFAULT NULL,
   `gender` varchar(50) DEFAULT NULL,
   `role` enum('Admin','Staff','Client') NOT NULL DEFAULT 'Client',
-  `status` enum('Active','Inactive','Locked') NOT NULL DEFAULT 'Active',
+  `status` enum('Active','Inactive','Locked','Pending') NOT NULL DEFAULT 'Active',
   `lastLogin` datetime DEFAULT NULL,
+  `emailVerificationToken` varchar(255) DEFAULT NULL,
+  `isEmailVerified` tinyint(1) NOT NULL DEFAULT 0,
+  `passwordResetToken` varchar(255) DEFAULT NULL,
+  `passwordResetTokenExpires` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `email` (`email`)
+  UNIQUE KEY `email` (`email`),
+  UNIQUE KEY `emailVerificationToken` (`emailVerificationToken`),
+  UNIQUE KEY `passwordResetToken` (`passwordResetToken`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 4.2. Create the 'service_categories' table

@@ -68,8 +68,9 @@ class AuthController {
             res.json(result);
         } catch (error) {
             console.error('Error logging in:', error);
-            res.status(401).json({
-                message: 'Email hoặc mật khẩu không hợp lệ'
+            const statusCode = error.message.includes('xác nhận') || error.message.includes('verified') ? 403 : 401;
+            res.status(statusCode).json({
+                message: error.message || 'Email hoặc mật khẩu không hợp lệ'
             });
         }
     }
@@ -110,7 +111,75 @@ class AuthController {
     }
 
     /**
-     * POST /api/auth/reset-password - Reset password
+     * POST /api/auth/forgot-password - Request password reset
+     */
+    async forgotPassword(req, res) {
+        try {
+            console.log('📧 Forgot password request received:', req.body);
+            const { email } = req.body;
+            if (!email) {
+                return res.status(400).json({ message: 'Vui lòng cung cấp địa chỉ email.' });
+            }
+
+            const result = await authService.forgotPassword(email);
+            console.log('✅ Forgot password result:', result);
+            res.json(result);
+        } catch (error) {
+            console.error('❌ Error in forgot password:', error);
+            res.status(400).json({
+                message: error.message || 'Không thể xử lý yêu cầu đặt lại mật khẩu. Vui lòng thử lại.'
+            });
+        }
+    }
+
+    /**
+     * GET /api/auth/reset-password/:token - Verify reset password token
+     */
+    async verifyResetToken(req, res) {
+        try {
+            const { token } = req.params;
+            if (!token) {
+                return res.status(400).json({ message: 'Token đặt lại mật khẩu không hợp lệ.' });
+            }
+
+            const result = await authService.verifyResetToken(token);
+            res.json(result);
+        } catch (error) {
+            console.error('Error verifying reset token:', error);
+            res.status(400).json({
+                message: error.message || 'Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.'
+            });
+        }
+    }
+
+    /**
+     * POST /api/auth/reset-password/:token - Reset password with token
+     */
+    async resetPasswordWithToken(req, res) {
+        try {
+            const { token } = req.params;
+            const { newPassword } = req.body;
+
+            if (!token) {
+                return res.status(400).json({ message: 'Token đặt lại mật khẩu không hợp lệ.' });
+            }
+
+            if (!newPassword || newPassword.length < 6) {
+                return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 6 ký tự.' });
+            }
+
+            const result = await authService.resetPasswordWithToken(token, newPassword);
+            res.json(result);
+        } catch (error) {
+            console.error('Error resetting password:', error);
+            res.status(400).json({
+                message: error.message || 'Không thể đặt lại mật khẩu. Vui lòng thử lại.'
+            });
+        }
+    }
+
+    /**
+     * POST /api/auth/reset-password - Reset password (admin function - old method, kept for backward compatibility)
      */
     async resetPassword(req, res) {
         try {
@@ -142,6 +211,51 @@ class AuthController {
             res.status(401).json({
                 error: 'Invalid token',
                 message: error.message
+            });
+        }
+    }
+
+    /**
+     * GET /api/auth/verify-email/:token - Verify email with token
+     */
+    async verifyEmail(req, res) {
+        try {
+            const { token } = req.params;
+            console.log('📧 Verify email request received, token:', token ? token.substring(0, 20) + '...' : 'null');
+            
+            if (!token) {
+                console.log('❌ No token provided');
+                return res.status(400).json({ message: 'Token xác nhận không hợp lệ.' });
+            }
+
+            const result = await authService.verifyEmail(token);
+            console.log('✅ Email verification successful:', result.user ? result.user.email : 'already verified');
+            res.json(result);
+        } catch (error) {
+            console.error('❌ Error verifying email:', error);
+            console.error('Error stack:', error.stack);
+            res.status(400).json({
+                message: error.message || 'Không thể xác nhận email. Vui lòng thử lại.'
+            });
+        }
+    }
+
+    /**
+     * POST /api/auth/resend-verification - Resend verification email
+     */
+    async resendVerificationEmail(req, res) {
+        try {
+            const { email } = req.body;
+            if (!email) {
+                return res.status(400).json({ message: 'Vui lòng cung cấp địa chỉ email.' });
+            }
+
+            const result = await authService.resendVerificationEmail(email);
+            res.json(result);
+        } catch (error) {
+            console.error('Error resending verification email:', error);
+            res.status(400).json({
+                message: error.message || 'Không thể gửi lại email xác nhận. Vui lòng thử lại.'
             });
         }
     }

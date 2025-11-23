@@ -127,6 +127,256 @@ const ReviewModal: React.FC<{
     );
 };
 
+// Avatar Change Modal Component
+const AvatarChangeModal: React.FC<{
+    currentUser: User;
+    onClose: () => void;
+    onUpdateUser: (user: User) => void;
+}> = ({ currentUser, onClose, onUpdateUser }) => {
+    const [mode, setMode] = useState<'select' | 'camera' | 'upload'>('select');
+    const [imagePreview, setImagePreview] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const [error, setError] = useState('');
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Cleanup video stream on unmount
+    useEffect(() => {
+        return () => {
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+            }
+        };
+    }, []);
+
+    const startCamera = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'user' } 
+            });
+            streamRef.current = stream;
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
+            }
+            setMode('camera');
+            setError('');
+        } catch (err) {
+            console.error('Error accessing camera:', err);
+            setError('Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập.');
+        }
+    };
+
+    const stopCamera = () => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+        setMode('select');
+        setImagePreview(null);
+    };
+
+    const capturePhoto = () => {
+        if (videoRef.current) {
+            const canvas = document.createElement('canvas');
+            canvas.width = videoRef.current.videoWidth;
+            canvas.height = videoRef.current.videoHeight;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.drawImage(videoRef.current, 0, 0);
+                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                setImagePreview(imageData);
+                stopCamera();
+            }
+        }
+    };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            if (file.size > 5 * 1024 * 1024) { // 5MB limit
+                setError('Kích thước ảnh không được vượt quá 5MB');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setImagePreview(reader.result as string);
+                setMode('upload');
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleUpload = async () => {
+        if (!imagePreview) return;
+
+        setIsUploading(true);
+        setError('');
+
+        try {
+            // Upload avatar
+            const { avatarUrl } = await apiService.uploadAvatar(currentUser.id, imagePreview);
+            
+            // Update user with new avatar URL
+            const updatedUser = await apiService.updateUser(currentUser.id, { 
+                profilePictureUrl: avatarUrl 
+            });
+            
+            onUpdateUser(updatedUser);
+            onClose();
+            alert('Đổi ảnh đại diện thành công!');
+        } catch (err: any) {
+            console.error('Error uploading avatar:', err);
+            setError(err.message || 'Có lỗi xảy ra khi tải ảnh lên. Vui lòng thử lại.');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleRemoveAvatar = async () => {
+        if (!window.confirm('Bạn có chắc chắn muốn xóa ảnh đại diện?')) {
+            return;
+        }
+
+        setIsUploading(true);
+        setError('');
+
+        try {
+            const updatedUser = await apiService.updateUser(currentUser.id, { 
+                profilePictureUrl: null 
+            });
+            
+            onUpdateUser(updatedUser);
+            onClose();
+            alert('Đã xóa ảnh đại diện!');
+        } catch (err: any) {
+            console.error('Error removing avatar:', err);
+            setError(err.message || 'Có lỗi xảy ra khi xóa ảnh. Vui lòng thử lại.');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={onClose}>
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+                <h3 className="text-xl font-bold text-gray-800 mb-4">Đổi ảnh đại diện</h3>
+
+                {mode === 'select' && (
+                    <div className="space-y-4">
+                        <div className="flex flex-col gap-3">
+                            <button
+                                onClick={startCamera}
+                                className="w-full px-4 py-3 bg-brand-primary text-white rounded-lg hover:bg-brand-dark font-semibold transition-colors"
+                            >
+                                📷 Chụp ảnh
+                            </button>
+                            <button
+                                onClick={() => {
+                                    fileInputRef.current?.click();
+                                }}
+                                className="w-full px-4 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold transition-colors"
+                            >
+                                📁 Tải lên từ máy
+                            </button>
+                            {currentUser.profilePictureUrl && (
+                                <button
+                                    onClick={handleRemoveAvatar}
+                                    disabled={isUploading}
+                                    className="w-full px-4 py-3 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-semibold transition-colors disabled:opacity-50"
+                                >
+                                    🗑️ Xóa ảnh đại diện
+                                </button>
+                            )}
+                        </div>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileSelect}
+                            className="hidden"
+                        />
+                    </div>
+                )}
+
+                {mode === 'camera' && (
+                    <div className="space-y-4">
+                        <div className="relative bg-black rounded-lg overflow-hidden">
+                            <video
+                                ref={videoRef}
+                                autoPlay
+                                playsInline
+                                className="w-full h-64 object-cover"
+                            />
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={capturePhoto}
+                                className="flex-1 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-dark font-semibold"
+                            >
+                                Chụp ảnh
+                            </button>
+                            <button
+                                onClick={stopCamera}
+                                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
+                            >
+                                Hủy
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {(mode === 'upload' || imagePreview) && (
+                    <div className="space-y-4">
+                        <div className="flex justify-center">
+                            <img
+                                src={imagePreview || undefined}
+                                alt="Preview"
+                                className="w-48 h-48 rounded-full object-cover border-4 border-gray-200"
+                            />
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => {
+                                    setImagePreview(null);
+                                    setMode('select');
+                                }}
+                                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
+                                disabled={isUploading}
+                            >
+                                Chọn lại
+                            </button>
+                            <button
+                                onClick={handleUpload}
+                                disabled={isUploading}
+                                className="flex-1 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-dark font-semibold disabled:opacity-50"
+                            >
+                                {isUploading ? 'Đang tải...' : 'Lưu'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {error && (
+                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-sm text-red-600">{error}</p>
+                    </div>
+                )}
+
+                <button
+                    onClick={onClose}
+                    className="mt-4 w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold"
+                >
+                    Đóng
+                </button>
+            </div>
+        </div>
+    );
+};
+
 // FIX: Added ProfileSidebar component definition to resolve "Cannot find name 'ProfileSidebar'" error.
 const ProfileSidebar: React.FC<{
     activeTab: string;
@@ -177,25 +427,44 @@ const ProfileSidebar: React.FC<{
 };
 
 // FIX: Added ProfileHeader component definition to resolve "Cannot find name 'ProfileHeader'" error.
-const ProfileHeader: React.FC<{ currentUser: User; currentTier: Tier | undefined; }> = ({ currentUser, currentTier }) => {
-    const fileInputRef = useRef<HTMLInputElement>(null);
+const ProfileHeader: React.FC<{ currentUser: User; currentTier: Tier | undefined; onUpdateUser: (user: User) => void; }> = ({ currentUser, currentTier, onUpdateUser }) => {
+    const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
 
     const handleAvatarClick = () => {
-        alert("Chức năng thay đổi ảnh đại diện đang được phát triển.");
+        setIsAvatarModalOpen(true);
     };
 
     return (
         <div className="bg-white p-6 rounded-lg shadow-soft-lg border border-gray-200/50 flex flex-col sm:flex-row items-center gap-6">
             <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
-                <img
-                    src={currentUser.profilePictureUrl}
-                    alt={currentUser.name}
-                    className="w-24 h-24 rounded-full object-cover ring-4 ring-brand-secondary group-hover:ring-brand-primary transition-all"
-                />
+                {currentUser.profilePictureUrl ? (
+                    <img
+                        src={currentUser.profilePictureUrl.startsWith('/uploads/') 
+                            ? `http://localhost:3001${currentUser.profilePictureUrl}` 
+                            : currentUser.profilePictureUrl}
+                        alt={currentUser.name}
+                        className="w-24 h-24 rounded-full object-cover ring-4 ring-brand-secondary group-hover:ring-brand-primary transition-all"
+                        onError={(e) => {
+                            // Fallback to icon if image fails to load
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            const parent = target.parentElement;
+                            if (parent) {
+                                const fallback = document.createElement('div');
+                                fallback.className = 'w-24 h-24 rounded-full bg-gray-200 ring-4 ring-brand-secondary flex items-center justify-center';
+                                fallback.innerHTML = '<svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>';
+                                parent.appendChild(fallback);
+                            }
+                        }}
+                    />
+                ) : (
+                    <div className="w-24 h-24 rounded-full bg-gray-200 ring-4 ring-brand-secondary group-hover:ring-brand-primary transition-all flex items-center justify-center">
+                        <ProfileIcon className="w-12 h-12 text-gray-400" />
+                    </div>
+                )}
                 <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <CameraIcon className="w-8 h-8 text-white" />
                 </div>
-                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" />
             </div>
             <div className="text-center sm:text-left">
                 <h1 className="text-3xl font-bold font-serif text-brand-text">{currentUser.name}</h1>
@@ -214,6 +483,15 @@ const ProfileHeader: React.FC<{ currentUser: User; currentTier: Tier | undefined
                     </div>
                 )}
             </div>
+            
+            {/* Avatar Change Modal */}
+            {isAvatarModalOpen && (
+                <AvatarChangeModal
+                    currentUser={currentUser}
+                    onClose={() => setIsAvatarModalOpen(false)}
+                    onUpdateUser={onUpdateUser}
+                />
+            )}
         </div>
     );
 };
@@ -240,28 +518,231 @@ const ProfileInfoRow: React.FC<{ icon: React.ReactNode; label: string; value: Re
 
 
 const ProfileInfoTab: React.FC<{ currentUser: User; onUpdateUser: (user: User) => void; }> = ({ currentUser, onUpdateUser }) => {
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editingField, setEditingField] = useState<string | null>(null);
+    const [formData, setFormData] = useState({
+        name: currentUser.name,
+        email: currentUser.email,
+        phone: currentUser.phone || '',
+        gender: currentUser.gender || '',
+        birthday: currentUser.birthday ? new Date(currentUser.birthday).toISOString().split('T')[0] : ''
+    });
+    const [error, setError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     const handleEdit = (field: string) => {
-        // TODO: Implement edit functionality
-        console.log(`Edit ${field} for user ${currentUser.id}`);
+        setEditingField(field);
+        setIsEditModalOpen(true);
+        setError('');
+    };
+
+    const handleCloseModal = () => {
+        setIsEditModalOpen(false);
+        setEditingField(null);
+        setError('');
+        // Reset form data to current user data
+        setFormData({
+            name: currentUser.name,
+            email: currentUser.email,
+            phone: currentUser.phone || '',
+            gender: currentUser.gender || '',
+            birthday: currentUser.birthday ? new Date(currentUser.birthday).toISOString().split('T')[0] : ''
+        });
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setIsSubmitting(true);
+
+        try {
+            // Validate email if editing email
+            if (editingField === 'Email' && formData.email !== currentUser.email) {
+                // Email validation will be done on backend
+            }
+
+            // Prepare update data based on editing field
+            const updateData: Partial<User> = {};
+            if (editingField === 'Họ và tên') {
+                if (!formData.name.trim()) {
+                    setError('Họ và tên không được để trống');
+                    setIsSubmitting(false);
+                    return;
+                }
+                updateData.name = formData.name.trim();
+            } else if (editingField === 'Email') {
+                if (!formData.email.trim()) {
+                    setError('Email không được để trống');
+                    setIsSubmitting(false);
+                    return;
+                }
+                // Basic email validation
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(formData.email.trim())) {
+                    setError('Email không hợp lệ');
+                    setIsSubmitting(false);
+                    return;
+                }
+                updateData.email = formData.email.trim();
+            } else if (editingField === 'Số điện thoại') {
+                if (formData.phone && !/^[0-9]{10,11}$/.test(formData.phone.replace(/\s/g, ''))) {
+                    setError('Số điện thoại không hợp lệ. Vui lòng nhập 10-11 chữ số.');
+                    setIsSubmitting(false);
+                    return;
+                }
+                updateData.phone = formData.phone.trim() || null;
+            } else if (editingField === 'Ngày sinh & Giới tính') {
+                if (formData.birthday) {
+                    const birthDate = new Date(formData.birthday);
+                    const today = new Date();
+                    if (birthDate > today) {
+                        setError('Ngày sinh không thể là ngày trong tương lai.');
+                        setIsSubmitting(false);
+                        return;
+                    }
+                    const age = today.getFullYear() - birthDate.getFullYear();
+                    if (age < 13 || age > 120) {
+                        setError('Ngày sinh không hợp lệ. Bạn phải từ 13 tuổi trở lên.');
+                        setIsSubmitting(false);
+                        return;
+                    }
+                }
+                updateData.birthday = formData.birthday || null;
+                updateData.gender = formData.gender || null;
+            }
+
+            // Update user
+            const updatedUser = await apiService.updateUser(currentUser.id, updateData);
+            onUpdateUser(updatedUser);
+            
+            // Refresh appointments to sync with admin/staff
+            window.dispatchEvent(new Event('refresh-appointments'));
+            
+            handleCloseModal();
+            alert('Cập nhật thông tin thành công!');
+        } catch (err: any) {
+            console.error('Error updating user:', err);
+            setError(err.message || 'Có lỗi xảy ra khi cập nhật thông tin. Vui lòng thử lại.');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
-        <div className="bg-white p-6 sm:p-8 rounded-lg shadow-soft-lg animate-fadeInUp border border-gray-200/50">
-            <h2 className="text-2xl font-bold font-serif text-brand-text mb-6">Thông tin cá nhân</h2>
-            
-            {/* Note: address field removed from users table in db.txt */}
-
-            <div className="space-y-2">
-                <ProfileInfoRow icon={<ProfileIcon className="w-6 h-6"/>} label="Họ và tên" value={currentUser.name} onEdit={() => handleEdit('Họ và tên')} />
-                <ProfileInfoRow icon={<MailIcon className="w-6 h-6"/>} label="Email" value={currentUser.email} />
-                <ProfileInfoRow icon={<PhoneIcon className="w-6 h-6"/>} label="Số điện thoại" value={currentUser.phone || 'Chưa cập nhật'} onEdit={() => handleEdit('Số điện thoại')} />
-                <ProfileInfoRow icon={<CakeIcon className="w-6 h-6"/>} label="Ngày sinh & Giới tính" value={`${currentUser.birthday ? new Date(currentUser.birthday).toLocaleDateString('vi-VN') : 'Chưa cập nhật'} - ${currentUser.gender || 'Chưa cập nhật'}`} onEdit={() => handleEdit('Ngày sinh & Giới tính')} />
+        <>
+            <div className="bg-white p-6 sm:p-8 rounded-lg shadow-soft-lg animate-fadeInUp border border-gray-200/50">
+                <h2 className="text-2xl font-bold font-serif text-brand-text mb-6">Thông tin cá nhân</h2>
                 
-                {/* Note: Address field removed from users table in db.txt */}
+                <div className="space-y-2">
+                    <ProfileInfoRow icon={<ProfileIcon className="w-6 h-6"/>} label="Họ và tên" value={currentUser.name} onEdit={() => handleEdit('Họ và tên')} />
+                    <ProfileInfoRow icon={<MailIcon className="w-6 h-6"/>} label="Email" value={currentUser.email} onEdit={() => handleEdit('Email')} />
+                    <ProfileInfoRow icon={<PhoneIcon className="w-6 h-6"/>} label="Số điện thoại" value={currentUser.phone || 'Chưa cập nhật'} onEdit={() => handleEdit('Số điện thoại')} />
+                    <ProfileInfoRow icon={<CakeIcon className="w-6 h-6"/>} label="Ngày sinh & Giới tính" value={`${currentUser.birthday ? new Date(currentUser.birthday).toLocaleDateString('vi-VN') : 'Chưa cập nhật'} - ${currentUser.gender || 'Chưa cập nhật'}`} onEdit={() => handleEdit('Ngày sinh & Giới tính')} />
+                </div>
             </div>
 
-            {/* Note: QR Code field removed from users table in db.txt */}
-        </div>
+            {/* Edit Modal */}
+            {isEditModalOpen && (
+                <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={handleCloseModal}>
+                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-xl font-bold text-gray-800 mb-4">Chỉnh sửa {editingField}</h3>
+                        
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            {editingField === 'Họ và tên' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Họ và tên</label>
+                                    <input
+                                        type="text"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                        required
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                    />
+                                </div>
+                            )}
+
+                            {editingField === 'Email' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                    <input
+                                        type="email"
+                                        value={formData.email}
+                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                        required
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Email phải là duy nhất trong hệ thống</p>
+                                </div>
+                            )}
+
+                            {editingField === 'Số điện thoại' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Số điện thoại</label>
+                                    <input
+                                        type="tel"
+                                        value={formData.phone}
+                                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                        placeholder="0123456789"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                    />
+                                </div>
+                            )}
+
+                            {editingField === 'Ngày sinh & Giới tính' && (
+                                <>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Ngày sinh</label>
+                                        <input
+                                            type="date"
+                                            value={formData.birthday}
+                                            onChange={(e) => setFormData({ ...formData, birthday: e.target.value })}
+                                            max={new Date().toISOString().split('T')[0]}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Giới tính</label>
+                                        <select
+                                            value={formData.gender}
+                                            onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                        >
+                                            <option value="">Chọn giới tính</option>
+                                            <option value="Nam">Nam</option>
+                                            <option value="Nữ">Nữ</option>
+                                            <option value="Khác">Khác</option>
+                                        </select>
+                                    </div>
+                                </>
+                            )}
+
+                            {error && (
+                                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                                    <p className="text-sm text-red-600">{error}</p>
+                                </div>
+                            )}
+
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={handleCloseModal}
+                                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
+                                >
+                                    Hủy
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="flex-1 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-dark font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isSubmitting ? 'Đang lưu...' : 'Lưu'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </>
     );
 };
 
@@ -639,29 +1120,6 @@ const AppointmentsTab: React.FC<{
         return myAppointments.filter(app => app.status === filter);
     }, [myAppointments, filter]);
 
-    const suggestedService = useMemo(() => {
-        const usedServiceIds = new Set(myAppointments.map(app => app.serviceId));
-        const usedCategories = new Set(myAppointments.map(app => {
-            const service = allServices.find(s => s.id === app.serviceId);
-            return service?.category;
-        }).filter(Boolean));
-
-        const suggestionFromNewCategory = allServices.find(
-            s => s.isActive && !usedCategories.has(s.category) && !usedServiceIds.has(s.id)
-        );
-        if (suggestionFromNewCategory) return suggestionFromNewCategory;
-
-        const popularUnusedService = allServices.find(
-            s => s.isActive && !usedServiceIds.has(s.id)
-        );
-        if(popularUnusedService) return popularUnusedService;
-
-        const mostReviewedUnused = [...allServices]
-            .filter(s => s.isActive && !usedServiceIds.has(s.id))
-            .sort((a,b) => (b.reviewCount || 0) - (a.reviewCount || 0));
-        return mostReviewedUnused.length > 0 ? mostReviewedUnused[0] : null;
-    }, [myAppointments, allServices]);
-
     const handleCancel = async (appId: string) => {
         try {
             await apiService.cancelAppointment(appId);
@@ -683,25 +1141,6 @@ const AppointmentsTab: React.FC<{
                     onClose={() => setReviewingAppointment(null)}
                     onSubmitSuccess={onReviewSubmit}
                 />
-            )}
-
-            {suggestedService && (
-                <div className="bg-white p-6 rounded-lg shadow-soft-lg border border-purple-200/80">
-                    <h3 className="text-xl font-bold font-serif text-brand-text mb-4 flex items-center gap-2">
-                        <SparklesIcon className="w-6 h-6 text-purple-500" />
-                        AI Gợi ý cho bạn
-                    </h3>
-                    <div className="flex flex-col sm:flex-row gap-6">
-                        <img src={suggestedService.imageUrl} alt={suggestedService.name} className="w-full sm:w-48 h-32 object-cover rounded-md flex-shrink-0" />
-                        <div>
-                            <p className="font-semibold text-lg text-brand-dark">{suggestedService.name}</p>
-                            <p className="text-sm text-gray-600 mt-1 line-clamp-2">{suggestedService.description}</p>
-                            <button onClick={() => navigate(`/booking?serviceId=${suggestedService.id}`)} className="mt-4 bg-purple-600 text-white font-semibold py-2 px-5 rounded-lg hover:bg-purple-700 transition-colors text-sm">
-                                Đặt ngay
-                            </button>
-                        </div>
-                    </div>
-                </div>
             )}
 
             <div className="bg-white p-6 sm:p-8 rounded-lg shadow-soft-lg border border-gray-200/50">
@@ -1227,7 +1666,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                     <ProfileSidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} />
                     
                     <main className="flex-1">
-                        <ProfileHeader currentUser={currentUser} currentTier={currentTier} />
+                        <ProfileHeader currentUser={currentUser} currentTier={currentTier} onUpdateUser={onUpdateUser} />
                         <div className="mt-8">
                            <TabContent />
                         </div>
