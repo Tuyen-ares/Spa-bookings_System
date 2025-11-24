@@ -22,19 +22,15 @@ const ServiceCard: React.FC<ServiceCardProps> = ({ service }) => {
     <div 
         className="bg-white rounded-lg shadow-soft-lg overflow-hidden flex flex-col group transition-all duration-300 hover:shadow-soft-xl hover:-translate-y-1 border border-gray-200/50"
     >
-      <div className="relative overflow-hidden bg-gray-100">
-        <img 
-            className="w-full h-32 object-contain object-center transform group-hover:scale-110 transition-transform duration-500 ease-out" 
-            src={service.imageUrl || 'https://via.placeholder.com/400x300?text=No+Image'} 
-            alt={service.name} 
+      <div className="relative bg-gray-100">
+        <div className="w-full aspect-[4/3] overflow-hidden">
+          <img
+            className="w-full h-full object-cover block transform group-hover:scale-105 transition-transform duration-500 ease-out"
+            src={service.imageUrl || 'https://via.placeholder.com/800x600?text=No+Image'}
+            alt={service.name}
             loading="lazy"
-            style={{ 
-                objectFit: 'contain',
-                objectPosition: 'center',
-                width: '100%',
-                height: '100%'
-            }}
-        />
+          />
+        </div>
         <div className="absolute top-3 left-3 flex flex-col gap-2">
             {service.discountPrice && (
                 <span className="bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md">

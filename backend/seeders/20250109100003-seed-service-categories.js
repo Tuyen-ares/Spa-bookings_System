@@ -4,14 +4,12 @@
 module.exports = {
   async up(queryInterface, Sequelize) {
     const categories = [
-      { id: 1, name: 'Massage' },
-      { id: 2, name: 'Skincare' },
-      { id: 3, name: 'Body Care' },
-      { id: 4, name: 'Relax' },
-      { id: 5, name: 'Spa Package' },
-      { id: 6, name: 'Triệt Lông' },
-      { id: 7, name: 'Clinic' },
-      { id: 8, name: 'Nail' },
+      { id: 1, name: 'Nail' },
+      { id: 2, name: 'MASSAGE THƯ GIÃN' },
+      { id: 3, name: 'CHĂM SÓC DA' },
+      { id: 4, name: 'CHĂM SÓC CƠ THỂ' },
+      { id: 5, name: 'CHĂM SÓC TÓC' },
+      { id: 6, name: 'WAXING' },
     ];
 
     await queryInterface.bulkInsert('service_categories', categories, {});

@@ -52,7 +52,7 @@ const ContactPage: React.FC = () => {
                                 <LocationIcon className="w-6 h-6 text-blue-600" />
                             </div>
                             <h3 className="text-lg font-bold text-brand-dark mb-2">Địa chỉ</h3>
-                            <p className="text-sm text-gray-600 font-medium leading-relaxed">123 Beauty St, Quận Hoàn Kiếm, Hà Nội, Việt Nam</p>
+                            <p className="text-sm text-gray-600 font-medium leading-relaxed">87 Đ. Tô Ngọc Vân, P, Thủ Đức, Thành phố Hồ Chí Minh 71300</p>
                         </div>
 
                         <div className="bg-white p-5 md:p-6 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow duration-300 group">
@@ -60,7 +60,7 @@ const ContactPage: React.FC = () => {
                                 <PhoneIcon className="w-6 h-6 text-green-600" />
                             </div>
                             <h3 className="text-lg font-bold text-brand-dark mb-2">Hotline</h3>
-                            <p className="text-sm text-gray-600 font-medium mb-1">098-765-4321</p>
+                            <p className="text-sm text-gray-600 font-medium mb-1">0941-608-915</p>
                             <p className="text-xs text-gray-400">Gọi để đặt lịch hoặc hỗ trợ nhanh</p>
                         </div>
 
@@ -69,7 +69,7 @@ const ContactPage: React.FC = () => {
                                 <ClockIcon className="w-6 h-6 text-yellow-600" />
                             </div>
                             <h3 className="text-lg font-bold text-brand-dark mb-2">Giờ mở cửa</h3>
-                            <p className="text-sm text-gray-600 font-medium">Thứ 2 - Chủ nhật: 09:00 - 20:00</p>
+                            <p className="text-sm text-gray-600 font-medium">Thứ 2 - Chủ nhật: 09:00 - 21:00</p>
                             <p className="text-xs text-gray-400 mt-1">Mở cửa tất cả các ngày trong tuần</p>
                         </div>
                     </div>
@@ -88,13 +88,13 @@ const ContactPage: React.FC = () => {
 
                                 <div className="bg-gray-50 p-4 md:p-5 rounded-xl">
                                     <h3 className="font-bold text-sm md:text-base mb-2">Giờ mở cửa</h3>
-                                    <p className="text-sm text-gray-600">Thứ 2 - Chủ nhật: 09:00 - 20:00</p>
+                                    <p className="text-sm text-gray-600">Thứ 2 - Chủ nhật: 09:00 - 21:00</p>
                                 </div>
 
                                 <div className="md:col-span-2 bg-gray-50 p-4 md:p-5 rounded-xl">
                                     <h3 className="font-bold text-sm md:text-base mb-3">Liên hệ qua Hotline</h3>
-                                    <a href="tel:0987654321" className="inline-flex items-center gap-2 bg-red-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-md hover:bg-red-700 transition-colors">
-                                        <PhoneIcon className="w-4 h-4" /> 098-765-4321
+                                    <a className="inline-flex items-center gap-2 bg-red-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-md hover:bg-red-700 transition-colors">
+                                        <PhoneIcon className="w-4 h-4" /> 0941-608-915
                                     </a>
                                     <p className="text-xs text-gray-500 mt-2">Vui lòng gọi hotline để đặt lịch hoặc cần hỗ trợ nhanh.</p>
                                 </div>

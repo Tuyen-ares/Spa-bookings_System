@@ -76,12 +76,7 @@ module.exports = {
       promotionId: {
         type: Sequelize.STRING,
         allowNull: true,
-        references: {
-          model: 'promotions',
-          key: 'id',
-        },
-        onDelete: 'SET NULL',
-        onUpdate: 'CASCADE',
+        // Foreign key constraint will be added in create-promotions.js migration
         comment: 'ID mã khuyến mãi/voucher được áp dụng',
       },
     });

@@ -87,6 +87,30 @@ module.exports = {
         comment: 'Số điểm cần thiết để đổi voucher (chỉ áp dụng cho voucher private)',
       },
     });
+
+    // Add foreign key constraint for appointments.promotionId
+    // Check if appointments table exists and promotionId column exists
+    const [tableInfo] = await queryInterface.sequelize.query(
+      "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'appointments'"
+    );
+    if (tableInfo[0].count > 0) {
+      const [columnInfo] = await queryInterface.sequelize.query(
+        "SELECT COUNT(*) as count FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'appointments' AND column_name = 'promotionId'"
+      );
+      if (columnInfo[0].count > 0) {
+        await queryInterface.addConstraint('appointments', {
+          fields: ['promotionId'],
+          type: 'foreign key',
+          name: 'appointments_promotionId_fk',
+          references: {
+            table: 'promotions',
+            field: 'id',
+          },
+          onDelete: 'SET NULL',
+          onUpdate: 'CASCADE',
+        });
+      }
+    }
   },
 
   down: async (queryInterface, Sequelize) => {

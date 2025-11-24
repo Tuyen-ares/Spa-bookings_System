@@ -54,10 +54,10 @@ const Footer: React.FC = () => {
                  <span className="absolute bottom-0 left-0 w-1/2 h-0.5 bg-brand-primary rounded-full"></span>
              </h3>
             <div className="space-y-5">
-              <ContactItem icon={<LocationIcon />} title="Địa chỉ" content="123 Beauty St, Hà Nội, Việt Nam" />
-              <ContactItem icon={<PhoneIcon />} title="Hotline" content="098-765-4321" isLink href="tel:0987654321" />
-              <ContactItem icon={<MailIcon />} title="Email" content="contact@anhthospa.vn" isLink href="mailto:contact@anhthospa.vn" />
-              <ContactItem icon={<ClockIcon />} title="Giờ mở cửa" content="9:00 - 20:00 (T2-CN)" />
+              <ContactItem icon={<LocationIcon />} title="Địa chỉ" content="87 Đ. Tô Ngọc Vân, P, Thủ Đức, Thành phố Hồ Chí Minh 71300" />
+              <ContactItem icon={<PhoneIcon />} title="Hotline" content="0941-608-915" />
+              <ContactItem icon={<MailIcon />} title="Email" content="contact@anhthospa.vn" />
+              <ContactItem icon={<ClockIcon />} title="Giờ mở cửa" content="9:00 - 22:00 (T2-CN)" />
             </div>
           </div>
           
