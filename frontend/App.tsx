@@ -27,6 +27,10 @@ import { PromotionsPage } from './client/pages/PromotionsPage';
 import PolicyPage from './client/pages/PolicyPage';
 import PaymentSuccessPage from './client/pages/PaymentSuccessPage';
 import PaymentFailedPage from './client/pages/PaymentFailedPage';
+import QAPage from './client/pages/Q&A';
+import ContactPage from './client/pages/ContactPage';
+import AboutPage from './client/pages/AboutPage';
+import { SearchResultsPage } from './client/pages/SearchResultsPage';
 
 // Admin Pages
 import AdminLayout from './admin/components/AdminLayout';
@@ -420,6 +424,10 @@ const AppContent: React.FC = () => {
                     <Route path="/service/:id" element={<ServiceDetailPage allServices={allServices} currentUser={currentUser} allPromotions={allPromotions} setAllReviews={setAllReviews} setAllAppointments={setAllAppointments} />} />
                     <Route path="/promotions" element={<PromotionsPage currentUser={currentUser} wallet={wallet} setWallet={setWallet} userVouchers={[]} setUserVouchers={() => {}} allTiers={allTiers} />} />
                     <Route path="/policy" element={<PolicyPage />} />
+                    <Route path="/qa" element={<QAPage />} />
+                    <Route path="/contact" element={<ContactPage />} />
+                    <Route path="/about" element={<AboutPage />} />
+                    <Route path="/search-results" element={<SearchResultsPage allServices={allServices} />} />
 
                     {/* Payment Result Routes */}
                     <Route path="/payment/success" element={<PaymentSuccessPage />} />

@@ -164,13 +164,13 @@ export const ServicesListPage: React.FC<ServicesListPageProps> = ({ allServices 
             return;
         }
         
-        const categoryName = categories.find(c => c.id === categoryId)?.name || '';
+        const categoryIdStr = String(categoryId);
         setSelectedCategories(prev => {
-            const isSelected = prev.includes(categoryName);
+            const isSelected = prev.includes(categoryIdStr);
             if (isSelected) {
-                return prev.filter(c => c !== categoryName);
+                return prev.filter(c => c !== categoryIdStr);
             } else {
-                return [...prev, categoryName];
+                return [...prev, categoryIdStr];
             }
         });
     };
@@ -186,7 +186,11 @@ export const ServicesListPage: React.FC<ServicesListPageProps> = ({ allServices 
         const activePriceRanges = PRICE_RANGES.filter(r => selectedPriceRanges.includes(r.key));
         
         return services.filter(service => {
-            const categoryMatch = selectedCategories.length === 0 || selectedCategories.includes(service.category);
+            // Match by category ID instead of name
+            const serviceCategoryId = typeof service.categoryId === 'number' 
+                ? String(service.categoryId) 
+                : String(service.categoryId || '');
+            const categoryMatch = selectedCategories.length === 0 || selectedCategories.includes(serviceCategoryId);
             
             const price = service.discountPrice || service.price;
             const priceMatch = activePriceRanges.length === 0 || activePriceRanges.some(range => price >= range.min && price <= range.max);
@@ -232,7 +236,7 @@ export const ServicesListPage: React.FC<ServicesListPageProps> = ({ allServices 
                                 type="checkbox"
                                 name="category"
                                 value={category.id}
-                                checked={selectedCategories.includes(category.name)}
+                                checked={selectedCategories.includes(String(category.id))}
                                 onChange={() => handleCategoryChange(category.id)}
                                 className="h-4 w-4 rounded border-gray-300 text-brand-primary focus:ring-brand-primary transition-colors group-hover:border-brand-primary"
                             />

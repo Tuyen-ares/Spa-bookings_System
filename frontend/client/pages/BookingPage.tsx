@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
-import type { Service, User, Appointment, PaymentMethod, Promotion, TreatmentCourse, Review, StaffShift, ServiceCategory, Tier } from '../../types';
+import type { Service, User, Appointment, PaymentMethod, Promotion, TreatmentCourse, Review, StaffShift, ServiceCategory } from '../../types';
 import { StarIcon, VNPayIcon, CheckCircleIcon, ChevronLeftIcon, ChevronRightIcon } from '../../shared/icons';
 import * as apiService from '../services/apiService';
 
@@ -58,7 +58,6 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     const [selectedTime, setSelectedTime] = useState<string>('');
     const [promotions, setPromotions] = useState<Promotion[]>([]);
     const [applicablePromotions, setApplicablePromotions] = useState<Promotion[]>([]);
-    const [redeemedVouchers, setRedeemedVouchers] = useState<Array<Promotion & { redeemedCount: number }>>([]); // Vouchers đã đổi bằng điểm
     const [selectedPromotion, setSelectedPromotion] = useState<Promotion | null>(null);
     const [isBirthday, setIsBirthday] = useState<boolean>(false);
     const [treatmentCourses, setTreatmentCourses] = useState<TreatmentCourse[]>([]);
@@ -69,7 +68,6 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('VNPay');
     const [promoCode, setPromoCode] = useState<string>('');
-    const [tierInfo, setTierInfo] = useState<{ currentTier: Tier; nextTier: Tier | null; discountPercent: number } | null>(null);
 
     // Generate flexible time slots from 9:00 to 22:00 with 15 minute intervals
     const generateTimeSlots = () => {
@@ -86,22 +84,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         return slots;
     };
 
-    // Helper function to convert time string (HH:mm) to minutes
-    const timeToMinutes = (time: string): number => {
-        const [hour, minute] = time.split(':').map(Number);
-        return hour * 60 + minute;
-    };
-
-    // Helper function to convert minutes to time string (HH:mm)
-    const minutesToTime = (minutes: number): string => {
-        const hour = Math.floor(minutes / 60);
-        const minute = minutes % 60;
-        return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-    };
-
     // Get available time slots based on selected date
-    // QUAN TRỌNG: Không filter ra khỏi danh sách, chỉ đánh dấu disabled
-    // Hiển thị tất cả time slots, nhưng disable những cái bị chặn
     const getAvailableTimeSlots = () => {
         const allSlots = generateTimeSlots();
         
@@ -119,30 +102,29 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             selectedDateObj.getMonth() === today.getMonth() &&
             selectedDateObj.getDate() === today.getDate();
 
-        // Filter out past times if today
-        let filteredSlots = allSlots;
-        if (isToday) {
-            const now = new Date();
-            const currentHour = now.getHours();
-            const currentMinute = now.getMinutes();
-            const currentTimeInMinutes = currentHour * 60 + currentMinute;
-
-            filteredSlots = allSlots.filter(timeSlot => {
-                const [hour, minute] = timeSlot.split(':').map(Number);
-                const slotTimeInMinutes = hour * 60 + minute;
-                // Only show slots that are at least 15 minutes in the future
-                return slotTimeInMinutes > currentTimeInMinutes;
-            });
+        if (!isToday) {
+            // If future date, return all slots
+            return allSlots;
         }
 
-        // Trả về tất cả time slots (không filter), logic kiểm tra blocked sẽ được thực hiện ở isTimeSlotBlocked
-        return filteredSlots;
+        // If today, filter out past times
+        const now = new Date();
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTimeInMinutes = currentHour * 60 + currentMinute;
+
+        return allSlots.filter(timeSlot => {
+            const [hour, minute] = timeSlot.split(':').map(Number);
+            const slotTimeInMinutes = hour * 60 + minute;
+            // Only show slots that are at least 15 minutes in the future
+            return slotTimeInMinutes > currentTimeInMinutes;
+        });
     };
 
-    // Memoize available time slots to recalculate when selectedDate, userAppointments, or services change
+    // Memoize available time slots to recalculate when selectedDate changes
     const availableTimeSlots = useMemo(() => {
         return getAvailableTimeSlots();
-    }, [selectedDate, userAppointments, services]);
+    }, [selectedDate]);
 
     // Reset selectedTime if it's no longer available when date changes
     useEffect(() => {
@@ -162,36 +144,6 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             setDateInputValue('');
         }
     }, [selectedDate]);
-
-    // Fetch tier info when currentUser changes
-    useEffect(() => {
-        const fetchTierInfo = async () => {
-            if (currentUser && currentUser.id) {
-                try {
-                    console.log('🔄 Fetching tier info for user:', currentUser.id);
-                    const tier = await apiService.getUserTier(currentUser.id);
-                    console.log('✅ Tier info loaded in useEffect:', tier);
-                    if (tier && tier.discountPercent !== undefined) {
-                        setTierInfo(tier);
-                    } else {
-                        console.error('❌ Invalid tier info received:', tier);
-                        setTierInfo(null);
-                    }
-                } catch (error) {
-                    console.error('❌ Error loading user tier in useEffect:', error);
-                    setTierInfo(null);
-                }
-            } else {
-                console.log('⚠️ No currentUser or currentUser.id, setting tierInfo to null');
-                setTierInfo(null);
-            }
-        };
-        // Add a small delay to ensure currentUser is fully loaded
-        const timer = setTimeout(() => {
-            fetchTierInfo();
-        }, 100);
-        return () => clearTimeout(timer);
-    }, [currentUser?.id]);
 
     // Load data
     useEffect(() => {
@@ -219,7 +171,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 throw testError;
             }
             
-            const [servicesData, categoriesData, usersData, promotionsData, coursesData, reviewsData, appointmentsData, shiftsData] = await Promise.all([
+            const [servicesData, categoriesData, usersData, promotionsData, coursesData, reviewsData, appointmentsData] = await Promise.all([
                 apiService.getServices().catch(err => { console.error('Error fetching services:', err); throw err; }),
                 apiService.getServiceCategories().catch(err => { console.error('Error fetching categories:', err); return []; }),
                 apiService.getUsers().catch(err => { console.error('Error fetching users:', err); return []; }),
@@ -267,17 +219,6 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                            birthday.getDate() === today.getDate();
                     setIsBirthday(isTodayBirthday);
                 }
-                
-                // Fetch redeemed vouchers (vouchers đã đổi bằng điểm)
-                try {
-                    const redeemed = await apiService.getMyRedeemedVouchers(currentUser.id);
-                    setRedeemedVouchers(redeemed || []);
-                    console.log('✅ Loaded redeemed vouchers in BookingPage:', redeemed?.length || 0);
-                } catch (error) {
-                    console.error('Error loading redeemed vouchers:', error);
-                }
-                
-                // Note: tierInfo is fetched in useEffect when currentUser changes
             }
 
             // Auto-select service from URL if provided
@@ -308,15 +249,14 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     };
 
     // Step 1: Select Service
-    // Only allow selecting ONE service at a time
     const handleServiceToggle = (service: Service) => {
         const existingIndex = selectedServices.findIndex(s => s.service.id === service.id);
         if (existingIndex >= 0) {
-            // Remove if already selected (uncheck)
-            setSelectedServices([]);
+            // Remove if already selected
+            setSelectedServices(selectedServices.filter((_, idx) => idx !== existingIndex));
         } else {
-            // Replace any existing selection with the new one (only 1 service allowed)
-            setSelectedServices([{ service, quantity: 1 }]);
+            // Add with quantity 1
+            setSelectedServices([...selectedServices, { service, quantity: 1 }]);
         }
     };
 
@@ -361,7 +301,6 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     }, [currentUser, selectedServices]);
 
     // Step 2: Select Time
-    // Check if a time slot is booked (exact match) - for display purposes
     const isTimeSlotBooked = (time: string) => {
         if (!selectedDate) return false;
         return userAppointments.some(apt => 
@@ -371,87 +310,15 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         );
     };
 
-    // Check if a time slot is blocked by an existing appointment's duration
-    // Logic: Kiểm tra overlap giữa appointment mới (với dịch vụ đang chọn) và appointments đã đặt
-    // Time slot bị chặn nếu có bất kỳ overlap nào (cả đi lùi và đi tiến)
-    const isTimeSlotBlocked = (time: string) => {
-        if (!selectedDate || selectedServices.length === 0) return false;
-        
-        // Lấy duration của dịch vụ đang được chọn (lấy dịch vụ đầu tiên nếu có nhiều)
-        const selectedService = selectedServices[0].service;
-        if (!selectedService || !selectedService.duration) return false;
-
-        const newStartTimeInMinutes = timeToMinutes(time);
-        const newEndTimeInMinutes = newStartTimeInMinutes + selectedService.duration;
-
-        // Lấy tất cả appointments của user trong ngày đó (cùng ngày, status != cancelled)
-        const appointmentsOnSelectedDate = userAppointments.filter(apt => 
-            apt.date === selectedDate && 
-            apt.status !== 'cancelled'
-        );
-
-        // Kiểm tra overlap với từng appointment đã đặt
-        return appointmentsOnSelectedDate.some(apt => {
-            const service = services.find(s => s.id === apt.serviceId);
-            if (!service || !service.duration) return false;
-
-            const existingStartTimeInMinutes = timeToMinutes(apt.time);
-            const existingEndTimeInMinutes = existingStartTimeInMinutes + service.duration;
-
-            // Kiểm tra overlap: Hai khoảng thời gian overlap nếu:
-            // newStart < existingEnd && newEnd > existingStart
-            // Ví dụ:
-            // - Appointment đã đặt: 11:30 - 13:00 (90 phút)
-            // - Appointment mới: 11:15 - 12:15 (60 phút)
-            //   → 11:15 < 13:00 && 12:15 > 11:30 → Overlap! → Bị chặn
-            // - Appointment mới: 10:45 - 11:15 (30 phút)
-            //   → 10:45 < 13:00 && 11:15 > 11:30 → 11:15 > 11:30 = false → Không overlap → Không bị chặn
-            const hasOverlap = newStartTimeInMinutes < existingEndTimeInMinutes && 
-                               newEndTimeInMinutes > existingStartTimeInMinutes;
-
-            return hasOverlap;
-        });
-    };
-
     // Step 4: Confirmation
     const calculateTotal = () => {
         const servicesTotal = selectedServices.reduce((sum, { service, quantity }) => sum + (service.price * quantity), 0);
-        
-        // Calculate tier discount (based on membership tier)
-        const tierDiscount = tierInfo && tierInfo.discountPercent > 0 
-            ? servicesTotal * (tierInfo.discountPercent / 100)
-            : 0;
-        
-        // Calculate promotion discount
-        // IMPORTANT: Promotion discount should be calculated from servicesTotal (original price), not from servicesTotal - tierDiscount
-        // FIX: Parse discountValue to number to avoid string concatenation
-        const promotionDiscount = selectedPromotion ? 
+        const discount = selectedPromotion ? 
             (selectedPromotion.discountType === 'percentage' 
-                ? servicesTotal * (parseFloat(selectedPromotion.discountValue?.toString() || '0') / 100)
-                : parseFloat(selectedPromotion.discountValue?.toString() || '0')
+                ? servicesTotal * (selectedPromotion.discountValue / 100)
+                : selectedPromotion.discountValue
             ) : 0;
-        
-        // Total discount is tier discount + promotion discount
-        const totalDiscount = tierDiscount + promotionDiscount;
-        const total = Math.max(0, servicesTotal - totalDiscount);
-
-        // Debug logging
-        console.log('💰 [CALCULATE TOTAL - calculateTotal()]', {
-            servicesTotal,
-            tierDiscount,
-            promotionDiscount,
-            totalDiscount,
-            total,
-            selectedPromotion: selectedPromotion ? {
-                id: selectedPromotion.id,
-                code: selectedPromotion.code,
-                discountType: selectedPromotion.discountType,
-                discountValue: selectedPromotion.discountValue,
-                discountValueType: typeof selectedPromotion.discountValue
-            } : null
-        });
-        
-        return total;
+        return Math.max(0, servicesTotal - discount);
     };
 
     const handleConfirmBooking = async () => {
@@ -475,44 +342,13 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             
             // Validate promotion is still applicable
             if (selectedPromotion) {
-                // Check if it's a redeemed voucher
-                const redeemedVoucher = redeemedVouchers.find((v: any) => 
-                    v.id === selectedPromotion.id || 
-                    (v.code && selectedPromotion.code && v.code.toUpperCase().trim() === selectedPromotion.code.toUpperCase().trim())
-                );
-                
-                if (redeemedVoucher) {
-                    // For redeemed vouchers, check if user still has available vouchers
-                    if (!redeemedVoucher.redeemedCount || redeemedVoucher.redeemedCount <= 0) {
-                        alert('Bạn đã sử dụng hết voucher này. Vui lòng chọn mã khác.');
-                        setIsPaymentModalOpen(false);
-                        return;
-                    }
-                    
-                    // Check expiry for redeemed vouchers
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    const expiryDate = new Date(redeemedVoucher.expiryDate);
-                    expiryDate.setHours(0, 0, 0, 0);
-                    if (today > expiryDate) {
-                        alert('Voucher này đã hết hạn. Vui lòng chọn mã khác.');
-                        setIsPaymentModalOpen(false);
-                        return;
-                    }
-                } else {
-                    // For public promotions, check if still in applicablePromotions
-                    const isStillApplicable = applicablePromotions.some(p => p.id === selectedPromotion.id) ||
-                                             promotions.some(p => p.id === selectedPromotion.id && p.isPublic === true);
-                    if (!isStillApplicable) {
-                        alert('Mã khuyến mãi này không còn khả dụng. Vui lòng chọn mã khác.');
-                        setIsPaymentModalOpen(false);
-                        return;
-                    }
+                const isStillApplicable = applicablePromotions.some(p => p.id === selectedPromotion.id);
+                if (!isStillApplicable) {
+                    alert('Mã khuyến mãi này không còn khả dụng. Vui lòng chọn mã khác.');
+                    setIsPaymentModalOpen(false);
+                    return;
                 }
             }
-            
-            // Calculate total amount (sau giảm giá/voucher) để gửi lên backend
-            const totalAmount = calculateTotal();
             
             // Create ONE appointment per service (backend will handle treatment course if quantity >= 1, all bookings create courses)
             const appointmentsToCreate = selectedServices.map(({ service, quantity }) => ({
@@ -531,129 +367,53 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 quantity: quantity, // Send quantity to backend for treatment course creation
                 durationWeeks: quantity + 1, // Default duration (admin can adjust later)
                 frequencyType: 'sessions_per_week' as const, // Default frequency type
-                frequencyValue: 1, // Default: 1 session per week
-                totalAmount: totalAmount // Số tiền thực tế sau giảm giá/voucher
+                frequencyValue: 1 // Default: 1 session per week
             }));
-            
-            // LOG để debug - QUAN TRỌNG: Log toàn bộ data trước khi gửi
-            console.log('📤 [BookingPage] Creating appointments with promotion:', {
-                selectedPromotion: selectedPromotion ? {
-                    id: selectedPromotion.id,
-                    code: selectedPromotion.code,
-                    title: selectedPromotion.title,
-                    isPublic: selectedPromotion.isPublic
-                } : null,
-                appointmentsToCreate: appointmentsToCreate.map(apt => ({
-                    id: apt.id,
-                    serviceId: apt.serviceId,
-                    promotionId: apt.promotionId,
-                    userId: apt.userId,
-                    totalAmount: apt.totalAmount, // Log totalAmount
-                    quantity: apt.quantity // Log quantity
-                }))
-            });
 
-            // Create all appointments (one per service)
-            // Backend will automatically deduct redeemed vouchers when creating appointment
-            // NOTE: Không cần gọi applyPromotion ở đây vì backend đã xử lý trừ voucher khi tạo appointment
-            console.log('📤 [BookingPage] Creating appointments with FULL data:', appointmentsToCreate.map(apt => ({
-                id: apt.id,
-                serviceId: apt.serviceId,
-                promotionId: apt.promotionId,
-                userId: apt.userId,
-                totalAmount: apt.totalAmount,
-                quantity: apt.quantity,
-                durationWeeks: apt.durationWeeks,
-                frequencyType: apt.frequencyType,
-                frequencyValue: apt.frequencyValue,
-                allFields: Object.keys(apt) // Log tất cả các field
-            })));
-            
-            // Log từng appointment trước khi gửi
-            appointmentsToCreate.forEach((apt, index) => {
-                console.log(`📤 [BookingPage] Appointment ${index + 1} to send:`, {
-                    id: apt.id,
-                    serviceId: apt.serviceId,
-                    totalAmount: apt.totalAmount,
-                    quantity: apt.quantity,
-                    durationWeeks: apt.durationWeeks,
-                    frequencyType: apt.frequencyType,
-                    frequencyValue: apt.frequencyValue,
-                    promotionId: apt.promotionId,
-                    rawData: apt // Log toàn bộ object
-                });
-            });
-            
-            const createdAppointments = await Promise.all(
-                appointmentsToCreate.map(apt => {
-                    console.log(`📤 [BookingPage] Sending appointment to API:`, JSON.stringify(apt, null, 2));
-                    return apiService.createAppointment(apt);
-                })
-            );
-            
-            console.log('✅ [BookingPage] Appointments created:', createdAppointments.map(apt => ({
-                id: apt.id,
-                promotionId: apt.promotionId
-            })));
-
-            // Refresh redeemed vouchers immediately after creating appointment (voucher was deducted)
-            // QUAN TRỌNG: Voucher đã bị trừ khi tạo appointment, cần refresh ngay
-            if (currentUser) {
+            // Record promotion usage after creating appointments (before payment)
+            if (selectedPromotion && appointmentsToCreate.length > 0) {
                 try {
-                    console.log('🔄 [BookingPage] Refreshing redeemed vouchers after creating appointment...');
-                    const updatedRedeemed = await apiService.getMyRedeemedVouchers(currentUser.id);
-                    setRedeemedVouchers(updatedRedeemed || []);
-                    console.log('✅ Refreshed redeemed vouchers after creating appointment:', updatedRedeemed?.length || 0);
-                    if (updatedRedeemed && updatedRedeemed.length > 0) {
-                        console.log('   Voucher details:', updatedRedeemed.map((v: any) => ({
-                            code: v.code,
-                            title: v.title,
-                            redeemedCount: v.redeemedCount
-                        })));
-                    }
-                    // Emit event to refresh PromotionsPage
-                    window.dispatchEvent(new Event('refresh-vouchers'));
-                } catch (error) {
-                    console.error('Error refreshing redeemed vouchers:', error);
+                    await apiService.applyPromotion(
+                        selectedPromotion.code,
+                        currentUser!.id,
+                        appointmentsToCreate[0].id,
+                        appointmentsToCreate[0].serviceId
+                    );
+                } catch (error: any) {
+                    console.error('Failed to record promotion usage:', error);
+                    // Don't block booking, just log error
                 }
             }
 
-            // Process payment (sử dụng totalAmount đã tính ở trên)
+            // Create all appointments (one per service)
+            const createdAppointments = await Promise.all(
+                appointmentsToCreate.map(apt => apiService.createAppointment(apt))
+            );
+
+            // Process payment
+            const totalAmount = calculateTotal();
             const result = await apiService.processPayment(
                 createdAppointments[0].id,
                 paymentMethod,
                 totalAmount
             );
 
-            // Emit events to refresh appointments and vouchers
+            // Emit event to refresh appointments in App.tsx
             window.dispatchEvent(new Event('refresh-appointments'));
-            window.dispatchEvent(new Event('refresh-vouchers')); // Refresh vouchers after payment
 
             if (paymentMethod === 'VNPay' && result.paymentUrl) {
                 window.location.href = result.paymentUrl;
             } else if (paymentMethod === 'Cash') {
-                // Reload appointments and vouchers before showing success message
+                // Reload appointments before showing success message
                 try {
-                    const [updatedAppointments, updatedRedeemed] = await Promise.all([
-                        apiService.getAppointments(),
-                        currentUser ? apiService.getMyRedeemedVouchers(currentUser.id) : Promise.resolve([])
-                    ]);
+                    const updatedAppointments = await apiService.getAppointments();
                     console.log('Refreshed appointments:', updatedAppointments.length);
-                    console.log('Refreshed redeemed vouchers:', updatedRedeemed?.length || 0);
-                    
-                    // Update local state
-                    setRedeemedVouchers(updatedRedeemed || []);
-                    
                     // Trigger App.tsx to update via custom event with data
                     window.dispatchEvent(new CustomEvent('appointments-updated', { 
                         detail: { appointments: updatedAppointments } 
                     }));
-                    
-                    // Emit refresh events
-                    window.dispatchEvent(new Event('refresh-appointments'));
-                    window.dispatchEvent(new Event('refresh-vouchers'));
                 } catch (error) {
-                    console.error('Failed to refresh data:', error);
+                    console.error('Failed to refresh appointments:', error);
                 }
                 
                 alert('Đặt lịch thành công! Vui lòng thanh toán tại quầy.');
@@ -747,7 +507,19 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                             isSelected ? 'bg-amber-50 border-l-4 border-amber-600' : 'hover:bg-gray-50'
                                         }`}
                                     >
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-start gap-4">
+                                            {/* Service Image */}
+                                            {service.imageUrl && (
+                                                <img 
+                                                    src={service.imageUrl} 
+                                                    alt={service.name}
+                                                    className="w-24 h-24 object-cover rounded-lg flex-shrink-0"
+                                                    onError={(e) => {
+                                                        e.currentTarget.style.display = 'none';
+                                                    }}
+                                                />
+                                            )}
+                                            
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-3 mb-2">
                                                     <input
@@ -924,28 +696,19 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white"
                     >
                         <option value="">-- Chọn khung giờ --</option>
-                        {availableTimeSlots
-                            .filter(time => {
-                                // Chỉ hiển thị time slots đã đặt hoặc không bị chặn
-                                // Ẩn các time slots bị chặn (nhưng chưa đặt)
-                                const isBooked = isTimeSlotBooked(time);
-                                const isBlocked = isTimeSlotBlocked(time);
-                                // Hiển thị nếu: đã đặt HOẶC không bị chặn
-                                return isBooked || !isBlocked;
-                            })
-                            .map(time => {
-                                const isBooked = isTimeSlotBooked(time);
-                                return (
-                                    <option 
-                                        key={time} 
-                                        value={time}
-                                        disabled={isBooked}
-                                        className={isBooked ? 'text-gray-400' : ''}
-                                    >
-                                        {time} {isBooked ? '(Đã đặt)' : ''}
-                                    </option>
-                                );
-                            })}
+                        {availableTimeSlots.map(time => {
+                            const isBooked = isTimeSlotBooked(time);
+                            return (
+                                <option 
+                                    key={time} 
+                                    value={time}
+                                    disabled={isBooked}
+                                    className={isBooked ? 'text-gray-400' : ''}
+                                >
+                                    {time} {isBooked ? '(Đã đặt)' : ''}
+                                </option>
+                            );
+                        })}
                     </select>
                 )}
                 {selectedDate && (() => {
@@ -989,67 +752,12 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
     const renderStep3 = () => {
         const servicesTotal = selectedServices.reduce((sum, { service, quantity }) => sum + (service.price * quantity), 0);
-        
-        // Calculate tier discount (based on membership tier)
-        const tierDiscount = tierInfo && tierInfo.discountPercent > 0 
-            ? servicesTotal * (tierInfo.discountPercent / 100)
-            : 0;
-        
-        // Debug logging and fetch tierInfo if missing
-        if (tierInfo) {
-            console.log('🔍 Tier Info in renderStep3:', {
-                tierInfo,
-                discountPercent: tierInfo.discountPercent,
-                servicesTotal,
-                tierDiscount
-            });
-        } else {
-            console.log('⚠️ Tier Info is null in renderStep3', {
-                currentUser: currentUser?.id,
-                hasCurrentUser: !!currentUser
-            });
-            // Try to fetch tierInfo if we have currentUser but no tierInfo
-            if (currentUser && currentUser.id) {
-                console.log('🔄 Attempting to fetch tierInfo in renderStep3...');
-                apiService.getUserTier(currentUser.id)
-                    .then(tier => {
-                        console.log('✅ Tier info fetched in renderStep3:', tier);
-                        setTierInfo(tier);
-                    })
-                    .catch(error => {
-                        console.error('❌ Error fetching tierInfo in renderStep3:', error);
-                    });
-            }
-        }
-        
-        // Calculate promotion discount
-        // IMPORTANT: Promotion discount should be calculated from servicesTotal (original price), not from servicesTotal - tierDiscount
-        // FIX: Parse discountValue to number to avoid string concatenation
-        const promotionDiscount = selectedPromotion ? 
+        const discount = selectedPromotion ? 
             (selectedPromotion.discountType === 'percentage' 
-                ? servicesTotal * (parseFloat(selectedPromotion.discountValue?.toString() || '0') / 100)
-                : parseFloat(selectedPromotion.discountValue?.toString() || '0')
+                ? servicesTotal * (selectedPromotion.discountValue / 100)
+                : selectedPromotion.discountValue
             ) : 0;
-        
-        // Total discount is tier discount + promotion discount
-        const totalDiscount = tierDiscount + promotionDiscount;
-        const total = Math.max(0, servicesTotal - totalDiscount);
-
-        // Debug logging
-        console.log('💰 [CALCULATE TOTAL]', {
-            servicesTotal,
-            tierDiscount,
-            promotionDiscount,
-            totalDiscount,
-            total,
-            selectedPromotion: selectedPromotion ? {
-                id: selectedPromotion.id,
-                code: selectedPromotion.code,
-                discountType: selectedPromotion.discountType,
-                discountValue: selectedPromotion.discountValue,
-                discountValueType: typeof selectedPromotion.discountValue
-            } : null
-        });
+        const total = Math.max(0, servicesTotal - discount);
 
         return (
             <div className="max-w-2xl mx-auto">
@@ -1098,15 +806,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                     return;
                                 }
                                 
-                                // Find promotion by code from:
-                                // 1. Redeemed vouchers (vouchers đã đổi bằng điểm)
-                                // 2. Applicable promotions
-                                // 3. All public promotions
-                                const promo = redeemedVouchers.find((v: any) => 
-                                    v.code && selectedCode && 
-                                    v.code.toUpperCase().trim() === selectedCode.toUpperCase().trim() &&
-                                    v.redeemedCount > 0 // Must have available vouchers
-                                ) || applicablePromotions.find(p => 
+                                // Find promotion by code from applicable promotions first, then from all public promotions
+                                const promo = applicablePromotions.find(p => 
                                     p.code && selectedCode && 
                                     p.code.toUpperCase().trim() === selectedCode.toUpperCase().trim()
                                 ) || promotions.find(p => 
@@ -1116,33 +817,18 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                 );
                                 
                                 if (promo) {
-                                    // Normalize isActive to boolean (may be 0/1 from database)
-                                    const isActive = promo.isActive === true || promo.isActive === 1 || promo.isActive === '1';
-                                    
                                     // Check if promotion is active
-                                    if (!isActive) {
+                                    if (promo.isActive === false) {
                                         alert('Mã khuyến mãi này không còn hoạt động');
                                         setPromoCode('');
                                         return;
                                     }
-                                    
-                                    // For redeemed vouchers, check if user still has available vouchers
-                                    const redeemedVoucher = redeemedVouchers.find((v: any) => v.code && v.code.toUpperCase().trim() === selectedCode.toUpperCase().trim());
-                                    if (redeemedVoucher && (!redeemedVoucher.redeemedCount || redeemedVoucher.redeemedCount <= 0)) {
-                                        alert('Bạn đã sử dụng hết voucher này');
-                                        setPromoCode('');
-                                        return;
-                                    }
-                                    
-                                    // Check if promotion has stock (số lượng còn lại) - only for public promotions
-                                    // Normalize isPublic to boolean
-                                    const isPublic = promo.isPublic === true || promo.isPublic === 1 || promo.isPublic === '1';
-                                    if (!redeemedVoucher && isPublic && promo.stock !== null && promo.stock <= 0) {
+                                    // Check if promotion has stock (số lượng còn lại)
+                                    if (promo.stock !== null && promo.stock <= 0) {
                                         alert('Mã khuyến mãi đã hết lượt sử dụng');
                                         setPromoCode('');
                                         return;
                                     }
-                                    
                                     // Check expiry
                                     const today = new Date();
                                     today.setHours(0, 0, 0, 0);
@@ -1227,18 +913,17 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                         // Only show if user hasn't used this service before
                                         if (!currentUser) return false;
                                         
-                                        // Check if user has booked any of the selected services
-                                        // QUAN TRỌNG: Kiểm tra bất kỳ status nào trừ 'cancelled' (giống logic backend)
-                                        // Logic: Voucher "Khách hàng mới" chỉ được dùng 1 lần cho 1 dịch vụ mà khách chưa đặt lịch dịch vụ đó lần nào
-                                        const hasBookedAnySelectedService = selectedServiceIds.some(serviceId => {
+                                        // Check if user has used any of the selected services
+                                        // For new client promotions, check each service individually
+                                        const hasUsedAnySelectedService = selectedServiceIds.some(serviceId => {
                                             return userAppointments.some(apt => 
                                                 apt.serviceId === serviceId && 
-                                                apt.status !== 'cancelled' // Bất kỳ status nào trừ cancelled
+                                                apt.status === 'completed'
                                             );
                                         });
                                         
-                                        // If user has booked any selected service, don't show new client promotion
-                                        if (hasBookedAnySelectedService) return false;
+                                        // If user has used any selected service, don't show new client promotion
+                                        if (hasUsedAnySelectedService) return false;
                                         
                                         // For new client promotions with specific services, 
                                         // we already checked applicableServiceIds above
@@ -1281,77 +966,23 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                     return true;
                                 });
                                 
-                                // Filter redeemed vouchers by selected services
-                                const filteredRedeemedVouchers = redeemedVouchers.filter((v: any) => {
-                                    // Must have available vouchers
-                                    if (!v.redeemedCount || v.redeemedCount <= 0) return false;
-                                    
-                                    // Check if voucher applies to selected services
-                                    if (v.applicableServiceIds && v.applicableServiceIds.length > 0) {
-                                        let applicableServiceIdsArray: string[] = [];
-                                        if (typeof v.applicableServiceIds === 'string') {
-                                            try {
-                                                applicableServiceIdsArray = JSON.parse(v.applicableServiceIds);
-                                            } catch (e) {
-                                                applicableServiceIdsArray = [];
-                                            }
-                                        } else if (Array.isArray(v.applicableServiceIds)) {
-                                            applicableServiceIdsArray = v.applicableServiceIds;
-                                        }
-                                        
-                                        if (applicableServiceIdsArray.length > 0) {
-                                            const matchesService = selectedServiceIds.some(serviceId => 
-                                                applicableServiceIdsArray.includes(serviceId)
-                                            );
-                                            if (!matchesService) return false;
-                                        }
-                                    }
-                                    
-                                    // Check expiry
-                                    const expiryDate = new Date(v.expiryDate);
-                                    expiryDate.setHours(0, 0, 0, 0);
-                                    if (today > expiryDate) return false;
-                                    
-                                    // Check if active
-                                    if (!v.isActive) return false;
-                                    
-                                    return true;
-                                });
-                                
-                                // Combine all lists: applicable promotions (from API with userId+serviceId - already filtered by backend), 
-                                // public promotions (filtered by frontend), and redeemed vouchers
-                                // QUAN TRỌNG: Ưu tiên sử dụng filteredApplicablePromotions vì đã được backend filter chính xác
+                                // Combine both lists
                                 const allAvailablePromotions = [
-                                    ...filteredApplicablePromotions, // Đã được backend filter với userId + serviceId
-                                    ...filteredPromotions.filter(p => {
-                                        // Chỉ thêm promotions từ promotions state nếu chưa có trong applicablePromotions
-                                        // (để tránh duplicate và đảm bảo logic backend được áp dụng)
-                                        return !filteredApplicablePromotions.some(ap => ap.id === p.id || ap.code === p.code);
-                                    }),
-                                    ...filteredRedeemedVouchers
+                                    ...filteredApplicablePromotions,
+                                    ...filteredPromotions
                                 ];
                                 
-                                // Remove duplicates by code (ưu tiên giữ promotion từ applicablePromotions)
-                                const uniquePromotionsMap = new Map<string, Promotion>();
-                                // Thêm applicablePromotions trước (ưu tiên)
-                                filteredApplicablePromotions.forEach(p => {
-                                    if (p.code) uniquePromotionsMap.set(p.code, p);
-                                });
-                                // Thêm các promotions khác nếu chưa có
-                                [...filteredPromotions, ...filteredRedeemedVouchers].forEach(p => {
-                                    if (p.code && !uniquePromotionsMap.has(p.code)) {
-                                        uniquePromotionsMap.set(p.code, p);
-                                    }
-                                });
-                                const uniquePromotions = Array.from(uniquePromotionsMap.values());
+                                // Remove duplicates by code
+                                const uniquePromotions = Array.from(
+                                    new Map(allAvailablePromotions.map(p => [p.code, p])).values()
+                                );
                                 
-                                return uniquePromotions.map((promo: any) => (
+                                return uniquePromotions.map(promo => (
                                     <option key={promo.id} value={promo.code}>
                                         {promo.code} - {promo.title} 
                                         {promo.discountType === 'percentage' 
                                             ? ` (Giảm ${promo.discountValue}%)` 
                                             : ` (Giảm ${formatPrice(promo.discountValue)})`}
-                                        {promo.redeemedCount && promo.redeemedCount > 1 ? ` [Bạn có ${promo.redeemedCount} voucher]` : promo.redeemedCount ? ' [Voucher đã đổi]' : ''}
                                     </option>
                                 ));
                             })()}
@@ -1378,28 +1009,15 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 </div>
 
                 <div className="bg-white border border-gray-300 rounded-lg p-4 mb-6">
-                    <div className="space-y-2">
                     <div className="flex justify-between text-lg">
-                            <span className="font-semibold">Tổng dịch vụ:</span>
-                            <span className="font-semibold">{formatPrice(servicesTotal)}</span>
-                        </div>
-                        {tierInfo && tierInfo.discountPercent > 0 && tierDiscount > 0 && (
-                            <div className="flex justify-between text-sm text-green-600">
-                                <span>Giảm giá hạng thành viên ({tierInfo.currentTier?.name || ''} - {tierInfo.discountPercent}%):</span>
-                                <span className="font-semibold">-{formatPrice(tierDiscount)}</span>
-                            </div>
-                        )}
-                        {promotionDiscount > 0 && (
-                            <div className="flex justify-between text-sm text-green-600">
-                                <span>Giảm giá khuyến mãi:</span>
-                                <span className="font-semibold">-{formatPrice(promotionDiscount)}</span>
-                            </div>
-                        )}
-                        <div className="border-t pt-2 flex justify-between text-lg">
                         <span className="font-semibold">Tổng cộng:</span>
                         <span className="font-bold text-amber-600">{formatPrice(total)}</span>
                     </div>
-                    </div>
+                    {discount > 0 && (
+                        <p className="text-sm text-green-600 text-right mt-1">
+                            Đã giảm: {formatPrice(discount)}
+                        </p>
+                    )}
                 </div>
 
                 <div className="flex justify-between">

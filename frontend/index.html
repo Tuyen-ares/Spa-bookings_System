@@ -1,135 +1,201 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Anh Thơ Spa</title>
-    
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Anh Thơ Spa</title>
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              'brand-primary': '#C8A46A',      // Bronze Gold (UPDATED from design brief)
-              'brand-secondary': '#F9F4EF',    // Creamy White (UPDATED from design brief)
-              'brand-text': '#3E2723',        // Dark Brown (UPDATED from design brief)
-              'brand-dark': '#8C5B43',        // Pinkish-brown (UPDATED from design brief)
-              'brand-light': '#FCF8F5',       // Very light cream for main background
-              'brand-accent': '#D7CCC8',      // A subtle accent for borders or hover states
-            },
-            fontFamily: {
-              'sans': ['Poppins', 'ui-sans-serif', 'system-ui'],
-              'serif': ['Playfair Display', 'ui-serif', 'Georgia'],
-            },
-            keyframes: {
-              fadeInUp: {
-                '0%': { opacity: '0', transform: 'translateY(15px)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
-              },
-              fadeInDown: {
-                '0%': { opacity: '0', transform: 'translateY(-15px)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
-              },
-              slideUpFade: {
-                '0%': { opacity: '0', transform: 'translateY(2rem)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
-              },
-              subtleLift: {
-                '0%, 100%': { transform: 'translateY(0)' },
-                '50%': { transform: 'translateY(-3px)' },
-              },
-              'pulse-glow': {
-                '0%, 100%': { boxShadow: '0 0 10px -5px rgba(200, 164, 106, 0.5)' },
-                '50%': { boxShadow: '0 0 25px 5px rgba(200, 164, 106, 0)' },
-              },
-              'pulse-glow-dynamic': {
-                '0%, 100%': { boxShadow: '0 0 10px -5px var(--glow-color-start)' },
-                '50%': { boxShadow: '0 0 25px 5px var(--glow-color-end)' }
-              },
-              'confetti-fall': {
-                '0%': { transform: 'translateY(-10vh) rotateZ(0deg)', opacity: '1' },
-                '100%': { transform: 'translateY(110vh) rotateZ(720deg)', opacity: '0' },
-              },
-            },
-            animation: {
-              fadeInUp: 'fadeInUp 0.6s ease-out forwards',
-              fadeInDown: 'fadeInDown 0.6s ease-out forwards',
-              slideUpFade: 'slideUpFade 0.9s cubic-bezier(0.19, 1, 0.22, 1) forwards',
-              subtleLift: 'subtleLift 0.4s ease-in-out',
-              'pulse-glow': 'pulse-glow 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-              'pulse-glow-dynamic': 'pulse-glow-dynamic 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-              'confetti-fall': 'confetti-fall 3s ease-in forwards',
-            },
-            letterSpacing: {
-              wide: '0.05em',
-              wider: '0.1em',
-            },
-            boxShadow: {
-              'soft-lg': '0 10px 25px -3px rgba(0, 0, 0, 0.05), 0 4px 10px -2px rgba(0, 0, 0, 0.04)',
-              'soft-xl': '0 20px 35px -5px rgba(0, 0, 0, 0.06), 0 8px 15px -4px rgba(0, 0, 0, 0.05)',
-            },
-            textShadow: {
-              'soft-glow': '0 0 8px rgba(243, 226, 179, 0.8), 0 0 3px rgba(217, 185, 155, 0.6)',
-              'soft-emboss': '1px 1px 2px rgba(0,0,0,0.15)',
-            }
-          }
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Added 'Inter' font alongside 'Playfair Display' -->
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap"
+    rel="stylesheet">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        fontSize: {
+          'xs': ['0.7rem', { lineHeight: '1rem' }],
+          'sm': ['0.8125rem', { lineHeight: '1.25rem' }],
+          'base': ['0.875rem', { lineHeight: '1.5rem' }],
+          'lg': ['1rem', { lineHeight: '1.75rem' }],
+          'xl': ['1.125rem', { lineHeight: '1.75rem' }],
+          '2xl': ['1.375rem', { lineHeight: '2rem' }],
+          '3xl': ['1.75rem', { lineHeight: '2.25rem' }],
+          '4xl': ['2rem', { lineHeight: '2.5rem' }],
+          '5xl': ['2.5rem', { lineHeight: '1' }],
+          '6xl': ['3rem', { lineHeight: '1' }],
+          '7xl': ['3.5rem', { lineHeight: '1' }],
+          '8xl': ['4.5rem', { lineHeight: '1' }],
+          '9xl': ['6rem', { lineHeight: '1' }],
         },
-        plugins: [
-          function({ addUtilities, theme, e }) {
-            const animationUtilities = {
-              '.animation-delay-300': { 'animation-delay': '300ms' },
-              '.animation-delay-500': { 'animation-delay': '500ms' },
+        spacing: {
+          '0': '0px',
+          'px': '1px',
+          '0.5': '0.1rem',
+          '1': '0.2rem',
+          '1.5': '0.3rem',
+          '2': '0.4rem',
+          '2.5': '0.5rem',
+          '3': '0.6rem',
+          '3.5': '0.7rem',
+          '4': '0.8rem',
+          '5': '1rem',
+          '6': '1.2rem',
+          '7': '1.4rem',
+          '8': '1.6rem',
+          '9': '1.8rem',
+          '10': '2rem',
+          '11': '2.2rem',
+          '12': '2.4rem',
+          '14': '2.8rem',
+          '16': '3.2rem',
+          '20': '4rem',
+          '24': '4.8rem',
+          '28': '5.6rem',
+          '32': '6.4rem',
+          '36': '7.2rem',
+          '40': '8rem',
+          '44': '8.8rem',
+          '48': '9.6rem',
+          '52': '10.4rem',
+          '56': '11.2rem',
+          '60': '12rem',
+          '64': '12.8rem',
+          '72': '14.4rem',
+          '80': '16rem',
+          '96': '19.2rem',
+        },
+        extend: {
+          colors: {
+            'brand-primary': '#e11d48',     // Hồng tươi sáng hơn (#db2777 -> #e11d48)
+            'brand-secondary': '#ffe4f0',   // Hồng pastel sáng hơn (#fdf2f8 -> #ffe4f0)
+            'brand-text': '#0f0a0a',        // Text tối hơn nhưng vẫn dễ chịu
+            'brand-dark': '#be185d',        // Hồng đậm nhưng không quá tối (tươi hơn #831843)
+            'brand-light': '#ffffff',
+            'brand-accent': '#fbbf24',      // Gold sáng hơn (#f59e0b -> #fbbf24)
+          },
+          fontFamily: {
+            'sans': ['Inter', 'ui-sans-serif', 'system-ui'], // Changed 'Manrope' to 'Inter'
+            'serif': ['Playfair Display', 'ui-serif', 'Georgia'],
+          },
+          backgroundImage: {
+            'ocean-gradient':
+              'linear-gradient(135deg, #e11d48 0%, #be185d 100%)', // Hồng tươi -> hồng đậm tươi
+            'coral-gradient':
+              'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)', // Gold sáng
+            'fresh-gradient':
+              'linear-gradient(180deg, #ffe4f0 0%, #ffffff 100%)',
+            'shimmer':
+              'linear-gradient(45deg, rgba(255,255,255,0) 40%, rgba(255,255,255,0.7) 50%, rgba(255,255,255,0) 60%)',
+          },
+          boxShadow: {
+            'glass': '0 8px 32px 0 rgba(225, 29, 72, 0.20)', // Pink shadow sáng hơn
+            'soft-xl': '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            'card': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+            'card-hover':
+              '0 20px 25px -5px rgba(225, 29, 72, 0.18), 0 8px 10px -6px rgba(225, 29, 72, 0.15)',
+            'glow': '0 0 30px rgba(225, 29, 72, 0.6)', // Glow mạnh hơn
+          },
+          keyframes: {
+            fadeInUp: {
+              '0%': { opacity: '0', transform: 'translateY(20px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            fadeInDown: {
+              '0%': { opacity: '0', transform: 'translateY(-20px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            slideUpFade: {
+              '0%': { opacity: '0', transform: 'translateY(30px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            float: {
+              '0%, 100%': { transform: 'translateY(0)' },
+              '50%': { transform: 'translateY(-15px)' },
+            },
+            'bounce-slow': {
+              '0%, 100%': { transform: 'translateY(-5%)' },
+              '50%': { transform: 'translateY(5%)' },
+            },
+            shimmer: {
+              '0%': { backgroundPosition: '200% 0' },
+              '100%': { backgroundPosition: '-200% 0' }
+            },
+            'gradient-xy': {
+              '0%, 100%': {
+                'background-size': '400% 400%',
+                'background-position': '0% 50%'
+              },
+              '50%': {
+                'background-size': '400% 400%',
+                'background-position': '100% 50%'
+              }
             }
-            addUtilities(animationUtilities, ['responsive', 'hover']);
-
-            const textShadows = theme('textShadow');
-            const textShadowUtilities = Object.keys(textShadows).reduce(
-              (acc, key) => ({
-                ...acc,
-                [`.text-shadow-${e(key)}`]: { textShadow: textShadows[key] },
-              }),
-              {}
-            );
-            addUtilities(textShadowUtilities, ['responsive', 'hover']);
+          },
+          animation: {
+            fadeInUp: 'fadeInUp 0.6s ease-out forwards',
+            fadeInDown: 'fadeInDown 0.6s ease-out forwards',
+            slideUpFade: 'slideUpFade 0.8s cubic-bezier(0.2, 1, 0.3, 1) forwards',
+            float: 'float 6s ease-in-out infinite',
+            'bounce-slow': 'bounce-slow 3s infinite ease-in-out',
+            shimmer: 'shimmer 2.5s infinite linear',
+            'gradient-slow': 'gradient-xy 15s ease infinite',
+          },
+        }
+      },
+      plugins: [
+        function ({ addUtilities, theme, e }) {
+          const animationUtilities = {
+            '.animation-delay-200': { 'animation-delay': '200ms' },
+            '.animation-delay-300': { 'animation-delay': '300ms' },
+            '.animation-delay-500': { 'animation-delay': '500ms' },
+            '.text-shadow': { 'text-shadow': '0 2px 4px rgba(0,0,0,0.3)' },
+            '.text-gradient': {
+              'background-clip': 'text',
+              '-webkit-background-clip': 'text',
+              'color': 'transparent',
+            },
           }
-        ]
+          addUtilities(animationUtilities, ['responsive', 'hover']);
+        }
+      ]
+    }
+  </script>
+  <script type="importmap">
+    {
+      "imports": {
+        "react/": "https://aistudiocdn.com/react@^19.2.0/",
+        "react": "https://aistudiocdn.com/react@^19.2.0",
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+        "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.9.5",
+        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.28.0",
+        "uuid": "https://aistudiocdn.com/uuid@^13.0.0"
       }
+    }
     </script>
-<script type="importmap">
-{
-  "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.9.5",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.28.0",
-    "uuid": "https://aistudiocdn.com/uuid@^13.0.0"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
 </head>
-<body class="bg-brand-light">
-<div id="root"></div>
-<script>
-  // Redirect verify-email URLs without # to hash URLs before React app loads
-  if (window.location.pathname.startsWith('/verify-email/') && !window.location.hash) {
-    const pathToken = window.location.pathname.replace('/verify-email/', '');
-    window.location.href = `/#/verify-email/${pathToken}`;
-  }
-  // Redirect reset-password URLs without # to hash URLs before React app loads
-  if (window.location.pathname.startsWith('/reset-password/') && !window.location.hash) {
-    const pathToken = window.location.pathname.replace('/reset-password/', '');
-    window.location.href = `/#/reset-password/${pathToken}`;
-  }
-</script>
-<script type="module" src="/index.tsx"></script>
+
+<body class="bg-gray-50 font-sans text-brand-text selection:bg-brand-primary selection:text-white">
+  <div id="root"></div>
+  <script>
+    // Redirect verify-email URLs without # to hash URLs before React app loads
+    if (window.location.pathname.startsWith('/verify-email/') && !window.location.hash) {
+      const pathToken = window.location.pathname.replace('/verify-email/', '');
+      window.location.href = `/#/verify-email/${pathToken}`;
+    }
+    // Redirect reset-password URLs without # to hash URLs before React app loads
+    if (window.location.pathname.startsWith('/reset-password/') && !window.location.hash) {
+      const pathToken = window.location.pathname.replace('/reset-password/', '');
+      window.location.href = `/#/reset-password/${pathToken}`;
+    }
+  </script>
+  <script type="module" src="/index.tsx"></script>
 </body>
+
 </html>
