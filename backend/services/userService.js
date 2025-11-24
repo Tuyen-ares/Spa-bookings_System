@@ -3,6 +3,20 @@ const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
+// Import tier utilities
+let calculateTierInfo;
+try {
+    const tierUtils = require('../utils/tierUtils');
+    calculateTierInfo = tierUtils.calculateTierInfo;
+    if (typeof calculateTierInfo !== 'function') {
+        console.error('❌ calculateTierInfo is not a function after import. Available keys:', Object.keys(tierUtils));
+    } else {
+        console.log('✅ calculateTierInfo imported successfully');
+    }
+} catch (error) {
+    console.error('❌ Error importing tierUtils:', error);
+    throw error;
+}
 
 class UserService {
     /**
@@ -172,81 +186,49 @@ class UserService {
         return this.formatUserResponse(user);
     }
 
+
     /**
-     * Upload avatar
+     * Get user tier information based on totalSpent
      */
-    async uploadAvatar(id, imageData) {
-        const user = await db.User.findByPk(id);
+    async getUserTier(id) {
+        try {
+            // Verify calculateTierInfo is available
+            if (typeof calculateTierInfo !== 'function') {
+                console.error('❌ calculateTierInfo is not a function. Type:', typeof calculateTierInfo);
+                throw new Error('calculateTierInfo function is not available');
+            }
+
+            const user = await db.User.findByPk(id, {
+                include: [{
+                    model: db.Wallet,
+                    required: false
+                }]
+            });
+
         if (!user) {
             throw new Error('User not found');
         }
 
-        const fs = require('fs');
-        const path = require('path');
-        const { v4: uuidv4 } = require('uuid');
-
-        try {
-            // Parse base64 image data
-            // Format: data:image/jpeg;base64,/9j/4AAQSkZJRg...
-            const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
-            const buffer = Buffer.from(base64Data, 'base64');
+            const wallet = user.Wallet;
+            const totalSpent = wallet ? parseFloat(wallet.totalSpent?.toString() || '0') : 0;
             
-            // Determine file extension from image data
-            let extension = 'jpg';
-            if (imageData.startsWith('data:image/png')) {
-                extension = 'png';
-            } else if (imageData.startsWith('data:image/jpeg') || imageData.startsWith('data:image/jpg')) {
-                extension = 'jpg';
-            } else if (imageData.startsWith('data:image/gif')) {
-                extension = 'gif';
-            } else if (imageData.startsWith('data:image/webp')) {
-                extension = 'webp';
-            }
-
-            // Create uploads directory if it doesn't exist
-            // Check both possible locations: backend/public and root public
-            let uploadsDir = path.join(__dirname, '../public/uploads/avatars');
-            let publicRoot = path.join(__dirname, '../public');
+            console.log('🔍 getUserTier - User ID:', id, 'Total Spent:', totalSpent);
             
-            // If backend/public doesn't exist, use root public
-            if (!fs.existsSync(path.join(__dirname, '../public'))) {
-                uploadsDir = path.join(__dirname, '../../public/uploads/avatars');
-                publicRoot = path.join(__dirname, '../../public');
-            }
+            const tierInfo = calculateTierInfo(totalSpent);
             
-            if (!fs.existsSync(uploadsDir)) {
-                fs.mkdirSync(uploadsDir, { recursive: true });
-            }
+            console.log('✅ Tier info calculated:', {
+                currentTier: tierInfo.currentTier?.name,
+                discountPercent: tierInfo.currentTier?.discountPercent
+            });
 
-            // Generate unique filename
-            const filename = `avatar-${id}-${uuidv4()}.${extension}`;
-            const filepath = path.join(uploadsDir, filename);
-
-            // Save file
-            fs.writeFileSync(filepath, buffer);
-
-            // Generate URL (relative to public directory)
-            const avatarUrl = `/uploads/avatars/${filename}`;
-
-            // Update user's profile picture URL
-            await user.update({ profilePictureUrl: avatarUrl });
-
-            // Delete old avatar file if it exists and is in uploads/avatars directory
-            if (user.profilePictureUrl && user.profilePictureUrl.startsWith('/uploads/avatars/')) {
-                const oldFilePath = path.join(publicRoot, user.profilePictureUrl);
-                if (fs.existsSync(oldFilePath)) {
-                    try {
-                        fs.unlinkSync(oldFilePath);
-                    } catch (err) {
-                        console.warn('Failed to delete old avatar:', err);
-                    }
-                }
-            }
-
-            return avatarUrl;
+            return {
+                currentTier: tierInfo.currentTier,
+                nextTier: tierInfo.nextTier,
+                discountPercent: tierInfo.currentTier.discountPercent
+            };
         } catch (error) {
-            console.error('Error saving avatar file:', error);
-            throw new Error('Không thể lưu ảnh đại diện. Vui lòng thử lại.');
+            console.error('❌ Error in getUserTier:', error);
+            throw error;
         }
     }
 

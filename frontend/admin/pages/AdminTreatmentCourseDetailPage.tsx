@@ -396,6 +396,12 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                             <div className="text-sm text-gray-600">Tổng tiền:</div>
                             <div className="font-medium text-brand-primary text-xl">
                                 {(() => {
+                                    // Ưu tiên dùng totalAmount (số tiền thực tế khi đặt lịch, sau giảm giá/voucher)
+                                    // Nếu không có thì tính từ service price
+                                    const totalAmount = (course as any).totalAmount ? Number((course as any).totalAmount) : null;
+                                    if (totalAmount !== null && totalAmount > 0) {
+                                        return `${totalAmount.toLocaleString('vi-VN')} ₫`;
+                                    }
                                     const servicePrice = (course as any).Service?.price ? Number((course as any).Service.price) : 0;
                                     const totalPrice = servicePrice * course.totalSessions;
                                     return totalPrice > 0 ? `${totalPrice.toLocaleString('vi-VN')} ₫` : '-';

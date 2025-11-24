@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import type { User, Wallet, Tier, Mission, Appointment, Service, PointsHistory, LoginAttempt, Payment, Review } from '../../types';
 import {
     TrophyIcon, CreditCardIcon, ShieldCheckIcon,
-    CameraIcon, EditIcon, HistoryIcon, ProfileIcon, LogoutIcon, AppointmentsIcon, StarIcon, GiftIcon, MailIcon, PhoneIcon, CakeIcon, LocationIcon, QrCodeIcon, ExclamationTriangleIcon, PrinterIcon, VNPayIcon, SparklesIcon, TrashIcon, EyeIcon, EyeSlashIcon
+    EditIcon, HistoryIcon, ProfileIcon, LogoutIcon, AppointmentsIcon, StarIcon, GiftIcon, MailIcon, PhoneIcon, CakeIcon, LocationIcon, QrCodeIcon, ExclamationTriangleIcon, PrinterIcon, VNPayIcon, SparklesIcon, TrashIcon, EyeIcon, EyeSlashIcon
 } from '../../shared/icons';
 import * as apiService from '../services/apiService';
 
@@ -127,255 +127,6 @@ const ReviewModal: React.FC<{
     );
 };
 
-// Avatar Change Modal Component
-const AvatarChangeModal: React.FC<{
-    currentUser: User;
-    onClose: () => void;
-    onUpdateUser: (user: User) => void;
-}> = ({ currentUser, onClose, onUpdateUser }) => {
-    const [mode, setMode] = useState<'select' | 'camera' | 'upload'>('select');
-    const [imagePreview, setImagePreview] = useState<string | null>(null);
-    const [isUploading, setIsUploading] = useState(false);
-    const [error, setError] = useState('');
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const streamRef = useRef<MediaStream | null>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    // Cleanup video stream on unmount
-    useEffect(() => {
-        return () => {
-            if (streamRef.current) {
-                streamRef.current.getTracks().forEach(track => track.stop());
-            }
-        };
-    }, []);
-
-    const startCamera = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: 'user' } 
-            });
-            streamRef.current = stream;
-            if (videoRef.current) {
-                videoRef.current.srcObject = stream;
-            }
-            setMode('camera');
-            setError('');
-        } catch (err) {
-            console.error('Error accessing camera:', err);
-            setError('Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập.');
-        }
-    };
-
-    const stopCamera = () => {
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
-            streamRef.current = null;
-        }
-        if (videoRef.current) {
-            videoRef.current.srcObject = null;
-        }
-        setMode('select');
-        setImagePreview(null);
-    };
-
-    const capturePhoto = () => {
-        if (videoRef.current) {
-            const canvas = document.createElement('canvas');
-            canvas.width = videoRef.current.videoWidth;
-            canvas.height = videoRef.current.videoHeight;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-                ctx.drawImage(videoRef.current, 0, 0);
-                const imageData = canvas.toDataURL('image/jpeg', 0.8);
-                setImagePreview(imageData);
-                stopCamera();
-            }
-        }
-    };
-
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            if (file.size > 5 * 1024 * 1024) { // 5MB limit
-                setError('Kích thước ảnh không được vượt quá 5MB');
-                return;
-            }
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setImagePreview(reader.result as string);
-                setMode('upload');
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
-    const handleUpload = async () => {
-        if (!imagePreview) return;
-
-        setIsUploading(true);
-        setError('');
-
-        try {
-            // Upload avatar
-            const { avatarUrl } = await apiService.uploadAvatar(currentUser.id, imagePreview);
-            
-            // Update user with new avatar URL
-            const updatedUser = await apiService.updateUser(currentUser.id, { 
-                profilePictureUrl: avatarUrl 
-            });
-            
-            onUpdateUser(updatedUser);
-            onClose();
-            alert('Đổi ảnh đại diện thành công!');
-        } catch (err: any) {
-            console.error('Error uploading avatar:', err);
-            setError(err.message || 'Có lỗi xảy ra khi tải ảnh lên. Vui lòng thử lại.');
-        } finally {
-            setIsUploading(false);
-        }
-    };
-
-    const handleRemoveAvatar = async () => {
-        if (!window.confirm('Bạn có chắc chắn muốn xóa ảnh đại diện?')) {
-            return;
-        }
-
-        setIsUploading(true);
-        setError('');
-
-        try {
-            const updatedUser = await apiService.updateUser(currentUser.id, { 
-                profilePictureUrl: null 
-            });
-            
-            onUpdateUser(updatedUser);
-            onClose();
-            alert('Đã xóa ảnh đại diện!');
-        } catch (err: any) {
-            console.error('Error removing avatar:', err);
-            setError(err.message || 'Có lỗi xảy ra khi xóa ảnh. Vui lòng thử lại.');
-        } finally {
-            setIsUploading(false);
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={onClose}>
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-                <h3 className="text-xl font-bold text-gray-800 mb-4">Đổi ảnh đại diện</h3>
-
-                {mode === 'select' && (
-                    <div className="space-y-4">
-                        <div className="flex flex-col gap-3">
-                            <button
-                                onClick={startCamera}
-                                className="w-full px-4 py-3 bg-brand-primary text-white rounded-lg hover:bg-brand-dark font-semibold transition-colors"
-                            >
-                                📷 Chụp ảnh
-                            </button>
-                            <button
-                                onClick={() => {
-                                    fileInputRef.current?.click();
-                                }}
-                                className="w-full px-4 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold transition-colors"
-                            >
-                                📁 Tải lên từ máy
-                            </button>
-                            {currentUser.profilePictureUrl && (
-                                <button
-                                    onClick={handleRemoveAvatar}
-                                    disabled={isUploading}
-                                    className="w-full px-4 py-3 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-semibold transition-colors disabled:opacity-50"
-                                >
-                                    🗑️ Xóa ảnh đại diện
-                                </button>
-                            )}
-                        </div>
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/*"
-                            onChange={handleFileSelect}
-                            className="hidden"
-                        />
-                    </div>
-                )}
-
-                {mode === 'camera' && (
-                    <div className="space-y-4">
-                        <div className="relative bg-black rounded-lg overflow-hidden">
-                            <video
-                                ref={videoRef}
-                                autoPlay
-                                playsInline
-                                className="w-full h-64 object-cover"
-                            />
-                        </div>
-                        <div className="flex gap-3">
-                            <button
-                                onClick={capturePhoto}
-                                className="flex-1 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-dark font-semibold"
-                            >
-                                Chụp ảnh
-                            </button>
-                            <button
-                                onClick={stopCamera}
-                                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
-                            >
-                                Hủy
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {(mode === 'upload' || imagePreview) && (
-                    <div className="space-y-4">
-                        <div className="flex justify-center">
-                            <img
-                                src={imagePreview || undefined}
-                                alt="Preview"
-                                className="w-48 h-48 rounded-full object-cover border-4 border-gray-200"
-                            />
-                        </div>
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => {
-                                    setImagePreview(null);
-                                    setMode('select');
-                                }}
-                                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
-                                disabled={isUploading}
-                            >
-                                Chọn lại
-                            </button>
-                            <button
-                                onClick={handleUpload}
-                                disabled={isUploading}
-                                className="flex-1 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-dark font-semibold disabled:opacity-50"
-                            >
-                                {isUploading ? 'Đang tải...' : 'Lưu'}
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {error && (
-                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <p className="text-sm text-red-600">{error}</p>
-                    </div>
-                )}
-
-                <button
-                    onClick={onClose}
-                    className="mt-4 w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold"
-                >
-                    Đóng
-                </button>
-            </div>
-        </div>
-    );
-};
 
 // FIX: Added ProfileSidebar component definition to resolve "Cannot find name 'ProfileSidebar'" error.
 const ProfileSidebar: React.FC<{
@@ -428,42 +179,11 @@ const ProfileSidebar: React.FC<{
 
 // FIX: Added ProfileHeader component definition to resolve "Cannot find name 'ProfileHeader'" error.
 const ProfileHeader: React.FC<{ currentUser: User; currentTier: Tier | undefined; onUpdateUser: (user: User) => void; }> = ({ currentUser, currentTier, onUpdateUser }) => {
-    const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
-
-    const handleAvatarClick = () => {
-        setIsAvatarModalOpen(true);
-    };
-
     return (
         <div className="bg-white p-6 rounded-lg shadow-soft-lg border border-gray-200/50 flex flex-col sm:flex-row items-center gap-6">
-            <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
-                {currentUser.profilePictureUrl ? (
-                    <img
-                        src={currentUser.profilePictureUrl.startsWith('/uploads/') 
-                            ? `http://localhost:3001${currentUser.profilePictureUrl}` 
-                            : currentUser.profilePictureUrl}
-                        alt={currentUser.name}
-                        className="w-24 h-24 rounded-full object-cover ring-4 ring-brand-secondary group-hover:ring-brand-primary transition-all"
-                        onError={(e) => {
-                            // Fallback to icon if image fails to load
-                            const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
-                            const parent = target.parentElement;
-                            if (parent) {
-                                const fallback = document.createElement('div');
-                                fallback.className = 'w-24 h-24 rounded-full bg-gray-200 ring-4 ring-brand-secondary flex items-center justify-center';
-                                fallback.innerHTML = '<svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>';
-                                parent.appendChild(fallback);
-                            }
-                        }}
-                    />
-                ) : (
-                    <div className="w-24 h-24 rounded-full bg-gray-200 ring-4 ring-brand-secondary group-hover:ring-brand-primary transition-all flex items-center justify-center">
+            <div className="relative">
+                <div className="w-24 h-24 rounded-full bg-gray-200 ring-4 ring-brand-secondary transition-all flex items-center justify-center">
                         <ProfileIcon className="w-12 h-12 text-gray-400" />
-                    </div>
-                )}
-                <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <CameraIcon className="w-8 h-8 text-white" />
                 </div>
             </div>
             <div className="text-center sm:text-left">
@@ -483,15 +203,6 @@ const ProfileHeader: React.FC<{ currentUser: User; currentTier: Tier | undefined
                     </div>
                 )}
             </div>
-            
-            {/* Avatar Change Modal */}
-            {isAvatarModalOpen && (
-                <AvatarChangeModal
-                    currentUser={currentUser}
-                    onClose={() => setIsAvatarModalOpen(false)}
-                    onUpdateUser={onUpdateUser}
-                />
-            )}
         </div>
     );
 };
@@ -750,27 +461,31 @@ const ProfileInfoTab: React.FC<{ currentUser: User; onUpdateUser: (user: User) =
 const MembershipTab: React.FC<{ currentUser: User; wallet: Wallet | null; allTiers: Tier[]; pointsHistory: Array<{date: string; pointsChange: number; type: string; source: string; description: string}>; }> = ({ currentUser, wallet, allTiers, pointsHistory }) => {
     const [showLevelUpModal, setShowLevelUpModal] = useState(false);
 
-    // Calculate tier from wallet points since tierLevel is not in users table
+    // Calculate tier from wallet totalSpent (money spent), not points
     const currentTier = useMemo(() => {
-        if (!wallet) return allTiers[0];
-        const userPoints = wallet.points || 0;
-        const sortedTiers = [...allTiers].sort((a, b) => (a.pointsRequired || 0) - (b.pointsRequired || 0));
-        let tierLevel = 1; // Default to tier 1
-        for (let i = sortedTiers.length - 1; i >= 0; i--) {
-            if (userPoints >= (sortedTiers[i].pointsRequired || 0)) {
-                tierLevel = sortedTiers[i].level;
+        if (!wallet) {
+            // Return default tier (Thành viên - level 0)
+            return allTiers.find(t => t.level === 0) || allTiers[0];
+        }
+        const totalSpent = parseFloat(wallet.totalSpent?.toString() || '0') || 0;
+        const sortedTiers = [...allTiers].sort((a, b) => (b.minSpendingRequired || 0) - (a.minSpendingRequired || 0));
+        let tierLevel = 0; // Default to tier 0 (Thành viên)
+        for (const tier of sortedTiers) {
+            if (totalSpent >= (tier.minSpendingRequired || 0)) {
+                tierLevel = tier.level;
                 break;
             }
         }
-        return allTiers.find(t => t.level === tierLevel) || allTiers[0];
+        return allTiers.find(t => t.level === tierLevel) || allTiers.find(t => t.level === 0) || allTiers[0];
     }, [wallet, allTiers]);
     const nextTier = useMemo(() => allTiers.find(t => t.level === (currentTier?.level || 0) + 1), [currentTier, allTiers]);
 
     const progressPercentage = useMemo(() => {
         if (!nextTier || !wallet) return 100;
-        const pointsForNextTier = nextTier.pointsRequired - (currentTier?.pointsRequired || 0);
-        const pointsProgressed = wallet.points - (currentTier?.pointsRequired || 0);
-        return Math.max(0, Math.min((pointsProgressed / pointsForNextTier) * 100, 100));
+        const totalSpent = parseFloat(wallet.totalSpent?.toString() || '0') || 0;
+        const moneyForNextTier = (nextTier.minSpendingRequired || 0) - (currentTier?.minSpendingRequired || 0);
+        const moneyProgressed = totalSpent - (currentTier?.minSpendingRequired || 0);
+        return Math.max(0, Math.min((moneyProgressed / moneyForNextTier) * 100, 100));
     }, [wallet, currentTier, nextTier]);
 
     const glowStyle = useMemo(() => {
@@ -795,8 +510,8 @@ const MembershipTab: React.FC<{ currentUser: User; wallet: Wallet | null; allTie
                     </div>
                     <div className="w-px h-16 bg-white/30 hidden md:block"></div>
                     <div>
-                        <p className="text-lg font-medium opacity-90" style={{ color: currentTier?.textColor }}>Điểm hiện có</p>
-                        <p className="text-4xl font-bold" style={{ color: currentTier?.textColor }}>{wallet?.points.toLocaleString() || 0}</p>
+                        <p className="text-lg font-medium opacity-90" style={{ color: currentTier?.textColor }}>Tổng đã chi tiêu</p>
+                        <p className="text-4xl font-bold" style={{ color: currentTier?.textColor }}>{formatCurrency(parseFloat(wallet?.totalSpent?.toString() || '0') || 0)}</p>
                     </div>
                 </div>
             </div>
@@ -808,13 +523,13 @@ const MembershipTab: React.FC<{ currentUser: User; wallet: Wallet | null; allTie
                     <div>
                         <div className="flex justify-between items-baseline mb-2">
                             <span className="text-sm font-medium text-gray-600">Tiến trình lên hạng <strong style={{ color: nextTier.color }}>{nextTier.name}</strong></span>
-                            <span className="text-xs font-semibold text-gray-500">{wallet?.points.toLocaleString() || 0} / {nextTier.pointsRequired.toLocaleString()} điểm</span>
+                            <span className="text-xs font-semibold text-gray-500">{formatCurrency(parseFloat(wallet?.totalSpent?.toString() || '0') || 0)} / {formatCurrency(nextTier.minSpendingRequired || 0)}</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-4">
                             <div className="h-4 rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%`, backgroundColor: currentTier?.color }}></div>
                         </div>
                         <p className="text-xs text-gray-500 mt-2">
-                            Bạn cần thêm <strong className="text-brand-dark">{(nextTier.pointsRequired - (wallet?.points || 0)).toLocaleString()}</strong> điểm nữa để thăng hạng.
+                            Bạn cần chi tiêu thêm <strong className="text-brand-dark">{formatCurrency((nextTier.minSpendingRequired || 0) - (parseFloat(wallet?.totalSpent?.toString() || '0') || 0))}</strong> nữa để thăng hạng.
                         </p>
                     </div>
                 ) : (
@@ -1571,19 +1286,22 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     const [isLoadingHistory, setIsLoadingHistory] = useState(true);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-    // Calculate tier from wallet points since tierLevel is not in users table
+    // Calculate tier from wallet totalSpent (money spent), not points
     const currentTier = useMemo(() => {
-        if (!wallet) return allTiers[0];
-        const userPoints = wallet.points || 0;
-        const sortedTiers = [...allTiers].sort((a, b) => (a.pointsRequired || 0) - (b.pointsRequired || 0));
-        let tierLevel = 1; // Default to tier 1
-        for (let i = sortedTiers.length - 1; i >= 0; i--) {
-            if (userPoints >= (sortedTiers[i].pointsRequired || 0)) {
-                tierLevel = sortedTiers[i].level;
+        if (!wallet) {
+            // Return default tier (Thành viên - level 0)
+            return allTiers.find(t => t.level === 0) || allTiers[0];
+        }
+        const totalSpent = parseFloat(wallet.totalSpent?.toString() || '0') || 0;
+        const sortedTiers = [...allTiers].sort((a, b) => (b.minSpendingRequired || 0) - (a.minSpendingRequired || 0));
+        let tierLevel = 0; // Default to tier 0 (Thành viên)
+        for (const tier of sortedTiers) {
+            if (totalSpent >= (tier.minSpendingRequired || 0)) {
+                tierLevel = tier.level;
                 break;
             }
         }
-        return allTiers.find(t => t.level === tierLevel) || allTiers[0];
+        return allTiers.find(t => t.level === tierLevel) || allTiers.find(t => t.level === 0) || allTiers[0];
     }, [wallet, allTiers]);
     
     useEffect(() => {

@@ -103,8 +103,14 @@ const AppContent: React.FC = () => {
                 apiService.getProducts(),
                 apiService.getSales()
             ]);
-            // Tiers are calculated dynamically from wallet points, not stored in database
-            setAllTiers([]);
+            // Define tiers based on totalSpent (money spent), not points
+            const tiers: Tier[] = [
+                { level: 0, name: 'Thành viên', pointsRequired: 0, minSpendingRequired: 0, color: '#A8A29E', textColor: '#FFFFFF' },
+                { level: 1, name: 'Đồng', pointsRequired: 0, minSpendingRequired: 10000000, color: '#CD7F32', textColor: '#FFFFFF' }, // Bronze - 10 triệu
+                { level: 2, name: 'Bạc', pointsRequired: 0, minSpendingRequired: 30000000, color: '#C0C0C0', textColor: '#000000' }, // Silver - 30 triệu
+                { level: 3, name: 'Kim cương', pointsRequired: 0, minSpendingRequired: 50000000, color: '#B9F2FF', textColor: '#000000' }, // Diamond - 50 triệu
+            ];
+            setAllTiers(tiers);
             setAllServices(services);
             setAllUsers(users);
             setAllAppointments(appointments);
@@ -120,7 +126,14 @@ const AppContent: React.FC = () => {
         } catch (error) {
             console.error("Failed to fetch initial app data:", error);
             // Set empty arrays to prevent undefined errors
-            setAllTiers([]); // Tiers are calculated dynamically, not from database
+            // Define tiers based on totalSpent (money spent), not points
+            const tiers: Tier[] = [
+                { level: 0, name: 'Thành viên', pointsRequired: 0, minSpendingRequired: 0, color: '#A8A29E', textColor: '#FFFFFF' },
+                { level: 1, name: 'Đồng', pointsRequired: 0, minSpendingRequired: 10000000, color: '#CD7F32', textColor: '#FFFFFF' }, // Bronze - 10 triệu
+                { level: 2, name: 'Bạc', pointsRequired: 0, minSpendingRequired: 30000000, color: '#C0C0C0', textColor: '#000000' }, // Silver - 30 triệu
+                { level: 3, name: 'Kim cương', pointsRequired: 0, minSpendingRequired: 50000000, color: '#B9F2FF', textColor: '#000000' }, // Diamond - 50 triệu
+            ];
+            setAllTiers(tiers);
             setAllServices([]);
             setAllUsers([]);
             setAllAppointments([]);

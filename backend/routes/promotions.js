@@ -115,6 +115,7 @@ router.get('/', async (req, res) => {
 
             // Check if user has ever booked this service (any status except cancelled)
             // Logic: Voucher "Khách hàng mới" chỉ được dùng 1 lần cho 1 dịch vụ mà khách chưa đặt lịch dịch vụ đó lần nào
+            // QUAN TRỌNG: Kiểm tra cả Appointment và TreatmentCourse để đảm bảo chính xác
             const hasBookedService = await db.Appointment.findOne({
                 where: {
                     userId: userId,
@@ -123,14 +124,45 @@ router.get('/', async (req, res) => {
                 }
             });
 
-            // Check promotion usage
+            // Nếu không tìm thấy trong Appointment, kiểm tra trong TreatmentCourse
+            // QUAN TRỌNG: TreatmentCourse có field serviceId, nên kiểm tra theo serviceId
+            let hasBookedServiceViaCourse = false;
+            if (!hasBookedService) {
+                const treatmentCourse = await db.TreatmentCourse.findOne({
+                    where: {
+                        clientId: userId,
+                        serviceId: serviceId,
+                        status: { [Op.ne]: 'cancelled' } // Chỉ tính các liệu trình không bị hủy
+                    }
+                });
+                hasBookedServiceViaCourse = !!treatmentCourse;
+            }
+            
+            const hasBookedThisService = hasBookedService || hasBookedServiceViaCourse;
+            
+            // Log để debug
+            if (hasBookedThisService) {
+                console.log(`   📋 User ${userId} has already booked service ${serviceId}:`);
+                if (hasBookedService) {
+                    console.log(`      - Found via Appointment`);
+                }
+                if (hasBookedServiceViaCourse) {
+                    console.log(`      - Found via TreatmentCourse`);
+                }
+            }
+
+            // Check promotion usage - CHỈ tính là "đã dùng" nếu có appointmentId != null
             const usedPromotions = await db.PromotionUsage.findAll({
-                where: { userId: userId }
+                where: { 
+                    userId: userId,
+                    appointmentId: { [Op.ne]: null } // CHỈ tính PromotionUsage đã được dùng (có appointmentId)
+                }
             });
             const usedPromotionIds = new Set(usedPromotions.map(u => u.promotionId));
 
             // Check if user has used "New Clients" voucher for this specific service
             // Logic: Mỗi dịch vụ chỉ được dùng voucher "Khách hàng mới" 1 lần
+            // QUAN TRỌNG: Chỉ tính các PromotionUsage có appointmentId != null VÀ appointment không bị cancelled/rejected
             const hasUsedNewClientVoucherForService = await db.PromotionUsage.findOne({
                 where: {
                     userId: userId,
@@ -143,16 +175,65 @@ router.get('/', async (req, res) => {
                         targetAudience: 'New Clients'
                     },
                     required: true
+                }, {
+                    model: db.Appointment,
+                    required: true,
+                    where: {
+                        status: { [Op.ne]: 'cancelled' }, // Không tính appointment bị cancelled
+                        rejectionReason: { [Op.or]: [{ [Op.is]: null }, { [Op.eq]: '' }] } // Không tính appointment bị rejected
+                    }
                 }]
             });
 
             // Check if today is user's birthday
             const today = new Date();
+            today.setHours(0, 0, 0, 0);
             const isBirthday = user.birthday && (() => {
                 const birthday = new Date(user.birthday);
+                birthday.setHours(0, 0, 0, 0);
                 return birthday.getMonth() === today.getMonth() &&
                     birthday.getDate() === today.getDate();
             })();
+
+            // Check if user has already used birthday voucher today
+            // QUAN TRỌNG: Chỉ tính là "đã dùng" nếu có PromotionUsage với appointmentId != null
+            let hasUsedBirthdayVoucherToday = false;
+            if (isBirthday) {
+                const birthdayVoucherUsages = await db.PromotionUsage.findAll({
+                    where: {
+                        userId: userId,
+                        appointmentId: { [Op.ne]: null } // Đã được dùng (có appointmentId)
+                    },
+                    include: [{
+                        model: db.Promotion,
+                        where: {
+                            targetAudience: 'Birthday'
+                        },
+                        required: true
+                    }, {
+                        model: db.Appointment,
+                        required: true
+                    }]
+                });
+                
+                if (birthdayVoucherUsages.length > 0) {
+                    // Kiểm tra xem có appointment nào không bị cancelled/rejected không
+                    const validUsages = birthdayVoucherUsages.filter(usage => {
+                        if (!usage.Appointment) return false;
+                        return usage.Appointment.status !== 'cancelled' && 
+                               (!usage.Appointment.rejectionReason || usage.Appointment.rejectionReason.trim() === '');
+                    });
+                    
+                    if (validUsages.length > 0) {
+                        // Kiểm tra xem có dùng trong ngày hôm nay không
+                        hasUsedBirthdayVoucherToday = validUsages.some(usage => {
+                            const usedDate = new Date(usage.usedAt || usage.createdAt);
+                            usedDate.setHours(0, 0, 0, 0);
+                            return usedDate.getTime() === today.getTime();
+                        });
+                    }
+                }
+            }
 
             // Filter promotions based on eligibility
             promotions = promotions.filter(promo => {
@@ -172,26 +253,13 @@ router.get('/', async (req, res) => {
                 // For client pages, only show public promotions (unless they know the code)
                 // This filter is already applied in the query above, but we keep it here for safety
 
-                // Check if already used
-                if (usedPromotionIds.has(promo.id)) {
-                    // For Birthday promotions, can only use once per year
-                    if (promo.targetAudience === 'Birthday') {
-                        const birthdayUsage = usedPromotions.find(u =>
-                            u.promotionId === promo.id &&
-                            new Date(u.usedAt).getFullYear() === today.getFullYear()
-                        );
-                        if (birthdayUsage) return false;
-                    } else {
-                        return false; // Already used
-                    }
-                }
-
                 // Check target audience
                 if (promo.targetAudience === 'New Clients') {
                     // Logic: Voucher "Khách hàng mới" chỉ được dùng 1 lần cho 1 dịch vụ mà khách chưa đặt lịch dịch vụ đó lần nào
                     // 1. Kiểm tra xem user đã từng đặt lịch dịch vụ này chưa (bất kỳ status nào, trừ cancelled)
-                    if (hasBookedService) {
-                        console.log(`   ❌ User ${userId} has already booked service ${serviceId}, cannot use New Clients voucher`);
+                    //    Kiểm tra cả Appointment và TreatmentCourse
+                    if (hasBookedThisService) {
+                        console.log(`   ❌ User ${userId} has already booked service ${serviceId} (via appointment or treatment course), cannot use New Clients voucher`);
                         return false;
                     }
 
@@ -212,10 +280,21 @@ router.get('/', async (req, res) => {
 
                     console.log(`   ✅ User ${userId} can use New Clients voucher ${promo.id} for service ${serviceId}`);
                 } else if (promo.targetAudience === 'Birthday') {
-                    // Only show if today is user's birthday
+                    // Only show if today is user's birthday AND user hasn't used it today
                     if (!isBirthday) return false;
+                    if (hasUsedBirthdayVoucherToday) {
+                        console.log(`   ❌ User ${userId} has already used birthday voucher today`);
+                        return false;
+                    }
                 } else if (promo.targetAudience === 'All') {
                     // Show all active promotions
+                }
+
+                // Check if already used (for non-Birthday, non-New Clients promotions)
+                if (promo.targetAudience !== 'Birthday' && promo.targetAudience !== 'New Clients') {
+                    if (usedPromotionIds.has(promo.id)) {
+                        return false; // Already used
+                    }
                 }
 
                 // Check expiry
@@ -226,6 +305,87 @@ router.get('/', async (req, res) => {
                 // Check stock
                 if (promo.stock !== null && promo.stock <= 0) return false;
 
+                return true;
+            });
+        } else if (userId && !serviceId) {
+            // Logic cho "Voucher dành cho bạn" tab (có userId nhưng không có serviceId)
+            const user = await db.User.findByPk(userId);
+            if (!user) {
+                return res.status(404).json({ message: 'User not found' });
+            }
+
+            // Check if today is user's birthday
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const isBirthday = user.birthday && (() => {
+                const birthday = new Date(user.birthday);
+                birthday.setHours(0, 0, 0, 0);
+                return birthday.getMonth() === today.getMonth() &&
+                    birthday.getDate() === today.getDate();
+            })();
+
+            // Check if user has already used birthday voucher today
+            let hasUsedBirthdayVoucherToday = false;
+            if (isBirthday) {
+                const birthdayVoucherUsages = await db.PromotionUsage.findAll({
+                    where: {
+                        userId: userId,
+                        appointmentId: { [Op.ne]: null } // Đã được dùng (có appointmentId)
+                    },
+                    include: [{
+                        model: db.Promotion,
+                        where: {
+                            targetAudience: 'Birthday'
+                        },
+                        required: true
+                    }, {
+                        model: db.Appointment,
+                        required: true
+                    }]
+                });
+                
+                if (birthdayVoucherUsages.length > 0) {
+                    const validUsages = birthdayVoucherUsages.filter(usage => {
+                        if (!usage.Appointment) return false;
+                        return usage.Appointment.status !== 'cancelled' && 
+                               (!usage.Appointment.rejectionReason || usage.Appointment.rejectionReason.trim() === '');
+                    });
+                    
+                    if (validUsages.length > 0) {
+                        hasUsedBirthdayVoucherToday = validUsages.some(usage => {
+                            const usedDate = new Date(usage.usedAt || usage.createdAt);
+                            usedDate.setHours(0, 0, 0, 0);
+                            return usedDate.getTime() === today.getTime();
+                        });
+                    }
+                }
+            }
+
+            // Check if user has used "New Clients" voucher for any service
+            const hasUsedNewClientVoucherForAnyService = await db.PromotionUsage.findOne({
+                where: {
+                    userId: userId,
+                    appointmentId: { [Op.ne]: null } // Đã được dùng (có appointmentId)
+                },
+                include: [{
+                    model: db.Promotion,
+                    where: {
+                        targetAudience: 'New Clients'
+                    },
+                    required: true
+                }]
+            });
+
+            // Filter promotions
+            promotions = promotions.filter(promo => {
+                if (promo.targetAudience === 'Birthday') {
+                    // Only show if today is user's birthday AND user hasn't used it today
+                    if (!isBirthday) return false;
+                    if (hasUsedBirthdayVoucherToday) return false;
+                } else if (promo.targetAudience === 'New Clients') {
+                    // Only show if user hasn't used this voucher for any service yet
+                    if (hasUsedNewClientVoucherForAnyService) return false;
+                }
                 return true;
             });
         }

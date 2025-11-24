@@ -146,34 +146,26 @@ class UserController {
     }
 
     /**
-     * POST /api/users/:id/avatar - Upload avatar
+     * GET /api/users/:id/tier - Get user tier information
      */
-    async uploadAvatar(req, res) {
+    async getUserTier(req, res) {
         try {
             const { id } = req.params;
-            const { imageData } = req.body; // Base64 image data
-
-            if (!imageData) {
-                return res.status(400).json({
-                    error: 'No image data provided',
-                    message: 'Vui lòng cung cấp dữ liệu ảnh'
-                });
-            }
-
-            const avatarUrl = await userService.uploadAvatar(id, imageData);
-            res.json({ avatarUrl });
+            const tierInfo = await userService.getUserTier(id);
+            res.json(tierInfo);
         } catch (error) {
-            console.error('Error uploading avatar:', error);
+            console.error('Error fetching user tier:', error);
             if (error.message === 'User not found') {
                 res.status(404).json({ error: error.message });
             } else {
-                res.status(400).json({
-                    error: 'Failed to upload avatar',
+                res.status(500).json({
+                    error: 'Failed to fetch user tier',
                     message: error.message
                 });
             }
         }
     }
+
 }
 
 module.exports = new UserController();

@@ -177,29 +177,27 @@ export const getInternalNews = async (): Promise<InternalNews[]> => fetch(`${API
 export const getServiceCategories = async (): Promise<ServiceCategory[]> => fetch(`${API_BASE_URL}/services/categories`).then(handleResponse);
 
 // --- DATA MUTATIONS ---
-const create = <T,>(url: string, data: Partial<T>): Promise<T> => fetch(url, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) }).then(handleResponse);
+const create = <T,>(url: string, data: Partial<T>): Promise<T> => {
+    // Log data trước khi gửi để debug
+    console.log(`📤 [apiService.create] Sending to ${url}:`, {
+        dataKeys: Object.keys(data),
+        dataValues: data,
+        stringified: JSON.stringify(data)
+    });
+    return fetch(url, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) }).then(handleResponse);
+};
 const update = <T,>(url: string, data: Partial<T>): Promise<T> => fetch(url, { method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(data) }).then(handleResponse);
 const remove = (url: string): Promise<void> => fetch(url, { method: 'DELETE', headers: getAuthHeaders() }).then(handleResponse);
 
 export const createUser = (data: Partial<User>) => create<User>(`${API_BASE_URL}/users`, data);
 export const updateUser = (id: string, data: Partial<User>) => update<User>(`${API_BASE_URL}/users/${id}`, data);
-
-export const uploadAvatar = async (userId: string, imageData: string): Promise<{ avatarUrl: string }> => {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE_URL}/users/${userId}/avatar`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ imageData })
+export const getUserTier = async (userId: string): Promise<{ currentTier: Tier; nextTier: Tier | null; discountPercent: number }> => {
+    const response = await fetch(`${API_BASE_URL}/users/${userId}/tier`, {
+        headers: getAuthHeaders()
     });
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to upload avatar');
-    }
-    return response.json();
+    return handleResponse(response);
 };
+
 export const deleteUser = (id: string) => remove(`${API_BASE_URL}/users/${id}`);
 export const resetUserPassword = (id: string, newPassword: string) => update(`${API_BASE_URL}/users/${id}/password-reset`, { newPassword });
 // FIX: Added explicit return type to guide TypeScript's generic inference for the `update` function, resolving the error.

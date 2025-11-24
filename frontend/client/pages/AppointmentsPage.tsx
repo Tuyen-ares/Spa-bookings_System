@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Appointment, TreatmentCourse, User, Service } from '../../types';
-import { BellIcon, XCircleIcon } from '../../shared/icons';
+import type { Appointment, TreatmentCourse, User, Service, Review } from '../../types';
+import { BellIcon, XCircleIcon, StarIcon } from '../../shared/icons';
 import * as apiService from '../services/apiService';
 
 
@@ -41,6 +41,14 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
     
     // Treatment Courses Filter States
     const [coursesFilterStatus, setCoursesFilterStatus] = useState<'active' | 'completed'>('active');
+    
+    // Review states - Use objects to store per-course data
+    const [allReviews, setAllReviews] = useState<Review[]>([]);
+    const [reviewingCourseId, setReviewingCourseId] = useState<string | null>(null);
+    const [reviewRatings, setReviewRatings] = useState<{ [courseId: string]: number }>({});
+    const [reviewHoverRatings, setReviewHoverRatings] = useState<{ [courseId: string]: number }>({});
+    const [reviewComments, setReviewComments] = useState<{ [courseId: string]: string }>({});
+    const [isSubmittingReview, setIsSubmittingReview] = useState<string | null>(null); // Store courseId being submitted
 
     // Fetch appointments from API to ensure we have the latest data
     useEffect(() => {
@@ -79,6 +87,21 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
             window.removeEventListener('refresh-appointments', handleRefresh);
         };
     }, [currentUser.id, allAppointments]);
+
+    // Fetch reviews when component mounts
+    useEffect(() => {
+        const fetchReviews = async () => {
+            try {
+                const reviews = await apiService.getReviews({ userId: currentUser.id });
+                setAllReviews(reviews);
+            } catch (error) {
+                console.error('Error fetching reviews:', error);
+            }
+        };
+        if (currentUser?.id) {
+            fetchReviews();
+        }
+    }, [currentUser.id]);
 
     // Update local treatment courses when prop changes
     useEffect(() => {
@@ -493,6 +516,12 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
     };
     
     const TreatmentCourseCard: React.FC<{ course: TreatmentCourse }> = ({ course }) => {
+        // Use ref to preserve textarea reference and cursor position
+        const textareaRef = useRef<HTMLTextAreaElement>(null);
+        const cursorPositionRef = useRef<number | null>(null);
+        // Use ref to store comment value to avoid re-render issues
+        const commentValueRef = useRef<string>('');
+        
         const sessions = course.sessions || [];
         const completedSessions = sessions.filter(s => s.status === 'completed').length;
         const progress = course.totalSessions > 0 ? (completedSessions / course.totalSessions) * 100 : 0;
@@ -596,11 +625,253 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 </div>
                 
                 {isCompleted && (
-                    <div className="mb-4 p-3 bg-green-100 border border-green-300 rounded-lg">
-                        <p className="text-green-800 font-semibold text-center">
-                            🎉 Chúc mừng! Bạn đã hoàn thành liệu trình!
-                        </p>
-                    </div>
+                    <>
+                        <div className="mb-4 p-3 bg-green-100 border border-green-300 rounded-lg">
+                            <p className="text-green-800 font-semibold text-center">
+                                🎉 Chúc mừng! Bạn đã hoàn thành liệu trình!
+                            </p>
+                        </div>
+                        
+                        {/* Review Section */}
+                        {(() => {
+                            const serviceId = course.serviceId;
+                            const existingReview = allReviews.find(r => r.serviceId === serviceId);
+                            const isReviewing = reviewingCourseId === course.id;
+                            
+                            if (existingReview) {
+                                // User has already reviewed
+                                return (
+                                    <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                        <p className="text-sm font-semibold text-blue-800 mb-2">✅ Bạn đã đánh giá dịch vụ này</p>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <div className="flex text-yellow-400">
+                                                {[...Array(5)].map((_, i) => (
+                                                    <StarIcon key={i} className={`w-5 h-5 ${i < existingReview.rating ? 'fill-current' : 'text-gray-300'}`} />
+                                                ))}
+                                            </div>
+                                            <span className="text-sm text-gray-600">{new Date(existingReview.date).toLocaleDateString('vi-VN')}</span>
+                                        </div>
+                                        {existingReview.comment && (
+                                            <p className="text-sm text-gray-700 italic">"{existingReview.comment}"</p>
+                                        )}
+                                        <button
+                                            onClick={() => navigate(`/service/${serviceId}`)}
+                                            className="mt-2 text-sm text-blue-600 hover:underline"
+                                        >
+                                            Xem đánh giá của bạn →
+                                        </button>
+                                    </div>
+                                );
+                            }
+                            
+                            if (isReviewing) {
+                                // Get current values for this course
+                                const currentRating = reviewRatings[course.id] || 0;
+                                const currentHoverRating = reviewHoverRatings[course.id] || 0;
+                                const currentComment = reviewComments[course.id] || '';
+                                const isSubmitting = isSubmittingReview === course.id;
+                                
+                                // Sync local comment with parent state only when form opens/closes
+                                // Don't use useEffect to avoid resetting while user is typing
+                                
+                                // Show review form
+                                return (
+                                    <div className="mt-4 p-4 bg-white border border-gray-300 rounded-lg">
+                                        <h5 className="text-lg font-semibold text-gray-800 mb-3">Đánh giá và phản hồi chất lượng dịch vụ</h5>
+                                        
+                                        {/* Star Rating */}
+                                        <div className="mb-4">
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Đánh giá sao *</label>
+                                            <div className="flex gap-1">
+                                                {[1, 2, 3, 4, 5].map((star) => (
+                                                    <button
+                                                        key={star}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setReviewRatings(prev => ({ ...prev, [course.id]: star }));
+                                                        }}
+                                                        onMouseEnter={() => {
+                                                            setReviewHoverRatings(prev => ({ ...prev, [course.id]: star }));
+                                                        }}
+                                                        onMouseLeave={() => {
+                                                            setReviewHoverRatings(prev => ({ ...prev, [course.id]: 0 }));
+                                                        }}
+                                                        className="focus:outline-none"
+                                                    >
+                                                        <StarIcon
+                                                            className={`w-8 h-8 transition-colors ${
+                                                                star <= (currentHoverRating || currentRating)
+                                                                    ? 'text-yellow-400 fill-current'
+                                                                    : 'text-gray-300'
+                                                            }`}
+                                                        />
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Comment */}
+                                        <div className="mb-4">
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Nhận xét (tùy chọn)</label>
+                                            <textarea
+                                                ref={textareaRef}
+                                                defaultValue={commentValueRef.current}
+                                                onChange={(e) => {
+                                                    // Update ref value only - no state update, no re-render
+                                                    const textarea = e.target as HTMLTextAreaElement;
+                                                    commentValueRef.current = textarea.value;
+                                                    
+                                                    // Preserve cursor position
+                                                    const cursorPos = textarea.selectionStart;
+                                                    requestAnimationFrame(() => {
+                                                        if (textareaRef.current) {
+                                                            textareaRef.current.setSelectionRange(cursorPos, cursorPos);
+                                                        }
+                                                    });
+                                                }}
+                                                onKeyDown={(e) => {
+                                                    // Prevent any selection issues
+                                                    const textarea = e.target as HTMLTextAreaElement;
+                                                    if (textarea.selectionStart !== textarea.selectionEnd) {
+                                                        // If text is selected, allow normal behavior
+                                                        return;
+                                                    }
+                                                }}
+                                                rows={4}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
+                                                placeholder="Chia sẻ trải nghiệm của bạn về dịch vụ này..."
+                                                autoFocus
+                                            />
+                                        </div>
+                                        
+                                        {/* Buttons */}
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={async () => {
+                                                    if (currentRating === 0) {
+                                                        alert('Vui lòng chọn số sao đánh giá');
+                                                        return;
+                                                    }
+                                                    
+                                                    // Get comment value from textarea or ref
+                                                    const commentValue = textareaRef.current?.value || commentValueRef.current || '';
+                                                    
+                                                    // Sync comment to parent state before submit
+                                                    setReviewComments(prev => ({ ...prev, [course.id]: commentValue }));
+                                                    
+                                                    setIsSubmittingReview(course.id);
+                                                    try {
+                                                        const service = allServices.find(s => s.id === serviceId);
+                                                        await apiService.createReview({
+                                                            userId: currentUser.id,
+                                                            serviceId: serviceId,
+                                                            rating: currentRating,
+                                                            comment: commentValue.trim() || null,
+                                                            serviceName: service?.name,
+                                                            userName: currentUser.name,
+                                                            userImageUrl: currentUser.profilePictureUrl || '',
+                                                        });
+                                                        
+                                                        // Refresh reviews
+                                                        const reviews = await apiService.getReviews({ userId: currentUser.id });
+                                                        setAllReviews(reviews);
+                                                        
+                                                        // Reset form for this course
+                                                        setReviewingCourseId(null);
+                                                        setReviewRatings(prev => {
+                                                            const newRatings = { ...prev };
+                                                            delete newRatings[course.id];
+                                                            return newRatings;
+                                                        });
+                                                        setReviewHoverRatings(prev => {
+                                                            const newHoverRatings = { ...prev };
+                                                            delete newHoverRatings[course.id];
+                                                            return newHoverRatings;
+                                                        });
+                                                        setReviewComments(prev => {
+                                                            const newComments = { ...prev };
+                                                            delete newComments[course.id];
+                                                            return newComments;
+                                                        });
+                                                        
+                                                        // Reset comment ref
+                                                        commentValueRef.current = '';
+                                                        
+                                                        setToastMessage('Cảm ơn bạn đã đánh giá!');
+                                                        setTimeout(() => setToastMessage(null), 3000);
+                                                    } catch (error: any) {
+                                                        console.error('Error submitting review:', error);
+                                                        alert(error.message || 'Có lỗi xảy ra khi gửi đánh giá');
+                                                    } finally {
+                                                        setIsSubmittingReview(null);
+                                                    }
+                                                }}
+                                                disabled={isSubmitting || currentRating === 0}
+                                                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                                            >
+                                                {isSubmitting ? 'Đang gửi...' : 'Gửi đánh giá'}
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setReviewingCourseId(null);
+                                                    setReviewRatings(prev => {
+                                                        const newRatings = { ...prev };
+                                                        delete newRatings[course.id];
+                                                        return newRatings;
+                                                    });
+                                                    setReviewHoverRatings(prev => {
+                                                        const newHoverRatings = { ...prev };
+                                                        delete newHoverRatings[course.id];
+                                                        return newHoverRatings;
+                                                    });
+                                                    setReviewComments(prev => {
+                                                        const newComments = { ...prev };
+                                                        delete newComments[course.id];
+                                                        return newComments;
+                                                    });
+                                                    // Reset comment ref
+                                                    commentValueRef.current = '';
+                                                }}
+                                                disabled={isSubmitting}
+                                                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:bg-gray-100"
+                                            >
+                                                Hủy
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            
+                            // Show button to start reviewing
+                            return (
+                                <div className="mt-4">
+                                    <button
+                                        onClick={() => {
+                                            setReviewingCourseId(course.id);
+                                            setReviewRatings(prev => ({ ...prev, [course.id]: 0 }));
+                                            setReviewHoverRatings(prev => ({ ...prev, [course.id]: 0 }));
+                                            setReviewComments(prev => ({ ...prev, [course.id]: '' }));
+                                            // Initialize comment ref when form opens
+                                            const savedComment = reviewComments[course.id] || '';
+                                            commentValueRef.current = savedComment;
+                                            // Set textarea value directly and preserve cursor position
+                                            setTimeout(() => {
+                                                if (textareaRef.current) {
+                                                    textareaRef.current.value = savedComment;
+                                                    const len = savedComment.length;
+                                                    textareaRef.current.setSelectionRange(len, len);
+                                                    textareaRef.current.focus();
+                                                }
+                                            }, 0);
+                                        }}
+                                        className="w-full px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold"
+                                    >
+                                        ⭐ Đánh giá và phản hồi chất lượng dịch vụ
+                                    </button>
+                                </div>
+                            );
+                        })()}
+                    </>
                 )}
             </div>
         );

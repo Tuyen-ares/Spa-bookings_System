@@ -12,6 +12,9 @@ router.get('/:id', userController.getUserById);
 // GET /api/users/:id/profile - Get user profile with appointments and wallet
 router.get('/:id/profile', userController.getUserProfile);
 
+// GET /api/users/:id/tier - Get user tier information
+router.get('/:id/tier', userController.getUserTier);
+
 // POST /api/users - Create new user
 router.post('/', userController.createUser);
 
@@ -21,8 +24,6 @@ router.put('/:id', userController.updateUser);
 // PATCH /api/users/:id/status - Update user status
 router.patch('/:id/status', userController.updateUserStatus);
 
-// POST /api/users/:id/avatar - Upload avatar
-router.post('/:id/avatar', userController.uploadAvatar);
 
 // DELETE /api/users/:id - Delete user
 router.delete('/:id', userController.deleteUser);

@@ -43,6 +43,13 @@ export interface Appointment {
   staffNotesAfterSession?: string;
   rejectionReason?: string;
   bookingGroupId?: string;
+  promotionId?: string | null; // Promotion ID if applied
+  quantity?: number; // Số lượng buổi (cho treatment course)
+  durationWeeks?: number; // Số tuần (cho treatment course)
+  frequencyType?: 'weeks_per_session' | 'sessions_per_week'; // Loại tần suất
+  frequencyValue?: number; // Giá trị tần suất
+  totalAmount?: number; // Tổng tiền thực tế sau giảm giá/voucher (cho treatment course)
+  treatmentCourseNotes?: string; // Ghi chú cho treatment course
   Client?: { // Client association from backend
     id: string;
     name: string;
@@ -203,6 +210,7 @@ export interface TreatmentCourse {
   name: string;
   description?: string;
   price: number;
+  totalAmount?: number; // Tổng số tiền thực tế khi khách đặt lịch (sau khi áp dụng giảm giá/voucher)
   totalSessions: number;
   services: Array<{
     serviceId: string;

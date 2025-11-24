@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import type { User } from '../types';
-import { LogoIcon, ChevronDownIcon, MenuIcon, CloseIcon } from '../shared/icons';
+import { LogoIcon, ChevronDownIcon, MenuIcon, CloseIcon, ProfileIcon } from '../shared/icons';
 import { NotificationBell } from '../client/components/NotificationBell';
 
 interface HeaderProps {
@@ -83,7 +83,9 @@ const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                         {currentUser ? (
                             <div className="relative" ref={userMenuRef}>
                                 <button onClick={() => setIsUserMenuOpen(prev => !prev)} className="flex items-center gap-2 group p-1 rounded-full transition-colors hover:bg-brand-primary/10" aria-haspopup="true" aria-expanded={isUserMenuOpen}>
-                                    <img src={currentUser.profilePictureUrl} alt={currentUser.name} className="w-10 h-10 rounded-full object-cover ring-2 ring-brand-secondary group-hover:ring-brand-primary transition-all" />
+                                    <div className="w-10 h-10 rounded-full bg-gray-200 ring-2 ring-brand-secondary group-hover:ring-brand-primary transition-all flex items-center justify-center">
+                                        <ProfileIcon className="w-6 h-6 text-gray-400" />
+                                    </div>
                                     <span className="font-medium text-brand-dark">{currentUser.name.split(' ').pop()}</span>
                                     <ChevronDownIcon className={`w-5 h-5 text-brand-dark transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
                                 </button>

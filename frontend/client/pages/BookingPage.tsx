@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
-import type { Service, User, Appointment, PaymentMethod, Promotion, TreatmentCourse, Review, StaffShift, ServiceCategory } from '../../types';
+import type { Service, User, Appointment, PaymentMethod, Promotion, TreatmentCourse, Review, StaffShift, ServiceCategory, Tier } from '../../types';
 import { StarIcon, VNPayIcon, CheckCircleIcon, ChevronLeftIcon, ChevronRightIcon } from '../../shared/icons';
 import * as apiService from '../services/apiService';
 
@@ -69,6 +69,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('VNPay');
     const [promoCode, setPromoCode] = useState<string>('');
+    const [tierInfo, setTierInfo] = useState<{ currentTier: Tier; nextTier: Tier | null; discountPercent: number } | null>(null);
 
     // Generate flexible time slots from 9:00 to 22:00 with 15 minute intervals
     const generateTimeSlots = () => {
@@ -85,7 +86,22 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         return slots;
     };
 
+    // Helper function to convert time string (HH:mm) to minutes
+    const timeToMinutes = (time: string): number => {
+        const [hour, minute] = time.split(':').map(Number);
+        return hour * 60 + minute;
+    };
+
+    // Helper function to convert minutes to time string (HH:mm)
+    const minutesToTime = (minutes: number): string => {
+        const hour = Math.floor(minutes / 60);
+        const minute = minutes % 60;
+        return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+    };
+
     // Get available time slots based on selected date
+    // QUAN TRỌNG: Không filter ra khỏi danh sách, chỉ đánh dấu disabled
+    // Hiển thị tất cả time slots, nhưng disable những cái bị chặn
     const getAvailableTimeSlots = () => {
         const allSlots = generateTimeSlots();
         
@@ -103,29 +119,30 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             selectedDateObj.getMonth() === today.getMonth() &&
             selectedDateObj.getDate() === today.getDate();
 
-        if (!isToday) {
-            // If future date, return all slots
-            return allSlots;
+        // Filter out past times if today
+        let filteredSlots = allSlots;
+        if (isToday) {
+            const now = new Date();
+            const currentHour = now.getHours();
+            const currentMinute = now.getMinutes();
+            const currentTimeInMinutes = currentHour * 60 + currentMinute;
+
+            filteredSlots = allSlots.filter(timeSlot => {
+                const [hour, minute] = timeSlot.split(':').map(Number);
+                const slotTimeInMinutes = hour * 60 + minute;
+                // Only show slots that are at least 15 minutes in the future
+                return slotTimeInMinutes > currentTimeInMinutes;
+            });
         }
 
-        // If today, filter out past times
-        const now = new Date();
-        const currentHour = now.getHours();
-        const currentMinute = now.getMinutes();
-        const currentTimeInMinutes = currentHour * 60 + currentMinute;
-
-        return allSlots.filter(timeSlot => {
-            const [hour, minute] = timeSlot.split(':').map(Number);
-            const slotTimeInMinutes = hour * 60 + minute;
-            // Only show slots that are at least 15 minutes in the future
-            return slotTimeInMinutes > currentTimeInMinutes;
-        });
+        // Trả về tất cả time slots (không filter), logic kiểm tra blocked sẽ được thực hiện ở isTimeSlotBlocked
+        return filteredSlots;
     };
 
-    // Memoize available time slots to recalculate when selectedDate changes
+    // Memoize available time slots to recalculate when selectedDate, userAppointments, or services change
     const availableTimeSlots = useMemo(() => {
         return getAvailableTimeSlots();
-    }, [selectedDate]);
+    }, [selectedDate, userAppointments, services]);
 
     // Reset selectedTime if it's no longer available when date changes
     useEffect(() => {
@@ -145,6 +162,36 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             setDateInputValue('');
         }
     }, [selectedDate]);
+
+    // Fetch tier info when currentUser changes
+    useEffect(() => {
+        const fetchTierInfo = async () => {
+            if (currentUser && currentUser.id) {
+                try {
+                    console.log('🔄 Fetching tier info for user:', currentUser.id);
+                    const tier = await apiService.getUserTier(currentUser.id);
+                    console.log('✅ Tier info loaded in useEffect:', tier);
+                    if (tier && tier.discountPercent !== undefined) {
+                        setTierInfo(tier);
+                    } else {
+                        console.error('❌ Invalid tier info received:', tier);
+                        setTierInfo(null);
+                    }
+                } catch (error) {
+                    console.error('❌ Error loading user tier in useEffect:', error);
+                    setTierInfo(null);
+                }
+            } else {
+                console.log('⚠️ No currentUser or currentUser.id, setting tierInfo to null');
+                setTierInfo(null);
+            }
+        };
+        // Add a small delay to ensure currentUser is fully loaded
+        const timer = setTimeout(() => {
+            fetchTierInfo();
+        }, 100);
+        return () => clearTimeout(timer);
+    }, [currentUser?.id]);
 
     // Load data
     useEffect(() => {
@@ -229,6 +276,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 } catch (error) {
                     console.error('Error loading redeemed vouchers:', error);
                 }
+                
+                // Note: tierInfo is fetched in useEffect when currentUser changes
             }
 
             // Auto-select service from URL if provided
@@ -312,6 +361,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     }, [currentUser, selectedServices]);
 
     // Step 2: Select Time
+    // Check if a time slot is booked (exact match) - for display purposes
     const isTimeSlotBooked = (time: string) => {
         if (!selectedDate) return false;
         return userAppointments.some(apt => 
@@ -321,15 +371,87 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         );
     };
 
+    // Check if a time slot is blocked by an existing appointment's duration
+    // Logic: Kiểm tra overlap giữa appointment mới (với dịch vụ đang chọn) và appointments đã đặt
+    // Time slot bị chặn nếu có bất kỳ overlap nào (cả đi lùi và đi tiến)
+    const isTimeSlotBlocked = (time: string) => {
+        if (!selectedDate || selectedServices.length === 0) return false;
+        
+        // Lấy duration của dịch vụ đang được chọn (lấy dịch vụ đầu tiên nếu có nhiều)
+        const selectedService = selectedServices[0].service;
+        if (!selectedService || !selectedService.duration) return false;
+
+        const newStartTimeInMinutes = timeToMinutes(time);
+        const newEndTimeInMinutes = newStartTimeInMinutes + selectedService.duration;
+
+        // Lấy tất cả appointments của user trong ngày đó (cùng ngày, status != cancelled)
+        const appointmentsOnSelectedDate = userAppointments.filter(apt => 
+            apt.date === selectedDate && 
+            apt.status !== 'cancelled'
+        );
+
+        // Kiểm tra overlap với từng appointment đã đặt
+        return appointmentsOnSelectedDate.some(apt => {
+            const service = services.find(s => s.id === apt.serviceId);
+            if (!service || !service.duration) return false;
+
+            const existingStartTimeInMinutes = timeToMinutes(apt.time);
+            const existingEndTimeInMinutes = existingStartTimeInMinutes + service.duration;
+
+            // Kiểm tra overlap: Hai khoảng thời gian overlap nếu:
+            // newStart < existingEnd && newEnd > existingStart
+            // Ví dụ:
+            // - Appointment đã đặt: 11:30 - 13:00 (90 phút)
+            // - Appointment mới: 11:15 - 12:15 (60 phút)
+            //   → 11:15 < 13:00 && 12:15 > 11:30 → Overlap! → Bị chặn
+            // - Appointment mới: 10:45 - 11:15 (30 phút)
+            //   → 10:45 < 13:00 && 11:15 > 11:30 → 11:15 > 11:30 = false → Không overlap → Không bị chặn
+            const hasOverlap = newStartTimeInMinutes < existingEndTimeInMinutes && 
+                               newEndTimeInMinutes > existingStartTimeInMinutes;
+
+            return hasOverlap;
+        });
+    };
+
     // Step 4: Confirmation
     const calculateTotal = () => {
         const servicesTotal = selectedServices.reduce((sum, { service, quantity }) => sum + (service.price * quantity), 0);
-        const discount = selectedPromotion ? 
+        
+        // Calculate tier discount (based on membership tier)
+        const tierDiscount = tierInfo && tierInfo.discountPercent > 0 
+            ? servicesTotal * (tierInfo.discountPercent / 100)
+            : 0;
+        
+        // Calculate promotion discount
+        // IMPORTANT: Promotion discount should be calculated from servicesTotal (original price), not from servicesTotal - tierDiscount
+        // FIX: Parse discountValue to number to avoid string concatenation
+        const promotionDiscount = selectedPromotion ? 
             (selectedPromotion.discountType === 'percentage' 
-                ? servicesTotal * (selectedPromotion.discountValue / 100)
-                : selectedPromotion.discountValue
+                ? servicesTotal * (parseFloat(selectedPromotion.discountValue?.toString() || '0') / 100)
+                : parseFloat(selectedPromotion.discountValue?.toString() || '0')
             ) : 0;
-        return Math.max(0, servicesTotal - discount);
+        
+        // Total discount is tier discount + promotion discount
+        const totalDiscount = tierDiscount + promotionDiscount;
+        const total = Math.max(0, servicesTotal - totalDiscount);
+
+        // Debug logging
+        console.log('💰 [CALCULATE TOTAL - calculateTotal()]', {
+            servicesTotal,
+            tierDiscount,
+            promotionDiscount,
+            totalDiscount,
+            total,
+            selectedPromotion: selectedPromotion ? {
+                id: selectedPromotion.id,
+                code: selectedPromotion.code,
+                discountType: selectedPromotion.discountType,
+                discountValue: selectedPromotion.discountValue,
+                discountValueType: typeof selectedPromotion.discountValue
+            } : null
+        });
+        
+        return total;
     };
 
     const handleConfirmBooking = async () => {
@@ -389,6 +511,9 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 }
             }
             
+            // Calculate total amount (sau giảm giá/voucher) để gửi lên backend
+            const totalAmount = calculateTotal();
+            
             // Create ONE appointment per service (backend will handle treatment course if quantity >= 1, all bookings create courses)
             const appointmentsToCreate = selectedServices.map(({ service, quantity }) => ({
                 id: `apt-${uuidv4()}`,
@@ -406,10 +531,11 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 quantity: quantity, // Send quantity to backend for treatment course creation
                 durationWeeks: quantity + 1, // Default duration (admin can adjust later)
                 frequencyType: 'sessions_per_week' as const, // Default frequency type
-                frequencyValue: 1 // Default: 1 session per week
+                frequencyValue: 1, // Default: 1 session per week
+                totalAmount: totalAmount // Số tiền thực tế sau giảm giá/voucher
             }));
             
-            // LOG để debug
+            // LOG để debug - QUAN TRỌNG: Log toàn bộ data trước khi gửi
             console.log('📤 [BookingPage] Creating appointments with promotion:', {
                 selectedPromotion: selectedPromotion ? {
                     id: selectedPromotion.id,
@@ -421,22 +547,48 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                     id: apt.id,
                     serviceId: apt.serviceId,
                     promotionId: apt.promotionId,
-                    userId: apt.userId
+                    userId: apt.userId,
+                    totalAmount: apt.totalAmount, // Log totalAmount
+                    quantity: apt.quantity // Log quantity
                 }))
             });
 
             // Create all appointments (one per service)
             // Backend will automatically deduct redeemed vouchers when creating appointment
             // NOTE: Không cần gọi applyPromotion ở đây vì backend đã xử lý trừ voucher khi tạo appointment
-            console.log('📤 [BookingPage] Creating appointments with data:', appointmentsToCreate.map(apt => ({
+            console.log('📤 [BookingPage] Creating appointments with FULL data:', appointmentsToCreate.map(apt => ({
                 id: apt.id,
                 serviceId: apt.serviceId,
                 promotionId: apt.promotionId,
-                userId: apt.userId
+                userId: apt.userId,
+                totalAmount: apt.totalAmount,
+                quantity: apt.quantity,
+                durationWeeks: apt.durationWeeks,
+                frequencyType: apt.frequencyType,
+                frequencyValue: apt.frequencyValue,
+                allFields: Object.keys(apt) // Log tất cả các field
             })));
             
+            // Log từng appointment trước khi gửi
+            appointmentsToCreate.forEach((apt, index) => {
+                console.log(`📤 [BookingPage] Appointment ${index + 1} to send:`, {
+                    id: apt.id,
+                    serviceId: apt.serviceId,
+                    totalAmount: apt.totalAmount,
+                    quantity: apt.quantity,
+                    durationWeeks: apt.durationWeeks,
+                    frequencyType: apt.frequencyType,
+                    frequencyValue: apt.frequencyValue,
+                    promotionId: apt.promotionId,
+                    rawData: apt // Log toàn bộ object
+                });
+            });
+            
             const createdAppointments = await Promise.all(
-                appointmentsToCreate.map(apt => apiService.createAppointment(apt))
+                appointmentsToCreate.map(apt => {
+                    console.log(`📤 [BookingPage] Sending appointment to API:`, JSON.stringify(apt, null, 2));
+                    return apiService.createAppointment(apt);
+                })
             );
             
             console.log('✅ [BookingPage] Appointments created:', createdAppointments.map(apt => ({
@@ -466,8 +618,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 }
             }
 
-            // Process payment
-            const totalAmount = calculateTotal();
+            // Process payment (sử dụng totalAmount đã tính ở trên)
             const result = await apiService.processPayment(
                 createdAppointments[0].id,
                 paymentMethod,
@@ -773,19 +924,28 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white"
                     >
                         <option value="">-- Chọn khung giờ --</option>
-                        {availableTimeSlots.map(time => {
-                            const isBooked = isTimeSlotBooked(time);
-                            return (
-                                <option 
-                                    key={time} 
-                                    value={time}
-                                    disabled={isBooked}
-                                    className={isBooked ? 'text-gray-400' : ''}
-                                >
-                                    {time} {isBooked ? '(Đã đặt)' : ''}
-                                </option>
-                            );
-                        })}
+                        {availableTimeSlots
+                            .filter(time => {
+                                // Chỉ hiển thị time slots đã đặt hoặc không bị chặn
+                                // Ẩn các time slots bị chặn (nhưng chưa đặt)
+                                const isBooked = isTimeSlotBooked(time);
+                                const isBlocked = isTimeSlotBlocked(time);
+                                // Hiển thị nếu: đã đặt HOẶC không bị chặn
+                                return isBooked || !isBlocked;
+                            })
+                            .map(time => {
+                                const isBooked = isTimeSlotBooked(time);
+                                return (
+                                    <option 
+                                        key={time} 
+                                        value={time}
+                                        disabled={isBooked}
+                                        className={isBooked ? 'text-gray-400' : ''}
+                                    >
+                                        {time} {isBooked ? '(Đã đặt)' : ''}
+                                    </option>
+                                );
+                            })}
                     </select>
                 )}
                 {selectedDate && (() => {
@@ -829,12 +989,67 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
     const renderStep3 = () => {
         const servicesTotal = selectedServices.reduce((sum, { service, quantity }) => sum + (service.price * quantity), 0);
-        const discount = selectedPromotion ? 
+        
+        // Calculate tier discount (based on membership tier)
+        const tierDiscount = tierInfo && tierInfo.discountPercent > 0 
+            ? servicesTotal * (tierInfo.discountPercent / 100)
+            : 0;
+        
+        // Debug logging and fetch tierInfo if missing
+        if (tierInfo) {
+            console.log('🔍 Tier Info in renderStep3:', {
+                tierInfo,
+                discountPercent: tierInfo.discountPercent,
+                servicesTotal,
+                tierDiscount
+            });
+        } else {
+            console.log('⚠️ Tier Info is null in renderStep3', {
+                currentUser: currentUser?.id,
+                hasCurrentUser: !!currentUser
+            });
+            // Try to fetch tierInfo if we have currentUser but no tierInfo
+            if (currentUser && currentUser.id) {
+                console.log('🔄 Attempting to fetch tierInfo in renderStep3...');
+                apiService.getUserTier(currentUser.id)
+                    .then(tier => {
+                        console.log('✅ Tier info fetched in renderStep3:', tier);
+                        setTierInfo(tier);
+                    })
+                    .catch(error => {
+                        console.error('❌ Error fetching tierInfo in renderStep3:', error);
+                    });
+            }
+        }
+        
+        // Calculate promotion discount
+        // IMPORTANT: Promotion discount should be calculated from servicesTotal (original price), not from servicesTotal - tierDiscount
+        // FIX: Parse discountValue to number to avoid string concatenation
+        const promotionDiscount = selectedPromotion ? 
             (selectedPromotion.discountType === 'percentage' 
-                ? servicesTotal * (selectedPromotion.discountValue / 100)
-                : selectedPromotion.discountValue
+                ? servicesTotal * (parseFloat(selectedPromotion.discountValue?.toString() || '0') / 100)
+                : parseFloat(selectedPromotion.discountValue?.toString() || '0')
             ) : 0;
-        const total = Math.max(0, servicesTotal - discount);
+        
+        // Total discount is tier discount + promotion discount
+        const totalDiscount = tierDiscount + promotionDiscount;
+        const total = Math.max(0, servicesTotal - totalDiscount);
+
+        // Debug logging
+        console.log('💰 [CALCULATE TOTAL]', {
+            servicesTotal,
+            tierDiscount,
+            promotionDiscount,
+            totalDiscount,
+            total,
+            selectedPromotion: selectedPromotion ? {
+                id: selectedPromotion.id,
+                code: selectedPromotion.code,
+                discountType: selectedPromotion.discountType,
+                discountValue: selectedPromotion.discountValue,
+                discountValueType: typeof selectedPromotion.discountValue
+            } : null
+        });
 
         return (
             <div className="max-w-2xl mx-auto">
@@ -1012,17 +1227,18 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                         // Only show if user hasn't used this service before
                                         if (!currentUser) return false;
                                         
-                                        // Check if user has used any of the selected services
-                                        // For new client promotions, check each service individually
-                                        const hasUsedAnySelectedService = selectedServiceIds.some(serviceId => {
+                                        // Check if user has booked any of the selected services
+                                        // QUAN TRỌNG: Kiểm tra bất kỳ status nào trừ 'cancelled' (giống logic backend)
+                                        // Logic: Voucher "Khách hàng mới" chỉ được dùng 1 lần cho 1 dịch vụ mà khách chưa đặt lịch dịch vụ đó lần nào
+                                        const hasBookedAnySelectedService = selectedServiceIds.some(serviceId => {
                                             return userAppointments.some(apt => 
                                                 apt.serviceId === serviceId && 
-                                                apt.status === 'completed'
+                                                apt.status !== 'cancelled' // Bất kỳ status nào trừ cancelled
                                             );
                                         });
                                         
-                                        // If user has used any selected service, don't show new client promotion
-                                        if (hasUsedAnySelectedService) return false;
+                                        // If user has booked any selected service, don't show new client promotion
+                                        if (hasBookedAnySelectedService) return false;
                                         
                                         // For new client promotions with specific services, 
                                         // we already checked applicableServiceIds above
@@ -1102,17 +1318,32 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                     return true;
                                 });
                                 
-                                // Combine all lists: applicable promotions, public promotions, and redeemed vouchers
+                                // Combine all lists: applicable promotions (from API with userId+serviceId - already filtered by backend), 
+                                // public promotions (filtered by frontend), and redeemed vouchers
+                                // QUAN TRỌNG: Ưu tiên sử dụng filteredApplicablePromotions vì đã được backend filter chính xác
                                 const allAvailablePromotions = [
-                                    ...filteredApplicablePromotions,
-                                    ...filteredPromotions,
+                                    ...filteredApplicablePromotions, // Đã được backend filter với userId + serviceId
+                                    ...filteredPromotions.filter(p => {
+                                        // Chỉ thêm promotions từ promotions state nếu chưa có trong applicablePromotions
+                                        // (để tránh duplicate và đảm bảo logic backend được áp dụng)
+                                        return !filteredApplicablePromotions.some(ap => ap.id === p.id || ap.code === p.code);
+                                    }),
                                     ...filteredRedeemedVouchers
                                 ];
                                 
-                                // Remove duplicates by code
-                                const uniquePromotions = Array.from(
-                                    new Map(allAvailablePromotions.map(p => [p.code, p])).values()
-                                );
+                                // Remove duplicates by code (ưu tiên giữ promotion từ applicablePromotions)
+                                const uniquePromotionsMap = new Map<string, Promotion>();
+                                // Thêm applicablePromotions trước (ưu tiên)
+                                filteredApplicablePromotions.forEach(p => {
+                                    if (p.code) uniquePromotionsMap.set(p.code, p);
+                                });
+                                // Thêm các promotions khác nếu chưa có
+                                [...filteredPromotions, ...filteredRedeemedVouchers].forEach(p => {
+                                    if (p.code && !uniquePromotionsMap.has(p.code)) {
+                                        uniquePromotionsMap.set(p.code, p);
+                                    }
+                                });
+                                const uniquePromotions = Array.from(uniquePromotionsMap.values());
                                 
                                 return uniquePromotions.map((promo: any) => (
                                     <option key={promo.id} value={promo.code}>
@@ -1147,15 +1378,28 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 </div>
 
                 <div className="bg-white border border-gray-300 rounded-lg p-4 mb-6">
+                    <div className="space-y-2">
                     <div className="flex justify-between text-lg">
+                            <span className="font-semibold">Tổng dịch vụ:</span>
+                            <span className="font-semibold">{formatPrice(servicesTotal)}</span>
+                        </div>
+                        {tierInfo && tierInfo.discountPercent > 0 && tierDiscount > 0 && (
+                            <div className="flex justify-between text-sm text-green-600">
+                                <span>Giảm giá hạng thành viên ({tierInfo.currentTier?.name || ''} - {tierInfo.discountPercent}%):</span>
+                                <span className="font-semibold">-{formatPrice(tierDiscount)}</span>
+                            </div>
+                        )}
+                        {promotionDiscount > 0 && (
+                            <div className="flex justify-between text-sm text-green-600">
+                                <span>Giảm giá khuyến mãi:</span>
+                                <span className="font-semibold">-{formatPrice(promotionDiscount)}</span>
+                            </div>
+                        )}
+                        <div className="border-t pt-2 flex justify-between text-lg">
                         <span className="font-semibold">Tổng cộng:</span>
                         <span className="font-bold text-amber-600">{formatPrice(total)}</span>
                     </div>
-                    {discount > 0 && (
-                        <p className="text-sm text-green-600 text-right mt-1">
-                            Đã giảm: {formatPrice(discount)}
-                        </p>
-                    )}
+                    </div>
                 </div>
 
                 <div className="flex justify-between">

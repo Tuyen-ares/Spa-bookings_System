@@ -20,6 +20,8 @@ module.exports = {
         gender: 'Nữ',
         role: 'Admin',
         status: 'Active',
+        isEmailVerified: true,
+        emailVerificationToken: null,
         lastLogin: new Date(),
       },
       {
@@ -34,6 +36,8 @@ module.exports = {
         gender: 'Nam',
         role: 'Staff',
         status: 'Active',
+        isEmailVerified: true,
+        emailVerificationToken: null,
         lastLogin: new Date(),
       },
       // Technicians
@@ -49,6 +53,8 @@ module.exports = {
         gender: 'Nữ',
         role: 'Staff',
         status: 'Active',
+        isEmailVerified: true,
+        emailVerificationToken: null,
         lastLogin: new Date(),
       },
       {
@@ -63,6 +69,8 @@ module.exports = {
         gender: 'Nam',
         role: 'Staff',
         status: 'Active',
+        isEmailVerified: true,
+        emailVerificationToken: null,
         lastLogin: new Date(),
       },
       // Receptionist
@@ -78,6 +86,8 @@ module.exports = {
         gender: 'Nữ',
         role: 'Staff',
         status: 'Active',
+        isEmailVerified: true,
+        emailVerificationToken: null,
         lastLogin: new Date(),
       },
       // Clients
@@ -93,6 +103,8 @@ module.exports = {
         gender: 'Nữ',
         role: 'Client',
         status: 'Active',
+        isEmailVerified: true,
+        emailVerificationToken: null,
         lastLogin: new Date('2024-07-20T10:00:00.000Z'),
       },
       {
@@ -107,6 +119,8 @@ module.exports = {
         gender: 'Nam',
         role: 'Client',
         status: 'Active',
+        isEmailVerified: true,
+        emailVerificationToken: null,
         lastLogin: new Date(),
       },
       {
@@ -121,6 +135,8 @@ module.exports = {
         gender: 'Nữ',
         role: 'Client',
         status: 'Active',
+        isEmailVerified: true,
+        emailVerificationToken: null,
         lastLogin: new Date(),
       },
       {
@@ -135,6 +151,24 @@ module.exports = {
         gender: 'Nam',
         role: 'Client',
         status: 'Active',
+        isEmailVerified: true,
+        emailVerificationToken: null,
+        lastLogin: new Date(),
+      },
+      {
+        id: 'user-client-5',
+        name: 'Nguyễn Thị Lan',
+        email: 'client5@spa.vn',
+        password: hashedPassword,
+        phone: '0905556666',
+        profilePictureUrl: 'https://picsum.photos/seed/C005/200',
+        joinDate: '2024-06-15',
+        birthday: '1997-08-20',
+        gender: 'Nữ',
+        role: 'Client',
+        status: 'Active',
+        isEmailVerified: true,
+        emailVerificationToken: null,
         lastLogin: new Date(),
       },
     ];

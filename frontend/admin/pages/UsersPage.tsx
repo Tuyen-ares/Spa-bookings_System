@@ -158,19 +158,19 @@ const UserDetailsModal: React.FC<{ user: User; onClose: () => void; allTiers: Ti
     }, [user.id, user.role]);
 
 
-    // Calculate tier from wallet points since tierLevel is not in users table
+    // Calculate tier from wallet totalSpent (money spent), not points
     const userTier = useMemo(() => {
         if (!userWallet || user.role !== 'Client') return null;
-        const userPoints = userWallet.points || 0;
-        const sortedTiers = [...allTiers].sort((a, b) => (a.pointsRequired || 0) - (b.pointsRequired || 0));
-        let tierLevel = 1; // Default to tier 1
-        for (let i = sortedTiers.length - 1; i >= 0; i--) {
-            if (userPoints >= (sortedTiers[i].pointsRequired || 0)) {
-                tierLevel = sortedTiers[i].level;
+        const totalSpent = parseFloat(userWallet.totalSpent?.toString() || '0') || 0;
+        const sortedTiers = [...allTiers].sort((a, b) => (b.minSpendingRequired || 0) - (a.minSpendingRequired || 0));
+        let tierLevel = 0; // Default to tier 0 (Thành viên)
+        for (const tier of sortedTiers) {
+            if (totalSpent >= (tier.minSpendingRequired || 0)) {
+                tierLevel = tier.level;
                 break;
             }
         }
-        return allTiers.find(t => t.level === tierLevel) || allTiers[0];
+        return allTiers.find(t => t.level === tierLevel) || allTiers.find(t => t.level === 0) || allTiers[0];
     }, [userWallet, user.role, allTiers]);
 
 

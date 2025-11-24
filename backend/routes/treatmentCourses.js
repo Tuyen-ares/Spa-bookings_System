@@ -120,7 +120,57 @@ router.get('/:id', async (req, res) => {
             return res.status(404).json({ message: 'Treatment course not found' });
         }
 
-        res.json(course);
+        // Nếu totalAmount chưa có hoặc paymentStatus chưa đúng, thử lấy từ Payment record
+        // Best practice: Kiểm tra và đồng bộ từ Payment để đảm bảo data chính xác
+        try {
+            // Tìm Payment record liên quan đến treatment course này
+            const sessions = await db.TreatmentSession.findAll({
+                where: { treatmentCourseId: course.id },
+                attributes: ['appointmentId']
+            });
+            
+            const appointmentIds = sessions
+                .map(s => s.appointmentId)
+                .filter(id => id !== null);
+            
+            if (appointmentIds.length > 0) {
+                // Tìm Payment record với appointmentId trong danh sách, status = Completed
+                const payment = await db.Payment.findOne({
+                    where: {
+                        appointmentId: { [Op.in]: appointmentIds },
+                        status: 'Completed'
+                    },
+                    order: [['date', 'DESC']] // Lấy payment mới nhất
+                });
+                
+                if (payment && payment.amount) {
+                    const paymentAmount = parseFloat(payment.amount);
+                    const currentTotalAmount = course.totalAmount ? parseFloat(course.totalAmount) : null;
+                    
+                    // Nếu totalAmount chưa có hoặc khác với payment amount, cập nhật
+                    if (!currentTotalAmount || currentTotalAmount === 0 || currentTotalAmount !== paymentAmount) {
+                        await course.update({ 
+                            totalAmount: paymentAmount,
+                            paymentStatus: 'Paid' // Đồng bộ payment status nếu có payment Completed
+                        });
+                        // Reload để có data mới nhất
+                        await course.reload();
+                        console.log(`✅ [TREATMENT COURSE GET] Updated totalAmount from Payment: ${paymentAmount} VND (was: ${currentTotalAmount || 'null'}) for course ${course.id}`);
+                    }
+                }
+            }
+        } catch (updateError) {
+            console.error('Error updating totalAmount from Payment:', updateError);
+            // Không fail request nếu update thất bại
+        }
+
+        // Đảm bảo totalAmount được trả về đúng định dạng
+        const courseData = course.toJSON();
+        if (courseData.totalAmount !== null && courseData.totalAmount !== undefined) {
+            courseData.totalAmount = parseFloat(courseData.totalAmount);
+        }
+
+        res.json(courseData);
     } catch (error) {
         console.error('Error fetching course details:', error);
         res.status(500).json({ message: 'Error fetching course details', error: error.message });
@@ -325,17 +375,145 @@ router.put('/:id/complete-session', async (req, res) => {
 router.put('/:id/confirm-payment', async (req, res) => {
     try {
         const { id } = req.params;
-        const course = await db.TreatmentCourse.findByPk(id);
+        const course = await db.TreatmentCourse.findByPk(id, {
+            include: [{
+                model: db.Service,
+                required: false
+            }]
+        });
         
         if (!course) {
             return res.status(404).json({ message: 'Treatment course not found' });
         }
 
+        // Dùng số tiền thực tế đã lưu khi đặt lịch (sau giảm giá/voucher), nếu không có thì tính từ service price
+        const totalAmount = course.totalAmount 
+            ? parseFloat(course.totalAmount.toString()) 
+            : (course.Service ? parseFloat(course.Service.price) * course.totalSessions : 0);
+
         // Update payment status to Paid
         await course.update({ paymentStatus: 'Paid' });
+
+        // Đồng bộ payment status cho tất cả appointments liên quan đến treatment course này
+        try {
+            const sessions = await db.TreatmentSession.findAll({
+                where: { treatmentCourseId: course.id },
+                attributes: ['appointmentId']
+            });
+            
+            const appointmentIds = sessions
+                .map(s => s.appointmentId)
+                .filter(id => id !== null);
+            
+            if (appointmentIds.length > 0) {
+                await db.Appointment.update(
+                    { paymentStatus: 'Paid' },
+                    { where: { id: { [Op.in]: appointmentIds } } }
+                );
+                console.log(`✅ Synchronized payment status to 'Paid' for ${appointmentIds.length} appointments`);
+            }
+        } catch (syncError) {
+            console.error('Error synchronizing payment status to appointments:', syncError);
+            // Don't fail payment confirmation if sync fails
+        }
+
+        // Kiểm tra xem đã có Payment record Completed cho treatment course này chưa (tránh tạo duplicate)
+        const existingPayment = await db.Payment.findOne({
+            where: {
+                userId: course.clientId,
+                serviceName: course.serviceName,
+                amount: totalAmount,
+                status: 'Completed',
+                transactionId: { [Op.like]: `TC-${id}-%` } // Tìm payment có transactionId bắt đầu bằng TC-{id}-
+            },
+            order: [['date', 'DESC']]
+        });
+
+        let payment;
+        if (existingPayment) {
+            console.log(`⚠️ [TREATMENT COURSE PAYMENT] Payment already exists for this course, using existing payment: ${existingPayment.id}`);
+            payment = existingPayment;
+        } else {
+            // Tạo Payment record mới để cập nhật doanh thu và wallet
+            // Lấy appointmentId đầu tiên từ TreatmentSession (nếu có) để link payment với appointment
+            const firstSession = await db.TreatmentSession.findOne({
+                where: { treatmentCourseId: course.id },
+                attributes: ['appointmentId'],
+                order: [['sessionNumber', 'ASC']]
+            });
+            
+            payment = await db.Payment.create({
+                id: `pay-${uuidv4()}`,
+                appointmentId: firstSession?.appointmentId || null, // Link với appointment đầu tiên nếu có
+                userId: course.clientId,
+                serviceName: course.serviceName,
+                amount: totalAmount,
+                method: 'Cash', // Mặc định là Cash khi admin xác nhận
+                status: 'Completed', // Đã thanh toán - để cập nhật TỔNG DOANH THU
+                date: new Date().toISOString(),
+                transactionId: `TC-${id}-${Date.now()}`
+            });
+            
+            console.log(`✅ [TREATMENT COURSE PAYMENT] Created new Payment record:`, {
+                paymentId: payment.id,
+                amount: totalAmount,
+                userId: course.clientId,
+                appointmentId: payment.appointmentId,
+                status: 'Completed'
+            });
+        }
+
+        // Cập nhật wallet: thêm points và totalSpent (chỉ nếu payment mới được tạo)
+        if (!existingPayment) {
+            try {
+                const wallet = await db.Wallet.findOne({ where: { userId: course.clientId } });
+                if (wallet) {
+                    const pointsEarned = Math.floor(totalAmount / 1000);
+                    const currentPoints = wallet.points || 0;
+                    const currentTotalSpent = parseFloat(wallet.totalSpent?.toString() || '0');
+                    const newTotalSpent = currentTotalSpent + totalAmount;
+                    
+                    // Cập nhật wallet với points và totalSpent mới
+                    await wallet.update({
+                        points: currentPoints + pointsEarned,
+                        totalSpent: newTotalSpent,
+                        lastUpdated: new Date()
+                    });
+
+                    // Cập nhật tier level dựa trên totalSpent mới
+                    const { calculateTierInfo } = require('../utils/tierUtils');
+                    const tierInfo = calculateTierInfo(newTotalSpent);
+                    await wallet.update({ tierLevel: tierInfo.currentTier.level });
+
+                    console.log(`✅ [TREATMENT COURSE PAYMENT] Wallet updated:`, {
+                        pointsEarned: pointsEarned,
+                        oldPoints: currentPoints,
+                        newPoints: currentPoints + pointsEarned,
+                        oldTotalSpent: currentTotalSpent,
+                        newTotalSpent: newTotalSpent,
+                        oldTierLevel: wallet.tierLevel,
+                        newTierLevel: tierInfo.currentTier.level
+                    });
+                } else {
+                    console.log(`⚠️ [TREATMENT COURSE PAYMENT] Wallet not found for user ${course.clientId}`);
+                }
+            } catch (walletError) {
+                console.error('❌ [TREATMENT COURSE PAYMENT] Error updating wallet:', walletError);
+                // Don't fail payment if wallet update fails
+            }
+        } else {
+            console.log(`⚠️ [TREATMENT COURSE PAYMENT] Payment already exists, skipping wallet update to avoid double counting`);
+        }
         
-        console.log(`✅ Confirmed payment for treatment course ${id}`);
-        res.json({ course, message: 'Payment confirmed successfully' });
+        console.log(`✅ [TREATMENT COURSE PAYMENT] Confirmed payment for treatment course ${id}:`, {
+            courseId: id,
+            totalAmount: totalAmount,
+            paymentId: payment.id,
+            paymentStatus: payment.status,
+            paymentAmount: payment.amount
+        });
+        
+        res.json({ course, payment, message: 'Payment confirmed successfully' });
     } catch (error) {
         console.error('Error confirming payment:', error);
         res.status(500).json({ message: 'Error confirming payment', error: error.message });

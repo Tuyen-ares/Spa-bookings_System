@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import type { User } from '../../types';
-import { ChevronDownIcon, MenuIcon, SearchIcon } from '../../shared/icons';
+import { ChevronDownIcon, MenuIcon, SearchIcon, ProfileIcon } from '../../shared/icons';
 import { AdminNotificationBell } from './AdminNotificationBell';
 
 interface AdminHeaderProps {
@@ -56,11 +56,9 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({ currentUser, onLogout, toggle
                         aria-haspopup="true"
                         aria-expanded={isMenuOpen}
                     >
-                        <img
-                            className="w-10 h-10 rounded-full object-cover ring-2 ring-gray-200"
-                            src={currentUser.profilePictureUrl}
-                            alt={currentUser.name}
-                        />
+                        <div className="w-10 h-10 rounded-full bg-gray-200 ring-2 ring-gray-200 flex items-center justify-center">
+                                <ProfileIcon className="w-6 h-6 text-gray-400" />
+                            </div>
                         <span className="hidden md:inline">{currentUser.name}</span>
                         <ChevronDownIcon className={`w-5 h-5 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} />
                     </button>
@@ -84,3 +82,4 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({ currentUser, onLogout, toggle
 };
 
 export default AdminHeader;
+

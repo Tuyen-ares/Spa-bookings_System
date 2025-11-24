@@ -381,21 +381,47 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
                 <h2 className="text-3xl font-serif font-bold text-brand-dark text-center mb-10">Đánh giá từ khách hàng</h2>
                 {serviceReviews.length > 0 ? (
                     <div className="max-w-4xl mx-auto space-y-8">
-                        {serviceReviews.map((review: Review) => (
-                            <div key={review.id} className="bg-white p-6 rounded-lg shadow-md flex items-start space-x-4">
-                                <img src={review.userImageUrl} alt={review.userName} className="w-14 h-14 rounded-full flex-shrink-0" />
-                                <div>
-                                    <div className="flex items-center mb-1">
-                                        <h4 className="font-bold text-brand-dark mr-2">{review.userName}</h4>
-                                        <div className="flex text-yellow-400">
-                                            {[...Array(review.rating)].map((_, i) => <StarIcon key={i} className="w-4 h-4"/>)}
+                        {serviceReviews.map((review: Review) => {
+                            // Check if this is the current user's review
+                            const isMyReview = currentUser && review.userId === currentUser.id;
+                            
+                            return (
+                                <div 
+                                    key={review.id} 
+                                    className={`p-6 rounded-lg shadow-md flex items-start space-x-4 ${
+                                        isMyReview 
+                                            ? 'bg-amber-50 border-2 border-amber-400' 
+                                            : 'bg-white'
+                                    }`}
+                                >
+                                    <img src={review.userImageUrl} alt={review.userName} className="w-14 h-14 rounded-full flex-shrink-0" />
+                                    <div className="flex-1">
+                                        <div className="flex items-center mb-1">
+                                            <h4 className="font-bold text-brand-dark mr-2">
+                                                {review.userName}
+                                                {isMyReview && (
+                                                    <span className="ml-2 text-xs px-2 py-1 bg-amber-200 text-amber-800 rounded-full font-semibold">
+                                                        Đánh giá của bạn
+                                                    </span>
+                                                )}
+                                            </h4>
+                                            <div className="flex text-yellow-400">
+                                                {[...Array(5)].map((_, i) => (
+                                                    <StarIcon 
+                                                        key={i} 
+                                                        className={`w-4 h-4 ${i < review.rating ? 'fill-current' : 'text-gray-300'}`}
+                                                    />
+                                                ))}
+                                            </div>
                                         </div>
+                                        <p className="text-sm text-gray-500 mb-2">{new Date(review.date).toLocaleDateString('vi-VN')}</p>
+                                        {review.comment && (
+                                            <p className="text-brand-text italic">"{review.comment}"</p>
+                                        )}
                                     </div>
-                                    <p className="text-sm text-gray-500 mb-2">{new Date(review.date).toLocaleDateString('vi-VN')}</p>
-                                    <p className="text-brand-text italic">"{review.comment}"</p>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 ) : (
                     <p className="text-center text-brand-text">Chưa có đánh giá nào cho dịch vụ này.</p>

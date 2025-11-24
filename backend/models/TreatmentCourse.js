@@ -76,6 +76,12 @@ module.exports = (sequelize) => {
       defaultValue: 'Unpaid',
       comment: 'Trạng thái thanh toán (Đã thanh toán, Chưa thanh toán)',
     },
+    totalAmount: {
+      type: DataTypes.DECIMAL(15, 2),
+      allowNull: true,
+      defaultValue: null,
+      comment: 'Tổng số tiền thực tế khi khách đặt lịch (sau khi áp dụng giảm giá/voucher)',
+    },
     notes: {
       type: DataTypes.TEXT,
       allowNull: true,

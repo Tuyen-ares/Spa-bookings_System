@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import type { User } from '../../types';
-import { ChevronDownIcon, BellIcon, SearchIcon, MenuIcon, SunIcon, MoonIcon } from '../../shared/icons';
+import { ChevronDownIcon, BellIcon, SearchIcon, MenuIcon, SunIcon, MoonIcon, ProfileIcon } from '../../shared/icons';
 
 interface StaffHeaderProps {
     currentUser: User;
@@ -78,11 +78,9 @@ const StaffHeader: React.FC<StaffHeaderProps> = ({ currentUser, onLogout, toggle
                         aria-haspopup="true"
                         aria-expanded={isMenuOpen}
                     >
-                        <img
-                            className="w-10 h-10 rounded-full object-cover ring-2 ring-gray-200 dark:ring-gray-600"
-                            src={currentUser.profilePictureUrl}
-                            alt={currentUser.name}
-                        />
+                        <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-600 ring-2 ring-gray-200 dark:ring-gray-600 flex items-center justify-center">
+                            <ProfileIcon className="w-6 h-6 text-gray-400 dark:text-gray-300" />
+                            </div>
                         <span className="hidden md:inline">{currentUser.name}</span>
                         <ChevronDownIcon className={`w-5 h-5 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} />
                     </button>
@@ -110,3 +108,4 @@ const StaffHeader: React.FC<StaffHeaderProps> = ({ currentUser, onLogout, toggle
 };
 
 export default StaffHeader;
+

@@ -37,6 +37,83 @@ const notifyAdmins = async (type, title, message, relatedId = null) => {
     }
 };
 
+// Helper function to sync TreatmentCourse payment status and totalAmount from Payment
+// Sử dụng transaction để đảm bảo tính nhất quán dữ liệu (best practice từ StackOverflow)
+const syncTreatmentCourseFromPayment = async (appointmentId, paymentAmount) => {
+    const transaction = await db.sequelize.transaction();
+    try {
+        console.log(`\n🔄 [SYNC TREATMENT COURSE] Starting sync for appointment ${appointmentId}, paymentAmount: ${paymentAmount}`);
+        
+        // Tìm TreatmentSession có appointmentId này
+        const treatmentSession = await db.TreatmentSession.findOne({
+            where: { appointmentId: appointmentId },
+            transaction: transaction
+        });
+        
+        if (!treatmentSession || !treatmentSession.treatmentCourseId) {
+            console.log(`ℹ️ [SYNC TREATMENT COURSE] No treatment session found for appointment ${appointmentId} - appointment may not be part of a treatment course`);
+            await transaction.rollback();
+            return;
+        }
+        
+        console.log(`✅ [SYNC TREATMENT COURSE] Found treatment session: ${treatmentSession.id}, treatmentCourseId: ${treatmentSession.treatmentCourseId}`);
+        
+        const treatmentCourse = await db.TreatmentCourse.findByPk(treatmentSession.treatmentCourseId, {
+            transaction: transaction
+        });
+        
+        if (!treatmentCourse) {
+            console.log(`⚠️ [SYNC TREATMENT COURSE] Treatment course ${treatmentSession.treatmentCourseId} not found`);
+            await transaction.rollback();
+            return;
+        }
+        
+        const amount = parseFloat(paymentAmount) || 0;
+        const currentTotalAmount = treatmentCourse.totalAmount ? parseFloat(treatmentCourse.totalAmount) : null;
+        const currentPaymentStatus = treatmentCourse.paymentStatus;
+        
+        console.log(`📊 [SYNC TREATMENT COURSE] Current state:`, {
+            treatmentCourseId: treatmentCourse.id,
+            currentTotalAmount: currentTotalAmount,
+            currentPaymentStatus: currentPaymentStatus,
+            newTotalAmount: amount,
+            newPaymentStatus: 'Paid'
+        });
+        
+        // Cập nhật payment status và totalAmount của treatment course
+        const updateData = {
+            paymentStatus: 'Paid'
+        };
+        
+        // Cập nhật totalAmount từ payment amount (số tiền thực tế đã thanh toán)
+        if (amount > 0) {
+            // Luôn cập nhật totalAmount từ payment amount để đảm bảo đồng bộ
+            updateData.totalAmount = amount;
+            console.log(`💰 [SYNC TREATMENT COURSE] Will update: paymentStatus='Paid', totalAmount=${amount} VND (was: ${currentTotalAmount || 'null'})`);
+        } else {
+            console.log(`⚠️ [SYNC TREATMENT COURSE] Payment amount is 0 or invalid, skipping totalAmount update`);
+        }
+        
+        // Cập nhật với transaction
+        await treatmentCourse.update(updateData, { transaction: transaction });
+        
+        // Commit transaction
+        await transaction.commit();
+        
+        // Verify update
+        await treatmentCourse.reload();
+        console.log(`✅ [SYNC TREATMENT COURSE] Treatment course ${treatmentCourse.id} updated successfully:`, {
+            paymentStatus: treatmentCourse.paymentStatus,
+            totalAmount: treatmentCourse.totalAmount
+        });
+    } catch (error) {
+        await transaction.rollback();
+        console.error('❌ [SYNC TREATMENT COURSE] Error syncing treatment course from payment:', error);
+        console.error('Error stack:', error.stack);
+        // Không throw error - không fail payment nếu sync treatment course thất bại
+    }
+};
+
 // GET /api/payments - Get all payments (Admin)
 router.get('/', async (req, res) => {
     try {
@@ -196,7 +273,14 @@ router.put('/:id/complete', async (req, res) => {
                         totalSpent: currentTotalSpent + amount,
                         lastUpdated: new Date()
                     });
-                    console.log(`✅ [COMPLETE PAYMENT] Wallet updated: +${pointsEarned} points, total: ${currentPoints + pointsEarned} points`);
+
+                    // Cập nhật tier level dựa trên totalSpent mới
+                    const { calculateTierInfo } = require('../utils/tierUtils');
+                    const newTotalSpent = currentTotalSpent + amount;
+                    const tierInfo = calculateTierInfo(newTotalSpent);
+                    await wallet.update({ tierLevel: tierInfo.currentTier.level });
+
+                    console.log(`✅ [COMPLETE PAYMENT] Wallet updated: +${pointsEarned} points, total: ${currentPoints + pointsEarned} points, totalSpent: ${newTotalSpent}, tierLevel: ${tierInfo.currentTier.level}`);
                     console.log(`   Payment ID: ${payment.id}, Amount: ${amount} VND, Old Status: ${oldStatus}`);
                 }
             } catch (walletError) {
@@ -510,6 +594,9 @@ router.get('/vnpay-return', async (req, res) => {
             // Update appointment payment status and set status to 'pending' (awaiting admin confirmation)
             // Also update all appointments in the same booking group
             if (payment.appointmentId) {
+                console.log(`\n🔄 [VNPay RETURN] Processing appointment ${payment.appointmentId} for payment ${payment.id}`);
+                console.log(`   Payment amount: ${payment.amount} VND`);
+                
                 const appointment = await db.Appointment.findByPk(payment.appointmentId);
                 if (appointment) {
                     // Update the appointment that has this payment
@@ -517,7 +604,7 @@ router.get('/vnpay-return', async (req, res) => {
                         paymentStatus: 'Paid',
                         status: 'pending' // Set to pending to await admin confirmation
                     });
-                    console.log('Appointment payment status updated to Paid, status set to pending (awaiting confirmation)');
+                    console.log('✅ [VNPay RETURN] Appointment payment status updated to Paid, status set to pending (awaiting confirmation)');
                     
                     // If this appointment has a bookingGroupId, update all appointments in the same group
                     if (appointment.bookingGroupId) {
@@ -530,7 +617,7 @@ router.get('/vnpay-return', async (req, res) => {
                                 where: { bookingGroupId: appointment.bookingGroupId }
                             }
                         );
-                        console.log(`Updated all appointments in booking group ${appointment.bookingGroupId} to Paid and pending status`);
+                        console.log(`✅ [VNPay RETURN] Updated all appointments in booking group ${appointment.bookingGroupId} to Paid and pending status`);
                     }
                     
                     // Record promotion usage if appointment has promotionId
@@ -560,15 +647,24 @@ router.get('/vnpay-return', async (req, res) => {
                                     appointmentId: appointment.id,
                                     serviceId: appointment.serviceId,
                                 });
-                                console.log(`Recorded promotion usage for public promotion ${appointment.promotionId}`);
+                                console.log(`✅ [VNPay RETURN] Recorded promotion usage for public promotion ${appointment.promotionId}`);
                             } else {
-                                console.log(`Skipping PromotionUsage creation for redeemed voucher ${appointment.promotionId} - already handled during appointment creation`);
+                                console.log(`ℹ️ [VNPay RETURN] Skipping PromotionUsage creation for redeemed voucher ${appointment.promotionId} - already handled during appointment creation`);
                             }
                         } else {
-                            console.log(`PromotionUsage already exists for promotion ${appointment.promotionId} and appointment ${appointment.id}`);
+                            console.log(`ℹ️ [VNPay RETURN] PromotionUsage already exists for promotion ${appointment.promotionId} and appointment ${appointment.id}`);
                         }
                     }
+                    
+                    // QUAN TRỌNG: Đồng bộ payment status và totalAmount với TreatmentCourse
+                    console.log(`\n🔄 [VNPay RETURN] Calling syncTreatmentCourseFromPayment for appointment ${appointment.id}, payment amount: ${payment.amount}`);
+                    await syncTreatmentCourseFromPayment(appointment.id, payment.amount);
+                    console.log(`✅ [VNPay RETURN] Completed syncTreatmentCourseFromPayment\n`);
+                } else {
+                    console.error(`❌ [VNPay RETURN] Appointment ${payment.appointmentId} not found!`);
                 }
+            } else {
+                console.log(`ℹ️ [VNPay RETURN] Payment ${payment.id} has no appointmentId, skipping appointment and treatment course sync`);
             }
 
             // Note: Frontend uses HashRouter, so URL needs # prefix
@@ -708,6 +804,9 @@ router.post('/vnpay-ipn', async (req, res) => {
             // Update appointment payment status and set status to 'pending' (awaiting admin confirmation)
             // Also update all appointments in the same booking group
             if (payment.appointmentId) {
+                console.log(`\n🔄 [VNPay IPN] Processing appointment ${payment.appointmentId} for payment ${payment.id}`);
+                console.log(`   Payment amount: ${payment.amount} VND`);
+                
                 const appointment = await db.Appointment.findByPk(payment.appointmentId);
                 if (appointment) {
                     // Update the appointment that has this payment
@@ -715,7 +814,7 @@ router.post('/vnpay-ipn', async (req, res) => {
                         paymentStatus: 'Paid',
                         status: 'pending' // Set to pending to await admin confirmation
                     });
-                    console.log('IPN: Appointment payment status updated to Paid, status set to pending (awaiting confirmation)');
+                    console.log('✅ [VNPay IPN] Appointment payment status updated to Paid, status set to pending (awaiting confirmation)');
                     
                     // If this appointment has a bookingGroupId, update all appointments in the same group
                     if (appointment.bookingGroupId) {
@@ -728,9 +827,18 @@ router.post('/vnpay-ipn', async (req, res) => {
                                 where: { bookingGroupId: appointment.bookingGroupId }
                             }
                         );
-                        console.log(`IPN: Updated all appointments in booking group ${appointment.bookingGroupId} to Paid and pending status`);
+                        console.log(`✅ [VNPay IPN] Updated all appointments in booking group ${appointment.bookingGroupId} to Paid and pending status`);
                     }
+                    
+                    // QUAN TRỌNG: Đồng bộ payment status và totalAmount với TreatmentCourse
+                    console.log(`\n🔄 [VNPay IPN] Calling syncTreatmentCourseFromPayment for appointment ${appointment.id}, payment amount: ${payment.amount}`);
+                    await syncTreatmentCourseFromPayment(appointment.id, payment.amount);
+                    console.log(`✅ [VNPay IPN] Completed syncTreatmentCourseFromPayment\n`);
+                } else {
+                    console.error(`❌ [VNPay IPN] Appointment ${payment.appointmentId} not found!`);
                 }
+            } else {
+                console.log(`ℹ️ [VNPay IPN] Payment ${payment.id} has no appointmentId, skipping appointment and treatment course sync`);
             }
 
             return res.json({ RspCode: '00', Message: 'Success' });
