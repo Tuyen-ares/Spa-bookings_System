@@ -46,21 +46,28 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon, change, changeT
     const fontSize = getFontSize(value);
     
     return (
-        <div className="bg-white p-6 rounded-lg shadow-md transition-all hover:shadow-lg hover:-translate-y-1">
-            <div className="flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-500 uppercase">{title}</p>
-                    <p className={`${fontSize} font-bold text-gray-800 mt-1 break-words overflow-hidden`} style={{ wordBreak: 'break-word' }}>
-                        {value}
-                    </p>
+        <div className="group relative overflow-hidden bg-gradient-to-br from-white to-gray-50 p-6 rounded-xl shadow-md transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 border border-gray-100">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-brand-primary/5 to-transparent rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500"></div>
+            <div className="relative z-10">
+                <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">{title}</p>
+                    {icon && <div className="text-brand-primary opacity-20 group-hover:opacity-40 transition-opacity">{icon}</div>}
                 </div>
-            </div>
-            {change && (
-                <p className={`mt-2 text-xs flex items-center ${changeType === 'increase' ? 'text-green-600' : 'text-red-600'}`}>
-                    {/* FIX: Removed ArrowUpIcon and ArrowDownIcon as they are not exported from shared/icons.tsx. The change indicator relies on text and color. */}
-                    {change} so với tháng trước
+                <p className={`${fontSize} font-extrabold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent mt-2 break-words overflow-hidden`} style={{ wordBreak: 'break-word' }}>
+                    {value}
                 </p>
-            )}
+                {change && (
+                    <div className={`mt-3 inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${
+                        changeType === 'increase' 
+                            ? 'bg-green-100 text-green-700' 
+                            : 'bg-red-100 text-red-700'
+                    }`}>
+                        <span className="mr-1">{changeType === 'increase' ? '↑' : '↓'}</span>
+                        {change}
+                    </div>
+                )}
+            </div>
+            <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-brand-primary via-purple-500 to-pink-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500"></div>
         </div>
     );
 };
@@ -486,34 +493,47 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
 
 
     return (
-        <div className="space-y-8">
-            <h1 className="text-3xl font-bold text-gray-800 animate-fadeInDown">Dashboard Tổng Quan</h1>
+        <div className="space-y-8 pb-8">
+            {/* Header with gradient */}
+            <div className="bg-gradient-to-r from-brand-primary via-purple-600 to-pink-500 -mx-6 -mt-6 px-6 pt-6 pb-8 mb-8 rounded-b-3xl shadow-lg">
+                <h1 className="text-4xl font-extrabold text-white animate-fadeInDown drop-shadow-lg">
+                    📊 Dashboard Tổng Quan
+                </h1>
+                <p className="text-white/90 mt-2 text-sm">Quản lý và theo dõi hiệu quả kinh doanh</p>
+            </div>
 
             {/* Revenue Period Selector */}
-            <div className="bg-white p-4 rounded-lg shadow-md flex items-center gap-4">
-                <label className="text-sm font-medium text-gray-700">Hiển thị doanh thu:</label>
+            <div className="bg-gradient-to-r from-white to-gray-50 p-5 rounded-xl shadow-md border border-gray-200 flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-brand-primary to-purple-500 flex items-center justify-center">
+                        <CalendarIcon className="w-6 h-6 text-white" />
+                    </div>
+                    <label className="text-sm font-bold text-gray-700">Hiển thị doanh thu:</label>
+                </div>
                 <select 
                     value={revenuePeriod} 
                     onChange={(e) => setRevenuePeriod(e.target.value as 'total' | 'day' | 'week' | 'month')}
-                    className="px-4 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-brand-primary focus:border-transparent font-medium text-gray-800"
+                    className="px-5 py-2.5 border-2 border-brand-primary/20 rounded-xl bg-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary font-semibold text-gray-800 shadow-sm hover:shadow-md transition-all cursor-pointer"
                 >
                     <option value="total">Tổng (Tất cả thời gian)</option>
                     <option value="day">Hôm nay</option>
                     <option value="week">Tuần này</option>
                     <option value="month">Tháng này</option>
                 </select>
-                <div className="ml-auto text-sm text-gray-600">
-                    {revenuePeriod === 'total' && 'Hiển thị tổng doanh thu từ tất cả thời gian'}
-                    {revenuePeriod === 'day' && `Hiển thị doanh thu ngày ${formatDateDDMMYYYY(now)}`}
-                    {revenuePeriod === 'week' && (() => {
-                        const today = new Date();
-                        const dayOfWeek = today.getDay();
-                        const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-                        const monday = new Date(today);
-                        monday.setDate(today.getDate() - diff);
-                        return `Hiển thị doanh thu tuần (${formatDateDDMMYYYY(monday)} - ${formatDateDDMMYYYY(today)})`;
-                    })()}
-                    {revenuePeriod === 'month' && `Hiển thị doanh thu tháng ${currentMonth + 1}/${currentYear}`}
+                <div className="ml-auto px-4 py-2 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
+                    <p className="text-xs font-semibold text-gray-700">
+                        {revenuePeriod === 'total' && '📊 Hiển thị tổng doanh thu từ tất cả thời gian'}
+                        {revenuePeriod === 'day' && `📅 Hiển thị doanh thu ngày ${formatDateDDMMYYYY(now)}`}
+                        {revenuePeriod === 'week' && (() => {
+                            const today = new Date();
+                            const dayOfWeek = today.getDay();
+                            const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                            const monday = new Date(today);
+                            monday.setDate(today.getDate() - diff);
+                            return `📆 Hiển thị doanh thu tuần (${formatDateDDMMYYYY(monday)} - ${formatDateDDMMYYYY(today)})`;
+                        })()}
+                        {revenuePeriod === 'month' && `🗓️ Hiển thị doanh thu tháng ${currentMonth + 1}/${currentYear}`}
+                    </p>
                 </div>
             </div>
 
@@ -548,8 +568,13 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
                 {/* Main content: Charts & Lists */}
                 <div className="xl:col-span-2 space-y-6">
                     {/* Revenue Section */}
-                    <div className="bg-white p-6 rounded-lg shadow-md opacity-0 animate-fadeInUp" style={{ animationDelay: '600ms' }}>
-                        <h2 className="text-xl font-bold text-gray-800 mb-4">Doanh thu theo khoảng thời gian</h2>
+                    <div className="bg-gradient-to-br from-white via-gray-50 to-white p-6 rounded-2xl shadow-xl border border-gray-200 opacity-0 animate-fadeInUp" style={{ animationDelay: '600ms' }}>
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center shadow-lg">
+                                <CurrencyDollarIcon className="w-6 h-6 text-white" />
+                            </div>
+                            <h2 className="text-2xl font-extrabold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">Doanh thu theo khoảng thời gian</h2>
+                        </div>
 
                         {/* Date Range Selection */}
                         <div className="mb-4">
@@ -576,76 +601,109 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
                         </div>
 
                         {/* Revenue Chart */}
-                        <div className="h-80">
+                        <div className="h-80 bg-white rounded-xl p-4 border border-gray-100">
                             {revenueChartData.length > 0 ? (
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={revenueChartData}>
-                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <defs>
+                                            <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor="#10b981" stopOpacity={0.9}/>
+                                                <stop offset="100%" stopColor="#059669" stopOpacity={0.6}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                                         <XAxis
                                             dataKey="date"
                                             angle={-45}
                                             textAnchor="end"
                                             height={80}
-                                            tick={{ fontSize: 12 }}
+                                            tick={{ fontSize: 11, fill: '#6b7280', fontWeight: 500 }}
                                         />
                                         <YAxis
-                                            tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
-                                            tick={{ fontSize: 12 }}
+                                            tickFormatter={(value) => String(value.toLocaleString())}
+                                            tick={{ fontSize: 11, fill: '#6b7280', fontWeight: 500 }}
                                         />
                                         <Tooltip
                                             formatter={(value: number) => formatCurrency(value)}
                                             labelFormatter={(label) => `Ngày: ${label}`}
+                                            contentStyle={{ 
+                                                backgroundColor: 'white',
+                                                border: '1px solid #e5e7eb',
+                                                borderRadius: '8px',
+                                                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                                            }}
                                         />
-                                        <Legend />
+                                        <Legend 
+                                            wrapperStyle={{ fontWeight: 600, fontSize: '13px' }}
+                                        />
                                         <Bar
                                             dataKey="revenue"
-                                            fill="#10b981"
-                                            name="Doanh thu (VND)"
+                                            fill="url(#revenueGradient)"
+                                            name="Doanh thu (VNĐ)"
+                                            radius={[8, 8, 0, 0]}
                                         />
                                     </BarChart>
                                 </ResponsiveContainer>
                             ) : (
-                                <div className="h-full flex items-center justify-center bg-gray-50 rounded-md text-gray-400 italic">
-                                    {dateError ? 'Vui lòng chọn khoảng thời gian hợp lệ' : 'Chưa có dữ liệu doanh thu trong khoảng thời gian này'}
+                                <div className="h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl text-gray-400">
+                                    <CurrencyDollarIcon className="w-16 h-16 mb-3 opacity-30" />
+                                    <p className="italic font-medium">{dateError ? 'Vui lòng chọn khoảng thời gian hợp lệ' : 'Chưa có dữ liệu doanh thu trong khoảng thời gian này'}</p>
                                 </div>
                             )}
                         </div>
 
                         {/* Total Revenue Summary */}
                         {revenueChartData.length > 0 && !dateError && (
-                            <div className="mt-4 p-4 bg-green-50 rounded-md">
-                                <p className="text-sm text-gray-600">
-                                    <span className="font-semibold">Tổng doanh thu:</span>{' '}
-                                    <span className="text-green-600 font-bold text-lg">
-                                        {formatCurrency(revenueChartData.reduce((sum, item) => sum + item.revenue, 0))}
-                                    </span>
-                                </p>
+                            <div className="mt-6 p-5 bg-gradient-to-r from-green-50 via-emerald-50 to-teal-50 rounded-xl border-2 border-green-200 shadow-md">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center shadow-lg">
+                                            <span className="text-2xl">💰</span>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-gray-600">Tổng doanh thu</p>
+                                            <p className="text-3xl font-extrabold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                                                {formatCurrency(revenueChartData.reduce((sum, item) => sum + item.revenue, 0))}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-xs text-gray-500">Thời gian</p>
+                                        <p className="text-sm font-bold text-gray-700">{startDate} - {endDate}</p>
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
                     {/* Top Services & Retention */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="bg-white p-6 rounded-lg shadow-md opacity-0 animate-fadeInUp" style={{ animationDelay: '700ms' }}>
-                            <h2 className="text-xl font-bold text-gray-800 mb-4">Top 5 Dịch vụ được đặt nhiều nhất</h2>
+                        <div className="bg-gradient-to-br from-white via-blue-50/30 to-white p-6 rounded-2xl shadow-xl border border-gray-200 opacity-0 animate-fadeInUp" style={{ animationDelay: '700ms' }}>
+                            <div className="flex items-center gap-3 mb-5">
+                                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center shadow-lg">
+                                    <TrophyIcon className="w-6 h-6 text-white" />
+                                </div>
+                                <h2 className="text-xl font-extrabold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">Top 5 Dịch vụ phổ biến nhất</h2>
+                            </div>
                             <ul className="space-y-3">
                                 {topServices.map((service, index) => (
-                                    <li key={index} className="flex justify-between items-center text-sm">
-                                        <span className="font-medium text-gray-700">{index + 1}. {service.name}</span>
-                                        <span className="font-bold text-brand-primary">{service.count.toLocaleString()} lượt</span>
+                                    <li key={index} className="flex justify-between items-center p-3 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border border-gray-100">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                                                index === 0 ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white' :
+                                                index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-white' :
+                                                index === 2 ? 'bg-gradient-to-br from-orange-400 to-red-500 text-white' :
+                                                'bg-gradient-to-br from-blue-400 to-indigo-500 text-white'
+                                            }`}>
+                                                {index + 1}
+                                            </div>
+                                            <span className="font-semibold text-gray-700">{service.name}</span>
+                                        </div>
+                                        <span className="font-bold text-brand-primary bg-brand-primary/10 px-3 py-1 rounded-full text-sm">{service.count.toLocaleString()} lượt</span>
                                     </li>
                                 ))}
                             </ul>
                         </div>
                     </div>
-                </div>
-
-                <div className="xl:col-span-1 space-y-6">
-                    {/* Right column: alerts / employee of month / quick actions */}
-                    <div className="bg-white p-6 rounded-lg shadow-md opacity-0 animate-fadeInUp" style={{ animationDelay: '900ms' }}>
-                        <h3 className="text-lg font-bold mb-2">Thông báo & Cảnh báo</h3>
-                        <p className="text-sm text-gray-500">Các thông báo sắp hết hạn và các lịch chưa xác nhận sẽ ở đây.</p>
-                    </div>
-                    <EmployeeOfMonth allUsers={allUsers} allAppointments={allAppointments} />
                 </div>
             </div>
         </div>

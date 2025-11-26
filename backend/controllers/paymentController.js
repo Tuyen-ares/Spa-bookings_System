@@ -61,7 +61,7 @@ class PaymentController {
      */
     async createVNPayUrl(req, res) {
         try {
-            const paymentUrl = paymentService.createVNPayUrl(req.body);
+            const paymentUrl = await paymentService.createVNPayUrl(req.body);
             res.json({ paymentUrl });
         } catch (error) {
             console.error('Error creating VNPay URL:', error);
@@ -77,10 +77,11 @@ class PaymentController {
      */
     async processPayment(req, res) {
         try {
-            const payment = await paymentService.processPayment(req.body);
+            const result = await paymentService.processPayment(req.body);
             res.status(201).json({ 
                 success: true, 
-                payment 
+                payment: result.payment,
+                paymentUrl: result.paymentUrl // Include VNPay URL if exists
             });
         } catch (error) {
             console.error('Error processing payment:', error);

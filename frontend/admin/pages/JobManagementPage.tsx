@@ -34,6 +34,7 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
     const [currentDate, setCurrentDate] = useState(new Date());
     const [filteredStaffId, setFilteredStaffId] = useState('all');
     const [modalContext, setModalContext] = useState<{ staff: User; date: string; shift?: StaffShift } | null>(null);
+    const [appointmentDetailsModal, setAppointmentDetailsModal] = useState<{ staff: User; date: string; appointments: Appointment[] } | null>(null);
     const [showQuickCreate, setShowQuickCreate] = useState(false);
     const [pendingRequests, setPendingRequests] = useState<StaffShift[]>([]);
     const [draggedShift, setDraggedShift] = useState<{ shift: StaffShift; staff: User } | null>(null);
@@ -654,6 +655,82 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                     existingShifts={staffShifts}
                 />
             )}
+
+            {/* Appointment Details Modal */}
+            {appointmentDetailsModal && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setAppointmentDetailsModal(null)}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                        <div className="sticky top-0 bg-gradient-to-r from-brand-primary to-brand-dark text-white p-6 rounded-t-2xl">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h3 className="text-2xl font-bold mb-2">Chi tiết Lịch hẹn</h3>
+                                    <p className="text-white/90 text-sm">
+                                        Nhân viên: <span className="font-semibold">{appointmentDetailsModal.staff.name}</span>
+                                    </p>
+                                    <p className="text-white/90 text-sm">
+                                        Ngày: <span className="font-semibold">{new Date(appointmentDetailsModal.date).toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                                    </p>
+                                </div>
+                                <button onClick={() => setAppointmentDetailsModal(null)} className="text-white hover:bg-white/20 rounded-full p-2 transition-colors">
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="p-6 space-y-4">
+                            {appointmentDetailsModal.appointments.map((apt, idx) => {
+                                const service = allServices.find(s => s.id === apt.serviceId);
+                                const customer = localUsers.find(u => u.id === apt.userId);
+                                
+                                const getStatusBadge = () => {
+                                    switch(apt.status) {
+                                        case 'pending': return <span className="px-2 py-1 text-xs font-bold rounded-full bg-yellow-100 text-yellow-800">Chờ xác nhận</span>;
+                                        case 'upcoming': return <span className="px-2 py-1 text-xs font-bold rounded-full bg-blue-100 text-blue-800">Đã xác nhận</span>;
+                                        case 'in-progress': return <span className="px-2 py-1 text-xs font-bold rounded-full bg-purple-100 text-purple-800">Đang thực hiện</span>;
+                                        case 'completed': return <span className="px-2 py-1 text-xs font-bold rounded-full bg-green-100 text-green-800">Hoàn thành</span>;
+                                        case 'cancelled': return <span className="px-2 py-1 text-xs font-bold rounded-full bg-red-100 text-red-800">Đã hủy</span>;
+                                        default: return null;
+                                    }
+                                };
+
+                                return (
+                                    <div key={apt.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200 hover:shadow-md transition-shadow">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div className="flex-1">
+                                                <h4 className="font-bold text-lg text-gray-800">{service?.name || apt.serviceName}</h4>
+                                                <p className="text-sm text-gray-600 mt-1">{customer?.name || 'Khách hàng'}</p>
+                                            </div>
+                                            {getStatusBadge()}
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-2 gap-3 mt-3">
+                                            <div className="bg-white p-3 rounded-lg">
+                                                <p className="text-xs text-gray-500 mb-1">Thời gian</p>
+                                                <p className="font-semibold text-gray-800">{apt.time}</p>
+                                            </div>
+                                            <div className="bg-white p-3 rounded-lg">
+                                                <p className="text-xs text-gray-500 mb-1">Thời lượng</p>
+                                                <p className="font-semibold text-gray-800">{service?.duration || 60} phút</p>
+                                            </div>
+                                        </div>
+
+                                        {apt.paymentStatus && (
+                                            <div className="mt-3 bg-white p-3 rounded-lg">
+                                                <p className="text-xs text-gray-500 mb-1">Thanh toán</p>
+                                                <p className="font-semibold text-gray-800">
+                                                    {apt.paymentStatus === 'Paid' ? 'Đã thanh toán' : apt.paymentStatus === 'Unpaid' ? 'Chưa thanh toán' : apt.paymentStatus}
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
             
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold text-gray-800">Quản lý Lịch Làm Việc Nhân Viên</h1>
@@ -939,7 +1016,13 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                                                     })}
                                                 </div>
                                                 {appointmentsForCell.length > 0 && (
-                                                    <div className="text-xs text-gray-600 mt-2 font-semibold">
+                                                    <div 
+                                                        className="text-xs text-gray-600 mt-2 font-semibold cursor-pointer hover:text-brand-primary transition-colors"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setAppointmentDetailsModal({ staff, date: day.toISOString().split('T')[0], appointments: appointmentsForCell });
+                                                        }}
+                                                    >
                                                         {appointmentsForCell.length} lịch hẹn
                                                     </div>
                                                 )}

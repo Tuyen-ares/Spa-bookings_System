@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import type { User, Wallet, Tier, Mission, Appointment, Service, PointsHistory, LoginAttempt, Payment, Review } from '../../types';
+import type { User, Wallet, Tier, Mission, Appointment, Service, PointsHistory, LoginAttempt, Payment, Review, Promotion } from '../../types';
 import {
     TrophyIcon, CreditCardIcon, ShieldCheckIcon,
-    EditIcon, HistoryIcon, ProfileIcon, LogoutIcon, AppointmentsIcon, StarIcon, GiftIcon, MailIcon, PhoneIcon, CakeIcon, LocationIcon, QrCodeIcon, ExclamationTriangleIcon, PrinterIcon, VNPayIcon, SparklesIcon, TrashIcon, EyeIcon, EyeSlashIcon
+    EditIcon, HistoryIcon, ProfileIcon, LogoutIcon, AppointmentsIcon, StarIcon, GiftIcon, MailIcon, PhoneIcon, CakeIcon, LocationIcon, QrCodeIcon, ExclamationTriangleIcon, PrinterIcon, VNPayIcon, SparklesIcon, TrashIcon, EyeIcon, EyeSlashIcon, ClockIcon
 } from '../../shared/icons';
 import * as apiService from '../services/apiService';
 
@@ -70,15 +70,17 @@ const ReviewModal: React.FC<{
                 userName: currentUser.name,
                 userImageUrl: currentUser.profilePictureUrl,
                 rating: rating,
-                comment: comment,
+                comment: comment.trim(),
                 serviceName: serviceName,
             };
             await apiService.createReview(reviewPayload);
+            alert('✅ Cảm ơn bạn đã đánh giá! Đánh giá của bạn đã được ghi nhận.');
             onSubmitSuccess();
             onClose();
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to submit review:", error);
-            alert("Gửi đánh giá thất bại. Vui lòng thử lại.");
+            const errorMessage = error?.response?.data?.message || error?.message || "Gửi đánh giá thất bại. Vui lòng thử lại.";
+            alert("❌ " + errorMessage);
         } finally {
             setIsSubmitting(false);
         }
@@ -104,13 +106,20 @@ const ReviewModal: React.FC<{
                             ))}
                         </div>
                     </div>
-                    <textarea
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        placeholder="Chia sẻ cảm nhận chi tiết của bạn..."
-                        rows={4}
-                        className="w-full p-3 border border-gray-300 rounded-md focus:ring-brand-primary focus:border-brand-primary mb-4"
-                    ></textarea>
+                    <div className="mb-4">
+                        <textarea
+                            value={comment}
+                            onChange={(e) => setComment(e.target.value)}
+                            placeholder="Chia sẻ cảm nhận chi tiết của bạn..."
+                            rows={4}
+                            maxLength={500}
+                            className="w-full p-3 border border-gray-300 rounded-md focus:ring-brand-primary focus:border-brand-primary resize-none"
+                        ></textarea>
+                        <div className="flex justify-between items-center mt-1">
+                            <span className="text-xs text-gray-500">Tối đa 500 ký tự</span>
+                            <span className="text-xs text-gray-500">{comment.length}/500</span>
+                        </div>
+                    </div>
                     <div className="flex justify-end gap-4">
                          <button type="button" onClick={onClose} className="px-6 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Hủy</button>
                         <button
@@ -696,7 +705,6 @@ const PaymentsTab: React.FC<{
                                 <th className="p-3 font-medium">ID</th>
                                 <th className="p-3 font-medium">Dịch vụ</th>
                                 <th className="p-3 font-medium">Ngày</th>
-                                <th className="p-3 font-medium">Nhân viên</th>
                                 <th className="p-3 font-medium">Tổng tiền</th>
                                 <th className="p-3 font-medium">Trạng thái</th>
                                 <th className="p-3 font-medium"></th>
@@ -716,7 +724,6 @@ const PaymentsTab: React.FC<{
                                 const staff = allUsers.find(u => u.id === payment.therapistId);
                                 // Get therapist from appointment if not directly in payment
                                 const appointment = payment.appointmentId ? allAppointments.find(a => a.id === payment.appointmentId) : null;
-                                const therapistName = staff?.name || appointment?.therapist || 'N/A';
                                 // Handle transactionId - may be null/undefined
                                 const transactionId = payment.transactionId || payment.id || 'N/A';
                                 const transactionDisplay = transactionId !== 'N/A' ? `#${transactionId.slice(0, 8)}` : 'N/A';
@@ -726,7 +733,6 @@ const PaymentsTab: React.FC<{
                                     <td className="p-3 font-mono text-xs text-gray-600">{transactionDisplay}</td>
                                     <td className="p-3 font-medium text-gray-800">{payment.serviceName || 'Dịch vụ'}</td>
                                     <td className="p-3 text-gray-600">{new Date(payment.date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</td>
-                                    <td className="p-3 text-gray-600">{therapistName}</td>
                                     <td className="p-3 font-semibold text-brand-primary">{formatCurrency(parseFloat(String(payment.amount)) || 0)}</td>
                                     <td className="p-3"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${STATUS_CONFIG[payment.status]?.bgColor || 'bg-gray-100'} ${STATUS_CONFIG[payment.status]?.color || 'text-gray-800'}`}>{STATUS_CONFIG[payment.status]?.text || payment.status}</span></td>
                                     <td className="p-3 text-right"><button onClick={() => setViewingPayment(payment)} className="font-semibold text-blue-600 hover:underline">Chi tiết</button></td>
@@ -738,45 +744,6 @@ const PaymentsTab: React.FC<{
                     </table>
                 </div>
             </div>
-
-            {/* Methods & Security */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="bg-white p-6 sm:p-8 rounded-lg shadow-soft-lg border border-gray-200/50">
-                    <h2 className="text-2xl font-bold font-serif text-brand-text mb-6">Quản lý phương thức</h2>
-                    <div className="space-y-3">
-                        {paymentMethods.map(method => (
-                            <div key={method.id} className="p-3 border rounded-lg flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    {method.icon}
-                                    <div>
-                                        <p className="font-semibold text-gray-800">{method.name}</p>
-                                        <p className="text-sm text-gray-500">{method.details}</p>
-                                    </div>
-                                </div>
-                                {method.isDefault ? (
-                                    <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">Mặc định</span>
-                                ) : (
-                                    <button onClick={() => handleSetDefault(method.id)} className="text-xs font-semibold text-blue-600 hover:underline">Đặt làm mặc định</button>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-                <div className="bg-white p-6 sm:p-8 rounded-lg shadow-soft-lg border border-gray-200/50">
-                    <h2 className="text-2xl font-bold font-serif text-brand-text mb-6">Bảo mật thanh toán</h2>
-                    <div className="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
-                        <div>
-                            <p className="font-semibold text-gray-800">Xác minh 2 lớp (2FA)</p>
-                            <p className="text-sm text-gray-500">Tăng cường bảo mật cho tài khoản của bạn.</p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" checked={is2faEnabled} onChange={() => setIs2faEnabled(p => !p)} className="sr-only peer" />
-                            <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-primary"></div>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
             {/* Invoice Modal */}
             {viewingPayment && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fadeIn" onClick={() => setViewingPayment(null)}>
@@ -1007,10 +974,6 @@ const SecurityTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                         <span className="font-medium">Đổi mật khẩu</span>
                         <span className="text-gray-400">→</span>
                     </button>
-                    <button className="w-full text-left p-4 border rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-between opacity-50 cursor-not-allowed">
-                        <span className="font-medium">Quản lý thiết bị đã đăng nhập</span>
-                        <span className="text-xs text-gray-400">Sắp có</span>
-                    </button>
                 </div>
             </div>
 
@@ -1122,6 +1085,226 @@ const SecurityTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                 </div>
             )}
         </>
+    );
+};
+
+const PromotionsTab: React.FC<{
+    currentUser: User;
+}> = ({ currentUser }) => {
+    const [myVouchers, setMyVouchers] = useState<Array<Promotion & { redeemedCount: number }>>([]);
+    const [availableVouchers, setAvailableVouchers] = useState<Promotion[]>([]);
+    const [allAppointments, setAllAppointments] = useState<Appointment[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchVouchers = async () => {
+            try {
+                setLoading(true);
+                const [redeemed, applicable, appointments] = await Promise.all([
+                    apiService.getMyRedeemedVouchers(currentUser.id),
+                    apiService.getPromotions({ userId: currentUser.id }),
+                    apiService.getUserAppointments(currentUser.id)
+                ]);
+                setMyVouchers(redeemed || []);
+                setAvailableVouchers(applicable || []);
+                setAllAppointments(appointments || []);
+            } catch (error) {
+                console.error('Failed to fetch vouchers:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchVouchers();
+
+        // Listen for refresh events
+        const handleRefresh = () => fetchVouchers();
+        window.addEventListener('refresh-vouchers', handleRefresh);
+        window.addEventListener('refresh-appointments', handleRefresh);
+        
+        return () => {
+            window.removeEventListener('refresh-vouchers', handleRefresh);
+            window.removeEventListener('refresh-appointments', handleRefresh);
+        };
+    }, [currentUser.id]);
+
+    const activeMyVouchers = useMemo(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return myVouchers.filter(v => {
+            if (!v.isActive || v.redeemedCount <= 0) return false;
+            const expiryDate = new Date(v.expiryDate);
+            expiryDate.setHours(0, 0, 0, 0);
+            return expiryDate >= today;
+        });
+    }, [myVouchers]);
+
+    // Check if user is birthday today
+    const isBirthdayToday = useMemo(() => {
+        if (!currentUser?.birthday) return false;
+        const today = new Date();
+        const birthDate = new Date(currentUser.birthday);
+        return today.getMonth() === birthDate.getMonth() && today.getDate() === birthDate.getDate();
+    }, [currentUser]);
+
+    // Check if user is truly a new client
+    const isNewClient = useMemo(() => {
+        if (!allAppointments) return true;
+        const hasAnySuccessfulBooking = allAppointments.some(app => 
+            app.status !== 'cancelled' && 
+            (app.paymentStatus === 'Paid' || 
+             (app.status === 'completed' || app.status === 'upcoming' || app.status === 'scheduled'))
+        );
+        return !hasAnySuccessfulBooking;
+    }, [allAppointments]);
+
+    const specialVouchers = useMemo(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        return availableVouchers.filter(v => {
+            if (!v.isActive) return false;
+            const expiryDate = new Date(v.expiryDate);
+            expiryDate.setHours(0, 0, 0, 0);
+            if (expiryDate < today) return false;
+            if (v.stock !== null && v.stock <= 0) return false;
+            
+            // Birthday voucher: Only show on exact birthday and if not used
+            if (v.targetAudience === 'Birthday') {
+                if (!isBirthdayToday) return false;
+                
+                // Check if already used/redeemed
+                const hasUsedBirthdayVoucher = myVouchers.some(mv => 
+                    mv.targetAudience === 'Birthday' && mv.redeemedCount > 0
+                );
+                if (hasUsedBirthdayVoucher) return false;
+                
+                return true;
+            }
+            
+            // New Clients voucher: Only show if truly new client and not used
+            if (v.targetAudience === 'New Clients') {
+                if (!isNewClient) return false;
+                
+                // Check if already used/redeemed
+                const hasUsedNewClientVoucher = myVouchers.some(mv => 
+                    mv.targetAudience === 'New Clients' && mv.redeemedCount > 0
+                );
+                if (hasUsedNewClientVoucher) return false;
+                
+                return true;
+            }
+            
+            return false;
+        });
+    }, [availableVouchers, isBirthdayToday, isNewClient, myVouchers]);
+
+    if (loading) {
+        return (
+            <div className="bg-white p-8 rounded-lg shadow-soft-lg animate-fadeInUp">
+                <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-8 animate-fadeInUp">
+            {/* Voucher đã đổi bằng điểm */}
+            <div className="bg-white p-6 rounded-lg shadow-soft-lg">
+                <h2 className="text-2xl font-bold font-serif text-brand-dark mb-4 flex items-center gap-2">
+                    <GiftIcon className="w-6 h-6 text-brand-primary" />
+                    Voucher của tôi
+                </h2>
+                {activeMyVouchers.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {activeMyVouchers.map((voucher) => (
+                            <div key={voucher.id} className="border-2 border-brand-primary/50 rounded-lg p-4 hover:shadow-lg transition-shadow bg-gradient-to-br from-white to-brand-secondary/10">
+                                <div className="flex items-start justify-between mb-2">
+                                    <h3 className="font-bold text-lg text-gray-800">{voucher.title}</h3>
+                                    <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded-full">
+                                        x{voucher.redeemedCount}
+                                    </span>
+                                </div>
+                                <p className="text-sm text-gray-600 mb-3 line-clamp-2">{voucher.description}</p>
+                                <div className="flex items-center justify-between text-sm mb-3">
+                                    <span className="font-semibold text-brand-primary">Mã: {voucher.code}</span>
+                                    <span className="text-red-500 flex items-center gap-1">
+                                        <ClockIcon className="w-4 h-4" />
+                                        {new Date(voucher.expiryDate).toLocaleDateString('vi-VN')}
+                                    </span>
+                                </div>
+                                <Link
+                                    to={`/booking?promoCode=${voucher.code}`}
+                                    className="block text-center bg-brand-primary text-white py-2 px-4 rounded-md font-semibold hover:bg-brand-dark transition-colors"
+                                >
+                                    Sử dụng ngay
+                                </Link>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-8 text-gray-500">
+                        <GiftIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                        <p className="font-medium">Bạn chưa có voucher nào đã đổi bằng điểm</p>
+                        <Link to="/promotions" className="text-brand-primary hover:underline mt-2 inline-block">
+                            Khám phá voucher →
+                        </Link>
+                    </div>
+                )}
+            </div>
+
+            {/* Voucher đặc biệt dành cho bạn */}
+            {specialVouchers.length > 0 && (
+                <div className="bg-white p-6 rounded-lg shadow-soft-lg">
+                    <h2 className="text-2xl font-bold font-serif text-brand-dark mb-4 flex items-center gap-2">
+                        <SparklesIcon className="w-6 h-6 text-yellow-500" />
+                        Voucher đặc biệt dành cho bạn
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {specialVouchers.map((promo) => (
+                            <div key={promo.id} className="border-2 border-yellow-400/50 rounded-lg p-4 hover:shadow-lg transition-shadow bg-gradient-to-br from-yellow-50 to-white">
+                                <div className="flex items-center gap-2 mb-2">
+                                    {promo.targetAudience === 'Birthday' && (
+                                        <span className="bg-pink-100 text-pink-600 text-xs font-bold px-2 py-1 rounded">🎂 Sinh nhật</span>
+                                    )}
+                                    {promo.targetAudience === 'New Clients' && (
+                                        <span className="bg-blue-100 text-blue-600 text-xs font-bold px-2 py-1 rounded">🆕 Khách mới</span>
+                                    )}
+                                </div>
+                                <h3 className="font-bold text-lg text-gray-800 mb-2">{promo.title}</h3>
+                                <p className="text-sm text-gray-600 mb-3 line-clamp-2">{promo.description}</p>
+                                <div className="flex items-center justify-between text-sm mb-3">
+                                    <span className="font-semibold text-brand-primary">Mã: {promo.code}</span>
+                                    <span className="text-red-500 flex items-center gap-1">
+                                        <ClockIcon className="w-4 h-4" />
+                                        {new Date(promo.expiryDate).toLocaleDateString('vi-VN')}
+                                    </span>
+                                </div>
+                                <Link
+                                    to={`/booking?promoCode=${promo.code}${promo.applicableServiceIds && promo.applicableServiceIds.length > 0 ? `&serviceId=${promo.applicableServiceIds[0]}` : ''}`}
+                                    className="block text-center bg-gradient-to-r from-yellow-400 to-orange-400 text-white py-2 px-4 rounded-md font-semibold hover:from-yellow-500 hover:to-orange-500 transition-colors shadow-md"
+                                >
+                                    Sử dụng ngay
+                                </Link>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Link to Promotions Page */}
+            <div className="bg-gradient-to-r from-brand-primary to-brand-dark p-6 rounded-lg shadow-lg text-white text-center">
+                <h3 className="text-xl font-bold mb-2">Khám phá thêm ưu đãi</h3>
+                <p className="mb-4 text-brand-secondary">Xem tất cả các voucher và đổi điểm lấy ưu đãi hấp dẫn</p>
+                <Link
+                    to="/promotions"
+                    className="inline-block bg-white text-brand-primary px-6 py-3 rounded-full font-bold hover:bg-brand-secondary transition-colors shadow-lg"
+                >
+                    Xem tất cả ưu đãi
+                </Link>
+            </div>
+        </div>
     );
 };
 
@@ -1366,7 +1549,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
             case 'reviews':
                 return <ReviewsTab currentUser={currentUser} allReviews={allReviews} setAllReviews={setAllReviews} allServices={allServices} />;
             case 'promotions':
-                 return <PlaceholderTab title="Ưu đãi của tôi" />;
+                return <PromotionsTab currentUser={currentUser} />;
             default:
                 return <ProfileInfoTab currentUser={currentUser} onUpdateUser={onUpdateUser} />;
         }

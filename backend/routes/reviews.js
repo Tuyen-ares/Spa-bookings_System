@@ -60,6 +60,17 @@ router.post('/', async (req, res) => {
             });
         }
 
+        // Update appointment's reviewRating if appointmentId is provided
+        if (newReviewData.appointmentId) {
+            const appointment = await db.Appointment.findByPk(newReviewData.appointmentId);
+            if (appointment) {
+                await appointment.update({
+                    reviewRating: newReviewData.rating,
+                    reviewComment: newReviewData.comment || null,
+                });
+            }
+        }
+
         const createdReview = await db.Review.create({
             id: `rev-${uuidv4()}`,
             date: new Date().toISOString(),
@@ -68,14 +79,14 @@ router.post('/', async (req, res) => {
         res.status(201).json(createdReview);
     } catch (error) {
         console.error('Error creating review:', error);
-        res.status(500).json({ message: 'Internal server error' });
+        res.status(500).json({ message: 'Internal server error', error: error.message });
     }
 });
 
-// PUT /api/reviews/:id - Update a review (e.g., add manager reply, toggle visibility)
+// PUT /api/reviews/:id - Update a review (edit rating/comment, add manager reply, toggle visibility)
 router.put('/:id', async (req, res) => {
     const { id } = req.params;
-    const { managerReply, isHidden } = req.body;
+    const { rating, comment, managerReply, isHidden } = req.body;
     
     try {
         const review = await db.Review.findByPk(id);
@@ -84,6 +95,30 @@ router.put('/:id', async (req, res) => {
         }
 
         const updateData = {};
+        
+        // Allow user to edit their rating and comment
+        if (rating !== undefined) {
+            if (rating < 1 || rating > 5) {
+                return res.status(400).json({ message: 'Rating must be between 1 and 5' });
+            }
+            updateData.rating = rating;
+            
+            // Update service rating if rating changed
+            if (review.rating !== rating) {
+                const service = await db.Service.findByPk(review.serviceId);
+                if (service) {
+                    const currentTotalRating = service.rating * service.reviewCount;
+                    const newTotalRating = currentTotalRating - review.rating + rating;
+                    const newAverageRating = newTotalRating / service.reviewCount;
+                    await service.update({ rating: newAverageRating });
+                }
+            }
+        }
+        if (comment !== undefined) {
+            updateData.comment = comment;
+        }
+        
+        // Manager features
         if (managerReply !== undefined) {
             updateData.managerReply = managerReply;
         }

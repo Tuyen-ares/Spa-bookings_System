@@ -1546,14 +1546,6 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                             })()}
                         </div>
                         <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
-                            {selectedAppointment.paymentStatus === 'Unpaid' && (
-                                <button
-                                    onClick={() => handleConfirmPayment(selectedAppointment)}
-                                    className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm font-semibold"
-                                >
-                                    Xác nhận thanh toán
-                                </button>
-                            )}
                             {selectedAppointment.status === 'pending' && (
                                 <>
                                     <button
@@ -1569,17 +1561,8 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                     <button onClick={() => { setAppointmentToCancel(selectedAppointment); setSelectedAppointment(null); }} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold">Từ chối</button>
                                 </>
                             )}
-                            {selectedAppointment.status === 'upcoming' && (
-                                <>
-                                    <button onClick={() => handleAction(selectedAppointment, 'completed')} className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 text-sm font-semibold">Hoàn thành</button>
-                                    <button onClick={() => { setAppointmentToCancel(selectedAppointment); setSelectedAppointment(null); }} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold">Hủy lịch</button>
-                                </>
-                            )}
-                            {selectedAppointment.status === 'in-progress' && (
-                                <>
-                                    <button onClick={() => handleAction(selectedAppointment, 'completed')} className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 text-sm font-semibold">Hoàn thành</button>
-                                    <button onClick={() => { setAppointmentToCancel(selectedAppointment); setSelectedAppointment(null); }} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold">Hủy lịch</button>
-                                </>
+                            {(selectedAppointment.status === 'upcoming' || selectedAppointment.status === 'in-progress') && (
+                                <button onClick={() => { setAppointmentToCancel(selectedAppointment); setSelectedAppointment(null); }} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold">Hủy lịch</button>
                             )}
                             <button onClick={() => setSelectedAppointment(null)} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-semibold">Đóng</button>
                         </div>

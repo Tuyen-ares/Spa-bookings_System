@@ -862,9 +862,9 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
                                         <td className="p-4 text-sm text-gray-600">{new Date(user.lastLogin).toLocaleString('vi-VN')}</td>
                                         <td className="p-4"><div className="flex items-center gap-1">
                                             <button onClick={() => handleViewDetails(user)} className="p-2 text-gray-500 hover:text-blue-600" title="Xem chi tiết"><EyeIcon className="w-5 h-5" /></button>
-                                            <button onClick={() => handleEditUser(user)} className="p-2 text-gray-500 hover:text-green-600" title="Chỉnh sửa"><EditIcon className="w-5 h-5" /></button>
+                                            {/* <button onClick={() => handleEditUser(user)} className="p-2 text-gray-500 hover:text-green-600" title="Chỉnh sửa"><EditIcon className="w-5 h-5" /></button>
                                             {user.role === 'Client' && <button onClick={() => handleGivePoints(user)} className="p-2 text-gray-500 hover:text-orange-600" title="Tặng/Trừ điểm"><GiftIcon className="w-5 h-5" /></button>}
-                                            <button onClick={() => handleToggleLockUser(user.id)} className="p-2 text-gray-500 hover:text-yellow-600" title={user.status === 'Locked' ? "Mở khóa" : "Khóa"}><LockClosedIcon className="w-5 h-5" /></button>
+                                            <button onClick={() => handleToggleLockUser(user.id)} className="p-2 text-gray-500 hover:text-yellow-600" title={user.status === 'Locked' ? "Mở khóa" : "Khóa"}><LockClosedIcon className="w-5 h-5" /></button> */}
                                             <button onClick={() => handleResetPassword(user)} className="p-2 text-gray-500 hover:text-purple-600" title="Đặt lại mật khẩu"><KeyIcon className="w-5 h-5" /></button>
                                             <button onClick={() => handleDeleteUser(user.id)} className="p-2 text-gray-500 hover:text-red-600" title="Xóa"><TrashIcon className="w-5 h-5" /></button>
                                         </div></td>

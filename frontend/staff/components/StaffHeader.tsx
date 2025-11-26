@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import type { User } from '../../types';
-import { ChevronDownIcon, BellIcon, SearchIcon, MenuIcon, SunIcon, MoonIcon, ProfileIcon } from '../../shared/icons';
+import { ChevronDownIcon, SearchIcon, MenuIcon, SunIcon, MoonIcon, ProfileIcon } from '../../shared/icons';
+import { StaffNotificationBell } from './StaffNotificationBell';
 
 interface StaffHeaderProps {
     currentUser: User;
@@ -65,11 +66,7 @@ const StaffHeader: React.FC<StaffHeaderProps> = ({ currentUser, onLogout, toggle
                     {isDarkMode ? <SunIcon className="h-6 w-6 text-yellow-400" /> : <MoonIcon className="h-6 w-6" />}
                 </button>
                 
-                <Link to="/staff/notifications" className="relative p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none rounded-full" aria-label="Thông báo">
-                    <span className="absolute top-0 right-0 h-2 w-2 mt-1 mr-2 bg-red-500 rounded-full"></span>
-                    <span className="absolute top-0 right-0 h-2 w-2 mt-1 mr-2 bg-red-500 rounded-full animate-ping"></span>
-                    <BellIcon className="h-6 w-6"/>
-                </Link>
+                <StaffNotificationBell currentUser={currentUser} />
 
                 <div className="relative" ref={menuRef}>
                     <button

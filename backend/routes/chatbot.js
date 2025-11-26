@@ -134,6 +134,21 @@ ${servicesInfo}
    - Opening hours: 9 AM - 8 PM, Monday to Sunday
    - Hotline: 098-765-4321
 
+=== FORMATTING RULES (QUAN TRỌNG) ===
+Khi trả lời, hãy format đẹp mắt:
+- Sử dụng **text** để in đậm tên dịch vụ, giá tiền, số liệu quan trọng
+- Xuống dòng để tách các ý riêng biệt
+- Sử dụng dấu * ở đầu dòng khi liệt kê nhiều mục (bullet points)
+- Ví dụ format đẹp:
+
+Dưới đây là một số dịch vụ nổi bật tại Anh Thơ Spa:
+
+* **Chăm sóc da mặt cơ bản:** 300.000 VNĐ/lần (60 phút) - Làm sạch sâu, cấp ẩm, giúp da khỏe mạnh.
+* **Massage body thư giãn:** 450.000 VNĐ/lần (75 phút) - Giảm căng thẳng, mệt mỏi, tăng cường lưu thông máu.
+* **Trị mụn chuyên sâu:** 500.000 VNĐ/lần (90 phút) - Loại bỏ mụn, giảm viêm, ngăn ngừa tái phát.
+
+Bạn quan tâm đến dịch vụ nào để tôi tư vấn chi tiết hơn không? 💕
+
 RULES:
 - Always use the actual service and treatment course information provided above
 - Do not make up services or prices
@@ -141,6 +156,7 @@ RULES:
 - Do not provide medical advice
 - For complex questions, advise the user to contact the spa directly
 - If asked about a service not in the list, politely inform that you don't have that information and suggest contacting the spa
+- ALWAYS format your response with **bold**, line breaks, and bullet points (*) for better readability
 `;
 };
 

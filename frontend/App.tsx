@@ -7,6 +7,7 @@ import Header from './client/components/Header';
 import Footer from './client/components/Footer';
 import Chatbot from './client/components/Chatbot';
 import ProtectedRoute from './components/ProtectedRoute';
+import ScrollToTop from './components/ScrollToTop';
 import * as apiService from './client/services/apiService';
 import type { User, Wallet, Tier, Promotion, Service, Appointment, Review, TreatmentCourse, InternalNotification, InternalNews, Payment, Product, Sale, UserRole } from './types';
 
@@ -157,6 +158,16 @@ const AppContent: React.FC = () => {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Auto-reload data when navigating between admin pages
+    useEffect(() => {
+        const isAdminRoute = location.pathname.startsWith('/admin');
+        
+        if (isAdminRoute && currentUser?.role === 'admin') {
+            console.log('🔄 Admin page navigation detected, reloading data...');
+            fetchData();
+        }
+    }, [location.pathname, currentUser, fetchData]);
 
     // Listen for user-verified event from VerifyEmailPage
     useEffect(() => {
@@ -415,7 +426,8 @@ const AppContent: React.FC = () => {
 
     return (
         <div className="flex flex-col min-h-screen bg-brand-light">
-            {isClientLayout && <Header currentUser={currentUser} onLogout={handleLogout} />}
+            <ScrollToTop />
+            {isClientLayout && <Header currentUser={currentUser} onLogout={handleLogout} allServices={allServices} />}
             <main className={isClientLayout ? "pt-28 flex-grow" : "flex-grow"}>
                 <Routes>
                     {/* Client Routes */}
@@ -518,7 +530,7 @@ const AppContent: React.FC = () => {
                         <Route path="users" element={<UsersPage allUsers={allUsers} allTiers={allTiers} />} />
                         <Route path="services" element={<ServicesPage />} />
                         <Route path="appointments" element={<AdminAppointmentsPage allUsers={allUsers} allServices={allServices} allAppointments={allAppointments} />} />
-                        <Route path="payments" element={<PaymentsPage allUsers={allUsers} />} />
+                        <Route path="payments" element={<PaymentsPage allUsers={allUsers} allAppointments={allAppointments} />} />
                         <Route path="staff" element={<StaffPage allUsers={allUsers} allServices={allServices} allAppointments={allAppointments} />} />
                         <Route path="jobs" element={<JobManagementPage allUsers={allUsers} allServices={allServices} allAppointments={allAppointments} />} />
                         <Route path="treatment-courses" element={<AdminTreatmentCoursesPage allUsers={allUsers} allServices={allServices} />} />
@@ -550,7 +562,7 @@ const AppContent: React.FC = () => {
                     <Route path="*" element={<div className="text-center p-20"><h2>404: Không tìm thấy trang</h2></div>} />
                 </Routes>
             </main>
-            {isClientLayout && <Chatbot services={allServices} treatmentCourses={allTreatmentCourses} />}
+            {isClientLayout && React.createElement(Chatbot as any, { services: allServices, treatmentCourses: allTreatmentCourses })}
             {isClientLayout && <Footer />}
         </div>
     );

@@ -27,7 +27,7 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
     });
 
     const serviceCategories = useMemo(() => {
-        const categories = new Set(allServices.map(s => s.category));
+        const categories = new Set(allServices.map(s => s.categoryId));
         return Array.from(categories);
     }, [allServices]);
 
@@ -35,14 +35,9 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
         if (promotion) {
             // Normalize isPublic: convert 0/1/null/true/false to boolean
             let normalizedIsPublic: boolean;
-            if (promotion.isPublic === true || 
-                promotion.isPublic === 1 || 
-                promotion.isPublic === '1' || 
-                String(promotion.isPublic).toLowerCase() === 'true') {
-                normalizedIsPublic = true;
-            } else {
-                normalizedIsPublic = false;
-            }
+            // Coerce to string for safe comparisons across boolean/number/string/null
+            const isPublicStr = String(promotion.isPublic).toLowerCase();
+            normalizedIsPublic = isPublicStr === 'true' || isPublicStr === '1';
             
             const applicableServiceIds = promotion.applicableServiceIds || [];
             // Nếu applicableServiceIds = null hoặc rỗng => áp dụng cho tất cả
@@ -143,25 +138,24 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
         if (checked) {
             // Chọn tất cả => xóa tất cả các dịch vụ khác (để trống = áp dụng cho tất cả)
             setFormData(prev => ({ ...prev, applicableServiceIds: [] }));
-        } else {
-            // Bỏ chọn "Tất cả" => giữ nguyên các dịch vụ đã chọn (nếu có)
-            // Nếu không có dịch vụ nào được chọn, giữ nguyên []
         }
+        // Không cần else vì khi bỏ chọn "Tất cả", user sẽ chọn các dịch vụ cụ thể
         // Reset flag sau một chút để useEffect có thể hoạt động lại
         setTimeout(() => setIsManuallySelectingAll(false), 100);
     };
 
     const handleServiceSelectionChange = (serviceId: string, checked: boolean) => {
         setIsManuallySelectingAll(true);
+        // Khi chọn/bỏ chọn dịch vụ riêng lẻ, tự động bỏ chọn "Tất cả"
+        setSelectAllServices(false);
+        
         setFormData(prev => {
             const currentServiceIds = prev.applicableServiceIds ? [...prev.applicableServiceIds] : [];
             if (checked) {
-                // Nếu đang chọn dịch vụ, bỏ chọn "Tất cả"
-                setSelectAllServices(false);
+                // Thêm dịch vụ vào danh sách
                 return { ...prev, applicableServiceIds: [...currentServiceIds, serviceId] };
             } else {
-                // Nếu bỏ chọn dịch vụ, bỏ chọn "Tất cả"
-                setSelectAllServices(false);
+                // Xóa dịch vụ khỏi danh sách
                 return { ...prev, applicableServiceIds: currentServiceIds.filter(id => id !== serviceId) };
             }
         });
@@ -296,15 +290,15 @@ const AddEditPromotionModal: React.FC<AddEditPromotionModalProps> = ({ promotion
                                         Tất cả dịch vụ
                                     </label>
                                     {allServices.map(service => (
-                                        <label key={service.id} className="flex items-center gap-2 text-sm text-gray-800">
+                                        <label key={service.id} className={`flex items-center gap-2 text-sm ${selectAllServices ? 'text-gray-400' : 'text-gray-800'}`}>
                                             <input
                                                 type="checkbox"
-                                                checked={formData.applicableServiceIds?.includes(service.id) || false}
+                                                checked={selectAllServices || formData.applicableServiceIds?.includes(service.id) || false}
                                                 onChange={(e) => handleServiceSelectionChange(service.id, e.target.checked)}
                                                 disabled={selectAllServices}
                                                 className="rounded text-brand-primary focus:ring-brand-primary disabled:opacity-50 disabled:cursor-not-allowed"
                                             />
-                                            {service.name} ({service.category})
+                                            {service.name} ({service.categoryId})
                                         </label>
                                     ))}
                                 </div>

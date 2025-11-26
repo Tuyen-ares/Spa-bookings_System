@@ -172,7 +172,7 @@ export const getStaffShifts = async (staffId: string): Promise<StaffShift[]> => 
 export const getAllStaffShifts = async (): Promise<StaffShift[]> => fetch(`${API_BASE_URL}/staff/shifts`).then(handleResponse);
 export const getProducts = async (): Promise<Product[]> => fetch(`${API_BASE_URL}/staff/products`).then(handleResponse);
 export const getSales = async (): Promise<Sale[]> => fetch(`${API_BASE_URL}/staff/sales`).then(handleResponse);
-export const getInternalNotifications = async (userId: string): Promise<InternalNotification[]> => fetch(`${API_BASE_URL}/staff/notifications/${userId}`).then(handleResponse);
+export const getInternalNotifications = async (userId: string): Promise<InternalNotification[]> => fetch(`${API_BASE_URL}/notifications/user/${userId}`).then(handleResponse);
 export const getInternalNews = async (): Promise<InternalNews[]> => fetch(`${API_BASE_URL}/staff/news`).then(handleResponse);
 export const getServiceCategories = async (): Promise<ServiceCategory[]> => fetch(`${API_BASE_URL}/services/categories`).then(handleResponse);
 
@@ -266,7 +266,9 @@ export const createStaffTask = (data: Partial<StaffTask>) => create<StaffTask>(`
 export const updateStaffTask = (id: string, data: Partial<StaffTask>) => update<StaffTask>(`${API_BASE_URL}/staff/tasks/${id}`, data);
 export const deleteStaffTask = (id: string) => remove(`${API_BASE_URL}/staff/tasks/${id}`);
 
-export const processPayment = async (appointmentId: string, method: PaymentMethod, finalAmount: number): Promise<{ paymentUrl?: string; paymentId?: string; success?: boolean; payment?: Payment }> => {
+export const processPayment = async (appointmentId: string, method: PaymentMethod, finalAmount: number): Promise<{
+    transactionId: string; paymentUrl?: string; paymentId?: string; success?: boolean; payment?: Payment 
+}> => {
     // This is a specific action, so we define it separately
     const body = { appointmentId, method, amount: finalAmount };
     const response = await fetch(`${API_BASE_URL}/payments/process`, {

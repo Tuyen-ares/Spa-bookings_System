@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import type { User, Appointment, Service, Payment } from '../../types';
-import { PrinterIcon } from '../../shared/icons';
+import { PrinterIcon, CurrencyDollarIcon, ChartBarIcon, ClockIcon, CheckCircleIcon } from '../../shared/icons';
 import * as apiService from '../../client/services/apiService';
 import { formatDateDDMMYYYY, parseDDMMYYYYToYYYYMMDD } from '../../shared/dateUtils';
 
@@ -175,45 +175,41 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         setDateError('');
     }, [startDate, endDate, viewMode]);
 
-    // Filter appointments based on view mode
-    const filteredAppointments = useMemo(() => {
-        // Debug: Log all appointments and their statuses
-        console.log('ReportsPage - All appointments:', {
-            total: localAppointments.length,
-            byStatus: localAppointments.reduce((acc, apt) => {
-                acc[apt.status] = (acc[apt.status] || 0) + 1;
-                return acc;
-            }, {} as Record<string, number>),
-            byPaymentStatus: localAppointments.reduce((acc, apt) => {
-                acc[apt.paymentStatus || 'Unknown'] = (acc[apt.paymentStatus || 'Unknown'] || 0) + 1;
+    // Filter payments based on view mode - Tính báo cáo từ thanh toán hoàn thành
+    const filteredPayments = useMemo(() => {
+        console.log('ReportsPage - All payments:', {
+            total: localPayments.length,
+            byStatus: localPayments.reduce((acc, payment) => {
+                acc[payment.status] = (acc[payment.status] || 0) + 1;
                 return acc;
             }, {} as Record<string, number>)
         });
 
-        // Filter: Include completed appointments OR paid appointments (for revenue reporting)
-        let filtered = localAppointments.filter(apt => 
-            apt.status === 'completed' || apt.paymentStatus === 'Paid'
-        );
+        // Chỉ lấy payments đã hoàn thành (Completed)
+        let filtered = localPayments.filter(payment => payment.status === 'Completed');
 
-        console.log('ReportsPage - Filtered appointments (after status filter):', filtered.length);
+        console.log('ReportsPage - Filtered payments (Completed only):', filtered.length);
 
         if (viewMode === 'day' && selectedDate) {
             const date = parseDDMMYYYYToYYYYMMDD(selectedDate);
             if (date) {
                 const targetDate = new Date(date).toISOString().split('T')[0];
-                filtered = filtered.filter(apt => apt.date === targetDate);
+                filtered = filtered.filter(payment => {
+                    const paymentDate = new Date(payment.date).toISOString().split('T')[0];
+                    return paymentDate === targetDate;
+                });
             }
         } else if (viewMode === 'month' && selectedMonth) {
             const [month, year] = selectedMonth.split('-').map(Number);
-            filtered = filtered.filter(apt => {
-                const aptDate = new Date(apt.date);
-                return aptDate.getMonth() + 1 === month && aptDate.getFullYear() === year;
+            filtered = filtered.filter(payment => {
+                const paymentDate = new Date(payment.date);
+                return paymentDate.getMonth() + 1 === month && paymentDate.getFullYear() === year;
             });
         } else if (viewMode === 'year' && selectedYear) {
             const year = Number(selectedYear);
-            filtered = filtered.filter(apt => {
-                const aptDate = new Date(apt.date);
-                return aptDate.getFullYear() === year;
+            filtered = filtered.filter(payment => {
+                const paymentDate = new Date(payment.date);
+                return paymentDate.getFullYear() === year;
             });
         } else if (viewMode === 'range' && startDate && endDate && !dateError) {
             const start = parseDDMMYYYYToYYYYMMDD(startDate);
@@ -222,62 +218,67 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 const startDateObj = new Date(start);
                 const endDateObj = new Date(end);
                 endDateObj.setHours(23, 59, 59, 999);
-                filtered = filtered.filter(apt => {
-                    const aptDate = new Date(apt.date);
-                    return aptDate >= startDateObj && aptDate <= endDateObj;
+                filtered = filtered.filter(payment => {
+                    const paymentDate = new Date(payment.date);
+                    return paymentDate >= startDateObj && paymentDate <= endDateObj;
                 });
             }
         }
 
-        console.log('ReportsPage - Final filtered appointments:', {
+        console.log('ReportsPage - Final filtered payments:', {
             count: filtered.length,
-            services: filtered.map(apt => ({ serviceId: apt.serviceId, date: apt.date }))
+            totalAmount: filtered.reduce((sum, p) => sum + p.amount, 0)
         });
 
         return filtered;
-    }, [localAppointments, viewMode, selectedDate, selectedMonth, selectedYear, startDate, endDate, dateError]);
+    }, [localPayments, viewMode, selectedDate, selectedMonth, selectedYear, startDate, endDate, dateError]);
 
-    // Calculate service statistics
+    // Calculate service statistics từ payments
     const serviceStats = useMemo(() => {
         const stats: Record<string, {
-            service: Service;
+            service: Service | null;
             serviceId: string;
+            serviceName: string;
             price: number;
             quantity: number;
             totalAmount: number;
         }> = {};
 
-        console.log('ReportsPage - Calculating service stats:', {
-            filteredAppointmentsCount: filteredAppointments.length,
+        console.log('ReportsPage - Calculating service stats from payments:', {
+            filteredPaymentsCount: filteredPayments.length,
             servicesCount: localServices.length
         });
 
-        filteredAppointments.forEach(apt => {
-            const service = localServices.find(s => s.id === apt.serviceId);
-            if (service) {
-                if (!stats[apt.serviceId]) {
-                    stats[apt.serviceId] = {
-                        service,
-                        serviceId: service.id,
-                        price: service.price,
-                        quantity: 0,
-                        totalAmount: 0
-                    };
-                }
-                stats[apt.serviceId].quantity++;
-                stats[apt.serviceId].totalAmount += Number(service.price);
-            } else {
-                console.warn('ReportsPage - Service not found for appointment:', {
-                    appointmentId: apt.id,
-                    serviceId: apt.serviceId
-                });
+        filteredPayments.forEach(payment => {
+            // Lấy thông tin appointment để biết serviceId và quantity
+            const appointment = payment.appointmentId 
+                ? localAppointments.find(apt => apt.id === payment.appointmentId)
+                : null;
+            
+            const serviceId = appointment?.serviceId || 'unknown';
+            const service = localServices.find(s => s.id === serviceId);
+            const serviceName = payment.serviceName || service?.name || 'Dịch vụ không xác định';
+            const quantity = appointment?.quantity || 1;
+            
+            if (!stats[serviceId]) {
+                stats[serviceId] = {
+                    service: service || null,
+                    serviceId: serviceId,
+                    serviceName: serviceName,
+                    price: service?.price || 0,
+                    quantity: 0,
+                    totalAmount: 0
+                };
             }
+            
+            stats[serviceId].quantity += quantity;
+            stats[serviceId].totalAmount += Number(payment.amount);
         });
 
-        const result = Object.values(stats).sort((a, b) => b.quantity - a.quantity);
+        const result = Object.values(stats).sort((a, b) => b.totalAmount - a.totalAmount);
         console.log('ReportsPage - Service stats result:', result);
         return result;
-    }, [filteredAppointments, localServices]);
+    }, [filteredPayments, localServices, localAppointments]);
 
     // Calculate totals
     const totalAmount = useMemo(() => {
@@ -312,11 +313,11 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         }
 
         // Create CSV content
-        const headers = ['STT', 'Mã Dịch Vụ', 'Tên Dịch Vụ', 'Giá', 'Số Lượng', 'Thành Tiền'];
+        const headers = ['STT', 'Mã Dịch Vụ', 'Tên Dịch Vụ', 'Giá Gốc', 'Số Buổi', 'Doanh Thu'];
         const rows = serviceStats.map((stat, index) => [
             index + 1,
             stat.serviceId,
-            stat.service.name,
+            stat.serviceName,
             stat.price.toLocaleString('vi-VN'),
             stat.quantity,
             stat.totalAmount.toLocaleString('vi-VN')
@@ -398,48 +399,99 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold text-gray-800">Báo Cáo Thống Kê Dịch Vụ</h1>
-                <div className="flex gap-3">
-                    <button
-                        onClick={handleExportCSV}
-                        className="px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors flex items-center gap-2"
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Xuất CSV
-                    </button>
-                    <button
-                        onClick={handlePrint}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center gap-2"
-                    >
-                        <PrinterIcon className="w-5 h-5" />
-                        In báo cáo
-                    </button>
+            {/* Header với gradient */}
+            <div className="bg-gradient-to-r from-brand-primary via-purple-600 to-pink-600 rounded-xl shadow-lg p-6 text-white">
+                <div className="flex justify-between items-center">
+                    <div>
+                        <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                            📊 Báo Cáo Thống Kê Dịch Vụ
+                        </h1>
+                        <p className="text-white/90 text-sm">Phân tích doanh thu và hiệu suất dịch vụ</p>
+                    </div>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={handleExportCSV}
+                            className="px-5 py-2.5 bg-white text-green-600 rounded-lg font-semibold hover:bg-green-50 transition-all flex items-center gap-2 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            Xuất CSV
+                        </button>
+                        <button
+                            onClick={handlePrint}
+                            className="px-5 py-2.5 bg-white text-blue-600 rounded-lg font-semibold hover:bg-blue-50 transition-all flex items-center gap-2 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                        >
+                            <PrinterIcon className="w-5 h-5" />
+                            In báo cáo
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            {/* Filters */}
-            <div className="bg-white p-6 rounded-lg shadow-md">
+            {/* Stat Cards với gradient */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-green-100 text-sm font-medium mb-1">Tổng Doanh Thu</p>
+                            <p className="text-3xl font-bold">{formatCurrency(totalAmount)}</p>
+                        </div>
+                        <div className="bg-white/20 p-4 rounded-full">
+                            <CurrencyDollarIcon className="w-8 h-8" />
+                        </div>
+                    </div>
+                </div>
+                
+                <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-blue-100 text-sm font-medium mb-1">Tổng Số Buổi</p>
+                            <p className="text-3xl font-bold">{totalQuantity}</p>
+                        </div>
+                        <div className="bg-white/20 p-4 rounded-full">
+                            <CheckCircleIcon className="w-8 h-8" />
+                        </div>
+                    </div>
+                </div>
+                
+                <div className="bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-purple-100 text-sm font-medium mb-1">Số Dịch Vụ</p>
+                            <p className="text-3xl font-bold">{serviceStats.length}</p>
+                        </div>
+                        <div className="bg-white/20 p-4 rounded-full">
+                            <ChartBarIcon className="w-8 h-8" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Filters với gradient border */}
+            <div className="bg-white p-6 rounded-xl shadow-lg border-t-4 border-gradient-to-r from-brand-primary to-purple-600">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                    <ClockIcon className="w-5 h-5 text-brand-primary" />
+                    Chọn Kỳ Báo Cáo
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Chế độ xem</label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Chế độ xem</label>
                         <select
                             value={viewMode}
                             onChange={(e) => setViewMode(e.target.value as 'day' | 'month' | 'year' | 'range')}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                            className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all"
                         >
-                            <option value="day">Theo ngày</option>
-                            <option value="month">Theo tháng</option>
-                            <option value="year">Theo năm</option>
-                            <option value="range">Khoảng thời gian</option>
+                            <option value="day">📅 Theo ngày</option>
+                            <option value="month">📆 Theo tháng</option>
+                            <option value="year">🗓️ Theo năm</option>
+                            <option value="range">📊 Khoảng thời gian</option>
                         </select>
                     </div>
 
                     {viewMode === 'day' && (
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Chọn ngày</label>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">Chọn ngày</label>
                             <input
                                 type="date"
                                 value={convertToDateInputFormat(selectedDate)}
@@ -448,14 +500,14 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                                     if (converted) setSelectedDate(converted);
                                 }}
                                 max={formatDateDDMMYYYY(new Date())}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                                className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all"
                             />
                         </div>
                     )}
 
                     {viewMode === 'month' && (
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Chọn tháng</label>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">Chọn tháng</label>
                             <input
                                 type="month"
                                 value={convertToMonthInputFormat(selectedMonth)}
@@ -464,14 +516,14 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                                     if (converted) setSelectedMonth(converted);
                                 }}
                                 max={`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                                className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all"
                             />
                         </div>
                     )}
 
                     {viewMode === 'year' && (
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Chọn năm</label>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">Chọn năm</label>
                             <input
                                 type="number"
                                 value={selectedYear}
@@ -486,7 +538,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                                 min="2000"
                                 max={new Date().getFullYear()}
                                 placeholder="YYYY"
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                                className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all"
                             />
                         </div>
                     )}
@@ -494,7 +546,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                     {viewMode === 'range' && (
                         <>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Từ ngày</label>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">Từ ngày</label>
                                 <input
                                     type="date"
                                     value={convertToDateInputFormat(startDate)}
@@ -503,11 +555,11 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                                         if (converted) setStartDate(converted);
                                     }}
                                     max={formatDateDDMMYYYY(new Date())}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                                    className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all"
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Đến ngày</label>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">Đến ngày</label>
                                 <input
                                     type="date"
                                     value={convertToDateInputFormat(endDate)}
@@ -517,7 +569,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                                     }}
                                     min={convertToDateInputFormat(startDate) || undefined}
                                     max={formatDateDDMMYYYY(new Date())}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                                    className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all"
                                 />
                             </div>
                         </>
@@ -525,15 +577,15 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 </div>
 
                 {dateError && (
-                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <p className="text-sm text-red-600">{dateError}</p>
+                    <div className="mt-4 p-4 bg-gradient-to-r from-red-50 to-pink-50 border-l-4 border-red-500 rounded-lg shadow-sm">
+                        <p className="text-sm text-red-700 font-medium">⚠️ {dateError}</p>
                     </div>
                 )}
 
                 {!dateError && getPeriodLabel() && (
-                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        <p className="text-sm text-blue-800">
-                            <strong>Kỳ báo cáo:</strong> {getPeriodLabel()}
+                    <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 rounded-lg shadow-sm">
+                        <p className="text-sm text-blue-800 font-medium">
+                            <strong>📅 Kỳ báo cáo:</strong> {getPeriodLabel()}
                         </p>
                     </div>
                 )}
@@ -549,41 +601,49 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                 </div>
 
                 {/* Statistics Table */}
-                <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                <div className="bg-white rounded-xl shadow-xl overflow-hidden border border-gray-100">
                     <div className="overflow-x-auto">
                         <table className="w-full">
                             <thead>
-                                <tr className="bg-brand-primary text-white">
-                                    <th className="text-left py-4 px-6 font-semibold">STT</th>
-                                    <th className="text-left py-4 px-6 font-semibold">Mã Dịch Vụ</th>
-                                    <th className="text-left py-4 px-6 font-semibold">Tên Dịch Vụ</th>
-                                    <th className="text-right py-4 px-6 font-semibold">Giá</th>
-                                    <th className="text-right py-4 px-6 font-semibold">Số Lượng</th>
-                                    <th className="text-right py-4 px-6 font-semibold">Thành Tiền</th>
+                                <tr className="bg-gradient-to-r from-brand-primary via-purple-600 to-pink-600 text-white">
+                                    <th className="text-left py-4 px-6 font-bold text-sm uppercase tracking-wider">STT</th>
+                                    <th className="text-left py-4 px-6 font-bold text-sm uppercase tracking-wider">Mã Dịch Vụ</th>
+                                    <th className="text-left py-4 px-6 font-bold text-sm uppercase tracking-wider">Tên Dịch Vụ</th>
+                                    <th className="text-right py-4 px-6 font-bold text-sm uppercase tracking-wider">Giá Gốc</th>
+                                    <th className="text-right py-4 px-6 font-bold text-sm uppercase tracking-wider">Số Buổi</th>
+                                    <th className="text-right py-4 px-6 font-bold text-sm uppercase tracking-wider">Doanh Thu</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {serviceStats.length > 0 ? (
                                     <>
                                         {serviceStats.map((stat, index) => (
-                                            <tr key={stat.service.id} className="border-b border-gray-200 hover:bg-gray-50">
-                                                <td className="py-4 px-6 text-gray-600">{index + 1}</td>
-                                                <td className="py-4 px-6 text-gray-600 font-mono text-sm">{stat.serviceId}</td>
-                                                <td className="py-4 px-6 font-medium text-gray-800">{stat.service.name}</td>
-                                                <td className="py-4 px-6 text-right text-gray-600">{formatCurrency(stat.price)}</td>
-                                                <td className="py-4 px-6 text-right text-gray-600">{stat.quantity}</td>
-                                                <td className="py-4 px-6 text-right font-semibold text-green-600">{formatCurrency(stat.totalAmount)}</td>
+                                            <tr key={stat.serviceId + index} className="border-b border-gray-200 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 transition-all duration-200">
+                                                <td className="py-4 px-6 text-gray-700 font-semibold">{index + 1}</td>
+                                                <td className="py-4 px-6 text-gray-600 font-mono text-sm bg-gray-50 rounded">{stat.serviceId}</td>
+                                                <td className="py-4 px-6 font-semibold text-gray-800">{stat.serviceName}</td>
+                                                <td className="py-4 px-6 text-right text-gray-600 font-medium">{formatCurrency(stat.price)}</td>
+                                                <td className="py-4 px-6 text-right">
+                                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-blue-100 text-blue-700">
+                                                        {stat.quantity}
+                                                    </span>
+                                                </td>
+                                                <td className="py-4 px-6 text-right font-bold text-green-600 text-lg">{formatCurrency(stat.totalAmount)}</td>
                                             </tr>
                                         ))}
-                                        <tr className="bg-gray-100 font-bold">
-                                            <td colSpan={5} className="py-4 px-6 text-right text-gray-800">TỔNG TIỀN</td>
-                                            <td className="py-4 px-6 text-right text-brand-primary text-lg">{formatCurrency(totalAmount)}</td>
+                                        <tr className="bg-gradient-to-r from-gray-100 to-gray-50 font-bold border-t-2 border-brand-primary">
+                                            <td colSpan={5} className="py-5 px-6 text-right text-gray-800 text-lg uppercase tracking-wide">💰 TỔNG DOANH THU</td>
+                                            <td className="py-5 px-6 text-right text-brand-primary text-2xl font-extrabold">{formatCurrency(totalAmount)}</td>
                                         </tr>
                                     </>
                                 ) : (
                                     <tr>
-                                        <td colSpan={6} className="py-12 text-center text-gray-500">
-                                            Không có dữ liệu cho kỳ báo cáo này
+                                        <td colSpan={6} className="py-16 text-center">
+                                            <div className="flex flex-col items-center gap-3">
+                                                <ChartBarIcon className="w-16 h-16 text-gray-300" />
+                                                <p className="text-gray-500 text-lg font-medium">Không có dữ liệu cho kỳ báo cáo này</p>
+                                                <p className="text-gray-400 text-sm">Vui lòng chọn kỳ báo cáo khác</p>
+                                            </div>
                                         </td>
                                     </tr>
                                 )}

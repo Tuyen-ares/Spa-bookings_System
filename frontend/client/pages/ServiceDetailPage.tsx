@@ -39,6 +39,7 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
     const [hoverRating, setHoverRating] = useState(0);
     const [newComment, setNewComment] = useState('');
     const [reviewMessage, setReviewMessage] = useState('');
+    const [editingReview, setEditingReview] = useState<Review | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -88,13 +89,16 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
                         if (completedAppointmentsForThisService.length > userReviewsForThisService.length) {
                             setUserCanReview(true);
                             setReviewMessage('');
+                        } else if (userReviewsForThisService.length > 0) {
+                            setUserCanReview(false);
+                            setReviewMessage('Bạn đã đánh giá dịch vụ này. Bạn có thể chỉnh sửa đánh giá của mình.');
                         } else {
                             setUserCanReview(false);
                             setReviewMessage('Bạn đã đánh giá tất cả các lần sử dụng dịch vụ này.');
                         }
                     } else {
                         setUserCanReview(false);
-                        setReviewMessage('Bạn cần hoàn thành dịch vụ này để có thể đánh giá.');
+                        // setReviewMessage('Bạn cần hoàn thành dịch vụ này để có thể đánh giá.');
                     }
                 } catch (error) {
                     console.error("Failed to check review eligibility:", error);
@@ -133,7 +137,7 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
     const relatedServices = useMemo(() => {
         if (!service || allServices.length === 0) return [];
         return allServices.filter(
-            s => s.category === service.category && s.id !== service.id && s.isActive
+            s => s.categoryId === service.categoryId && s.id !== service.id && s.isActive
         ).slice(0, 3);
     }, [service, allServices]);
 
@@ -152,6 +156,13 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
         window.dispatchEvent(new CustomEvent('open-chatbot'));
     };
 
+    const handleEditReview = (review: Review) => {
+        setEditingReview(review);
+        setNewRating(review.rating);
+        setNewComment(review.comment || '');
+        setIsReviewFormVisible(true);
+    };
+
     const handleReviewSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (newRating === 0 || !currentUser || !service) {
@@ -160,49 +171,77 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
         }
         setIsSubmittingReview(true);
         try {
-            const userAppointments = await apiService.getUserAppointments(currentUser.id);
-            const reviewedAppointmentIds = new Set(
-                (await apiService.getReviews({ userId: currentUser.id }))
-                .map(r => r.appointmentId)
-                .filter(Boolean) as string[]
-            );
-            
-            const appointmentToReview = userAppointments.find(
-                app => app.serviceId === service.id &&
-                       app.status === 'completed' &&
-                       !reviewedAppointmentIds.has(app.id)
-            );
-
-            const reviewPayload: Partial<Review> = {
-                userId: currentUser.id,
-                serviceId: service.id,
-                appointmentId: appointmentToReview?.id,
-                userName: currentUser.name,
-                userImageUrl: currentUser.profilePictureUrl,
-                rating: newRating,
-                comment: newComment,
-                serviceName: service.name,
-            };
-
-            const createdReview = await apiService.createReview(reviewPayload);
-
-            // Update local and global state
-            setServiceReviews(prev => [createdReview, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-            setAllReviews(prev => [createdReview, ...prev]);
-
-            if (appointmentToReview) {
-                setAllAppointments(prev => prev.map(app => 
-                    app.id === appointmentToReview.id ? { ...app, reviewRating: createdReview.rating } : app
+            if (editingReview) {
+                // Update existing review
+                const updatedReviewPayload: Partial<Review> = {
+                    rating: newRating,
+                    comment: newComment.trim(),
+                };
+                
+                await apiService.updateReview(editingReview.id, updatedReviewPayload);
+                
+                // Update local state
+                setServiceReviews(prev => prev.map(r => 
+                    r.id === editingReview.id 
+                        ? { ...r, rating: newRating, comment: newComment.trim() }
+                        : r
                 ));
+                setAllReviews(prev => prev.map(r => 
+                    r.id === editingReview.id 
+                        ? { ...r, rating: newRating, comment: newComment.trim() }
+                        : r
+                ));
+                
+                alert('✅ Cập nhật đánh giá thành công!');
+            } else {
+                // Create new review
+                const userAppointments = await apiService.getUserAppointments(currentUser.id);
+                const reviewedAppointmentIds = new Set(
+                    (await apiService.getReviews({ userId: currentUser.id }))
+                    .map(r => r.appointmentId)
+                    .filter(Boolean) as string[]
+                );
+                
+                const appointmentToReview = userAppointments.find(
+                    app => app.serviceId === service.id &&
+                           app.status === 'completed' &&
+                           !reviewedAppointmentIds.has(app.id)
+                );
+
+                const reviewPayload: Partial<Review> = {
+                    userId: currentUser.id,
+                    serviceId: service.id,
+                    appointmentId: appointmentToReview?.id,
+                    userName: currentUser.name,
+                    userImageUrl: currentUser.profilePictureUrl,
+                    rating: newRating,
+                    comment: newComment.trim(),
+                    serviceName: service.name,
+                };
+
+                const createdReview = await apiService.createReview(reviewPayload);
+
+                // Update local and global state
+                setServiceReviews(prev => [createdReview, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+                setAllReviews(prev => [createdReview, ...prev]);
+
+                if (appointmentToReview) {
+                    setAllAppointments(prev => prev.map(app => 
+                        app.id === appointmentToReview.id ? { ...app, reviewRating: createdReview.rating } : app
+                    ));
+                }
+                
+                alert('✅ Cảm ơn bạn đã đánh giá!');
             }
 
             setIsReviewFormVisible(false);
+            setEditingReview(null);
             setNewRating(0);
             setNewComment('');
             
         } catch (error) {
             console.error("Failed to submit review:", error);
-            alert("Gửi đánh giá thất bại. Vui lòng thử lại.");
+            alert("❌ Gửi đánh giá thất bại. Vui lòng thử lại.");
         } finally {
             setIsSubmittingReview(false);
         }
@@ -223,7 +262,9 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
 
     const reviewForm = (
         <div className="mt-12 max-w-4xl mx-auto animate-fadeInUp">
-            <h3 className="text-2xl font-serif font-bold text-brand-dark mb-4">Viết đánh giá của bạn</h3>
+            <h3 className="text-2xl font-serif font-bold text-brand-dark mb-4">
+                {editingReview ? 'Chỉnh sửa đánh giá của bạn' : 'Viết đánh giá của bạn'}
+            </h3>
             <form onSubmit={handleReviewSubmit} className="bg-white p-6 rounded-lg shadow-md">
                 <div className="flex justify-center items-center mb-4">
                     <span className="mr-4 font-semibold text-gray-700">Đánh giá của bạn:</span>
@@ -239,21 +280,39 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
                         ))}
                     </div>
                 </div>
-                <textarea
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    placeholder="Chia sẻ cảm nhận chi tiết của bạn về dịch vụ..."
-                    rows={4}
-                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-brand-primary focus:border-brand-primary mb-4"
-                    required
-                ></textarea>
-                <div className="text-right">
+                <div className="mb-4">
+                    <textarea
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        placeholder="Chia sẻ cảm nhận chi tiết của bạn về dịch vụ..."
+                        rows={4}
+                        maxLength={500}
+                        className="w-full p-3 border border-gray-300 rounded-md focus:ring-brand-primary focus:border-brand-primary resize-none"
+                    ></textarea>
+                    <div className="flex justify-between items-center mt-1">
+                        <span className="text-xs text-gray-500">Tối đa 500 ký tự</span>
+                        <span className="text-xs text-gray-500">{newComment.length}/500</span>
+                    </div>
+                </div>
+                <div className="flex justify-end gap-3">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setIsReviewFormVisible(false);
+                            setEditingReview(null);
+                            setNewRating(0);
+                            setNewComment('');
+                        }}
+                        className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-semibold"
+                    >
+                        Hủy
+                    </button>
                     <button
                         type="submit"
                         disabled={isSubmittingReview || newRating === 0}
                         className="bg-brand-primary text-white font-bold py-2 px-6 rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        {isSubmittingReview ? 'Đang gửi...' : 'Gửi đánh giá'}
+                        {isSubmittingReview ? 'Đang gửi...' : (editingReview ? 'Cập nhật' : 'Gửi đánh giá')}
                     </button>
                 </div>
             </form>
@@ -305,7 +364,7 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
                     </div>
                     <div className="p-8 md:w-1/2 flex flex-col">
                         <div>
-                            <p className="text-sm text-brand-primary font-semibold">{service.category}</p>
+                            <p className="text-sm text-brand-primary font-semibold">{service.categoryId}</p>
                             <div className="flex justify-between items-start">
                                 <h1 className="text-2xl sm:text-3xl md:text-4xl font-serif font-bold text-brand-dark mt-2 mb-4">{service.name}</h1>
                                 <button onClick={toggleFavorite} className={`p-2 rounded-full transition-colors duration-300 ${isFavorite ? 'text-red-500 bg-red-100' : 'text-gray-400 hover:bg-gray-100'}`} aria-label="Thêm vào yêu thích">
@@ -318,7 +377,7 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
                                 </div>
                                 <span className="ml-2 text-brand-text text-sm">({service.reviewCount} đánh giá)</span>
                             </div>
-                            <p className="text-brand-text text-base leading-relaxed mb-6">{service.longDescription}</p>
+                            <p className="text-brand-text text-base leading-relaxed mb-6">{service.description}</p>
 
                             {expiringSoonPromo && (
                                 <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 rounded-md mb-6 animate-pulse">
@@ -413,6 +472,14 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
                                                     />
                                                 ))}
                                             </div>
+                                            {isMyReview && (
+                                                <button
+                                                    onClick={() => handleEditReview(review)}
+                                                    className="ml-auto px-3 py-1 text-xs bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors font-semibold"
+                                                >
+                                                    ✏️ Chỉnh sửa
+                                                </button>
+                                            )}
                                         </div>
                                         <p className="text-sm text-gray-500 mb-2">{new Date(review.date).toLocaleDateString('vi-VN')}</p>
                                         {review.comment && (

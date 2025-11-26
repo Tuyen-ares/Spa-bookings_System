@@ -70,12 +70,8 @@ const StaffDashboardPage: React.FC<StaffDashboardPageProps> = ({ currentUser, al
         // Note: commissionRate not in db.txt
         const commission = 0;
 
-        const ratedAppointments = staffAppointments.filter(app => typeof app.reviewRating === 'number');
-        const totalRating = ratedAppointments.reduce((sum, app) => sum + app.reviewRating!, 0);
-        const averageRating = ratedAppointments.length > 0 ? totalRating / ratedAppointments.length : 0;
-        const reviewCount = ratedAppointments.length;
 
-        return { sessionsThisWeek, sessionsThisMonth, totalRevenue, commission, averageRating, reviewCount };
+        return { sessionsThisWeek, sessionsThisMonth, totalRevenue, commission};
     }, [currentUser.id, allAppointments, allServices]);
 
     const kpiStats = useMemo(() => {

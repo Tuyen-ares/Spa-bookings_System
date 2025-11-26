@@ -34,16 +34,20 @@ export interface Service {
 }
 
 export interface Promotion {
-  id: number;
-  code: string;
+  id: string;
+  title: string;
   description: string;
+  code: string;
+  expiryDate: string;
+  imageUrl?: string;
   discountType: 'percentage' | 'fixed';
   discountValue: number;
-  startDate: string;
-  endDate: string;
-  isActive: boolean;
-  minPurchase?: number;
-  maxDiscount?: number;
+  termsAndConditions?: string;
+  targetAudience?: string;
+  applicableServiceIds?: string[];
+  minOrderValue?: number;
+  stock?: number | null;
+  isActive?: boolean;
 }
 
 export interface Review {
@@ -149,7 +153,26 @@ export interface RegisterData {
   gender?: string;
 }
 
-export interface ChatMessage {
-  sender: 'user' | 'bot';
-  text: string;
+export interface Notification {
+  id: string;
+  userId: string;
+  type: 'booking_confirmed' | 'booking_reminder' | 'booking_cancelled' | 'payment_success' | 'promotion' | 'other';
+  title: string;
+  message: string;
+  isRead: boolean;
+  relatedId?: string;
+  createdAt: string;
+}
+
+export interface Wallet {
+  id: string;
+  userId: string;
+  points: number;
+  totalSpent: number;
+  tier?: string;
+}
+
+export interface RedeemableVoucher extends Promotion {
+  pointsRequired?: number;
+  isPublic?: boolean;
 }

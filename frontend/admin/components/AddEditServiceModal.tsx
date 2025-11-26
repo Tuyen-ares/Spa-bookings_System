@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import type { Service, ServiceCategory } from '../../types';
 import * as apiService from '../../client/services/apiService';
 
-type ServiceWithStatus = Service & { isActive: boolean };
+type ServiceWithStatus = Service & { isActive: boolean; longDescription?: string };
 
 interface AddEditServiceModalProps {
     service: ServiceWithStatus | null;

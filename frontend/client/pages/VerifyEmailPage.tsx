@@ -1,6 +1,16 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import * as apiService from '../services/apiService';
+import { 
+    CheckCircleIcon, 
+    XCircleIcon, 
+    MailIcon, 
+    HomeIcon, 
+    CalendarIcon, 
+    ArrowUturnLeftIcon,
+    LogoIcon
+} from '../../shared/icons';
 
 const VerifyEmailPage: React.FC = () => {
     const { token } = useParams<{ token: string }>();
@@ -15,7 +25,6 @@ const VerifyEmailPage: React.FC = () => {
         // Check if we're on a non-hash URL (from old email link) and redirect to hash URL
         if (window.location.pathname.startsWith('/verify-email/') && !window.location.hash) {
             const pathToken = window.location.pathname.replace('/verify-email/', '');
-            console.log('🔄 Redirecting from non-hash URL to hash URL with token:', pathToken.substring(0, 20) + '...');
             window.location.href = `/#/verify-email/${pathToken}`;
             return;
         }
@@ -23,14 +32,12 @@ const VerifyEmailPage: React.FC = () => {
         const verifyEmail = async () => {
             if (!token) {
                 setStatus('error');
-                setMessage('Token xác nhận không hợp lệ.');
+                setMessage('Token xác nhận không hợp lệ hoặc đường dẫn đã hỏng.');
                 return;
             }
 
             try {
-                console.log('🔍 Verifying email with token:', token ? token.substring(0, 20) + '...' : 'null');
                 const result = await apiService.verifyEmail(token);
-                console.log('✅ Verify email result:', result);
                 
                 setStatus('success');
                 setMessage(result.message);
@@ -46,10 +53,10 @@ const VerifyEmailPage: React.FC = () => {
                     setShowSuccessDialog(true);
                 } else if (result.alreadyVerified) {
                     // If already verified, just show message and redirect to login
-                    setMessage(result.message + ' Bạn có thể đăng nhập ngay.');
+                    setMessage(result.message);
                     setTimeout(() => {
                         navigate('/login');
-                    }, 2000);
+                    }, 3000);
                 }
             } catch (error: any) {
                 console.error('❌ Error verifying email:', error);
@@ -76,123 +83,133 @@ const VerifyEmailPage: React.FC = () => {
     };
 
     return (
-        <div className="container mx-auto px-4 py-16 flex justify-center items-center min-h-[70vh]">
-            <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-2xl text-center">
+        <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-brand-light px-4 font-sans">
+            {/* Dynamic Animated Gradient Background */}
+            <div className="absolute inset-0 bg-gradient-to-br from-cyan-50 via-white to-rose-50 animate-gradient-slow z-0 opacity-90"></div>
+
+            {/* Background Decorations */}
+            <div className="absolute top-[-10%] left-[-5%] w-[600px] h-[600px] bg-brand-primary/5 rounded-full mix-blend-multiply filter blur-[80px] animate-float"></div>
+            <div className="absolute bottom-[-10%] right-[-5%] w-[500px] h-[500px] bg-blue-100/40 rounded-full mix-blend-multiply filter blur-[80px] animate-float" style={{ animationDelay: '2s' }}></div>
+
+            <div className="w-full max-w-lg bg-white/80 backdrop-blur-2xl p-8 sm:p-10 rounded-[2.5rem] shadow-2xl z-10 border border-white/60 animate-fadeInUp relative">
+                
+                {/* Top Logo */}
+                <div className="flex justify-center mb-8">
+                    <Link to="/" className="p-3 bg-white rounded-full shadow-md hover:scale-105 transition-transform">
+                        <LogoIcon className="h-10 w-10 text-brand-primary" />
+                    </Link>
+                </div>
+
                 {status === 'loading' && (
-                    <>
-                        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-brand-primary mx-auto mb-4"></div>
-                        <h1 className="text-2xl font-serif font-bold text-brand-dark mb-4">Đang xác nhận email...</h1>
-                        <p className="text-gray-600">Vui lòng đợi trong giây lát.</p>
-                    </>
+                    <div className="text-center py-8">
+                        <div className="relative w-20 h-20 mx-auto mb-6">
+                            <div className="absolute inset-0 border-4 border-brand-secondary rounded-full"></div>
+                            <div className="absolute inset-0 border-4 border-brand-primary rounded-full border-t-transparent animate-spin"></div>
+                            <LogoIcon className="absolute inset-0 m-auto h-8 w-8 text-brand-primary animate-pulse" />
+                        </div>
+                        <h2 className="text-2xl font-serif font-bold text-brand-dark mb-2">Đang xác thực...</h2>
+                        <p className="text-gray-500">Vui lòng đợi trong giây lát, chúng tôi đang kiểm tra thông tin của bạn.</p>
+                    </div>
                 )}
 
                 {status === 'success' && !showSuccessDialog && (
-                    <>
-                        <div className="mb-4">
-                            <svg className="mx-auto h-16 w-16 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
+                    <div className="text-center py-6">
+                        <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner animate-[bounce_1s_infinite]">
+                            <CheckCircleIcon className="w-12 h-12 text-green-600" />
                         </div>
-                        <h1 className="text-2xl font-serif font-bold text-brand-dark mb-4">Xác nhận thành công!</h1>
-                        <p className="text-gray-600 mb-6">{message}</p>
-                        <p className="text-sm text-gray-500">Đang chuyển hướng...</p>
-                    </>
+                        <h2 className="text-3xl font-serif font-bold text-brand-dark mb-3">Thành Công!</h2>
+                        <p className="text-gray-600 mb-8 font-medium">{message}</p>
+                        <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
+                            <div className="w-2 h-2 bg-brand-primary rounded-full animate-ping"></div>
+                            Đang chuyển hướng đến trang đăng nhập...
+                        </div>
+                    </div>
                 )}
 
-                {/* Success Dialog Modal */}
+                {/* Success Dialog Modal Overlay */}
                 {showSuccessDialog && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-8 text-center">
-                            <div className="mb-6">
-                                <div className="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-green-100">
-                                    <svg className="h-12 w-12 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                </div>
-                            </div>
-                            <h2 className="text-3xl font-serif font-bold text-brand-dark mb-4">
-                                Xác thực Email Thành Công!
-                            </h2>
-                            <p className="text-gray-600 mb-2">
-                                Tài khoản của bạn đã được kích hoạt thành công.
-                            </p>
-                            {verifiedUser && (
-                                <p className="text-sm text-gray-500 mb-6">
-                                    Chào mừng <span className="font-semibold text-brand-dark">{verifiedUser.name}</span>!
-                                </p>
-                            )}
-                            <div className="space-y-3">
-                                <button
-                                    onClick={() => {
-                                        setShowSuccessDialog(false);
-                                        navigate('/', { replace: true });
-                                        // Force reload to ensure App.tsx reads the new user from localStorage
-                                        setTimeout(() => {
-                                            window.location.reload();
-                                        }, 100);
-                                    }}
-                                    className="w-full bg-brand-dark text-white font-bold py-3 px-6 rounded-md hover:bg-brand-primary transition-colors duration-300 shadow-lg"
-                                >
-                                    Vào Trang Chủ
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setShowSuccessDialog(false);
-                                        navigate('/booking', { replace: true });
-                                        setTimeout(() => {
-                                            window.location.reload();
-                                        }, 100);
-                                    }}
-                                    className="w-full bg-brand-primary text-white font-bold py-3 px-6 rounded-md hover:bg-brand-dark transition-colors duration-300"
-                                >
-                                    Đặt Lịch Ngay
-                                </button>
-                            </div>
+                    <div className="absolute inset-0 bg-white/95 backdrop-blur-xl z-20 flex flex-col items-center justify-center p-8 rounded-[2.5rem] text-center animate-fadeIn">
+                        {/* Confetti decoration */}
+                        <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none opacity-30">
+                            <div className="absolute top-10 left-10 w-4 h-4 bg-red-400 rounded-full animate-bounce"></div>
+                            <div className="absolute top-20 right-20 w-3 h-3 bg-blue-400 transform rotate-45 animate-pulse"></div>
+                            <div className="absolute bottom-10 left-1/3 w-5 h-5 bg-yellow-400 rounded-md animate-spin"></div>
+                        </div>
+
+                        <div className="w-20 h-20 bg-green-50 border-2 border-green-100 rounded-full flex items-center justify-center mb-6 shadow-lg">
+                            <CheckCircleIcon className="w-10 h-10 text-green-500" />
+                        </div>
+
+                        <h2 className="text-2xl font-serif font-extrabold text-brand-dark mb-2">
+                            Chào mừng, {verifiedUser?.name || 'Bạn'}!
+                        </h2>
+                        <p className="text-gray-500 mb-8 text-sm">
+                            Tài khoản của bạn đã được kích hoạt thành công. Hãy bắt đầu hành trình làm đẹp ngay hôm nay.
+                        </p>
+
+                        <div className="w-full space-y-3">
+                            <button
+                                onClick={() => {
+                                    setShowSuccessDialog(false);
+                                    navigate('/', { replace: true });
+                                    setTimeout(() => window.location.reload(), 100);
+                                }}
+                                className="w-full py-4 bg-brand-dark text-white font-bold rounded-xl hover:bg-brand-primary shadow-lg hover:shadow-brand-primary/30 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2"
+                            >
+                                <HomeIcon className="w-5 h-5"/> Vào Trang Chủ
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowSuccessDialog(false);
+                                    navigate('/booking', { replace: true });
+                                    setTimeout(() => window.location.reload(), 100);
+                                }}
+                                className="w-full py-4 bg-white text-brand-primary border border-brand-primary/30 font-bold rounded-xl hover:bg-brand-secondary/30 transition-all flex items-center justify-center gap-2"
+                            >
+                                <CalendarIcon className="w-5 h-5"/> Đặt Lịch Ngay
+                            </button>
                         </div>
                     </div>
                 )}
 
                 {status === 'error' && (
-                    <>
-                        <div className="mb-4">
-                            <svg className="mx-auto h-16 w-16 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
+                    <div className="text-center">
+                        <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-100">
+                            <XCircleIcon className="w-10 h-10 text-red-500" />
                         </div>
-                        <h1 className="text-2xl font-serif font-bold text-brand-dark mb-4">Xác nhận thất bại</h1>
-                        <p className="text-gray-600 mb-6">{message}</p>
+                        <h2 className="text-2xl font-serif font-bold text-gray-800 mb-2">Xác nhận thất bại</h2>
+                        <p className="text-gray-500 mb-8 text-sm px-4">{message}</p>
                         
-                        <div className="space-y-4">
-                            <div>
-                                <label htmlFor="resend-email" className="block text-sm font-medium text-gray-700 mb-2">
-                                    Gửi lại email xác nhận
-                                </label>
+                        <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 text-left">
+                            <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                <MailIcon className="w-4 h-4 text-brand-primary" /> Gửi lại email xác nhận
+                            </h3>
+                            <div className="space-y-3">
                                 <input
-                                    id="resend-email"
                                     type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     placeholder="Nhập địa chỉ email của bạn"
-                                    className="w-full p-3 border border-gray-300 rounded-md mb-2"
+                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-primary focus:border-transparent outline-none bg-white"
                                 />
                                 <button
                                     onClick={handleResendEmail}
-                                    className="w-full bg-brand-primary text-white font-bold py-2 px-4 rounded-md hover:bg-brand-dark transition-colors"
+                                    className="w-full py-3 bg-brand-primary text-white font-bold rounded-xl hover:bg-brand-dark transition-all shadow-md hover:shadow-lg"
                                 >
-                                    Gửi lại email
+                                    Gửi lại liên kết
                                 </button>
                             </div>
-                            
-                            <div className="pt-4 border-t">
-                                <Link
-                                    to="/login"
-                                    className="text-brand-primary hover:text-brand-dark font-medium"
-                                >
-                                    Quay lại trang đăng nhập
-                                </Link>
-                            </div>
                         </div>
-                    </>
+                        
+                        <div className="mt-8">
+                            <Link
+                                to="/login"
+                                className="inline-flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-brand-primary transition-colors"
+                            >
+                                <ArrowUturnLeftIcon className="w-4 h-4" /> Quay lại đăng nhập
+                            </Link>
+                        </div>
+                    </div>
                 )}
             </div>
         </div>
@@ -200,4 +217,3 @@ const VerifyEmailPage: React.FC = () => {
 };
 
 export default VerifyEmailPage;
-

@@ -376,6 +376,22 @@ router.get('/', async (req, res) => {
                 }]
             });
 
+            // Check if user is truly a new client (no successful bookings at all)
+            const userAppointments = await db.Appointment.findAll({
+                where: {
+                    userId: userId,
+                    status: { [Op.ne]: 'cancelled' }
+                }
+            });
+            
+            const isNewClient = userAppointments.length === 0 || 
+                !userAppointments.some(apt => 
+                    apt.paymentStatus === 'Paid' || 
+                    apt.status === 'completed' || 
+                    apt.status === 'upcoming' || 
+                    apt.status === 'scheduled'
+                );
+
             // Filter promotions
             promotions = promotions.filter(promo => {
                 if (promo.targetAudience === 'Birthday') {
@@ -383,7 +399,8 @@ router.get('/', async (req, res) => {
                     if (!isBirthday) return false;
                     if (hasUsedBirthdayVoucherToday) return false;
                 } else if (promo.targetAudience === 'New Clients') {
-                    // Only show if user hasn't used this voucher for any service yet
+                    // Only show if user is truly new (no successful bookings) AND hasn't used voucher
+                    if (!isNewClient) return false;
                     if (hasUsedNewClientVoucherForAnyService) return false;
                 }
                 return true;
@@ -872,6 +889,9 @@ router.post('/:promotionId/redeem', async (req, res) => {
         await wallet.update({
             points: newPoints
         });
+
+        // Note: Points history is derived from Payment records, not stored separately
+        console.log(`✅ Deducted ${promotion.pointsRequired} points from user ${userId} wallet`);
 
         // Decrement stock
         if (promotion.stock !== null) {

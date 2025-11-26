@@ -25,7 +25,6 @@ const navGroups = [
             { name: 'Lịch hẹn', path: '/admin/appointments', icon: <AppointmentsIcon className="w-5 h-5"/> },
             { name: 'Liệu trình điều trị', path: '/admin/treatment-courses', icon: <ClipboardListIcon className="w-5 h-5"/> },
             { name: 'Thanh toán', path: '/admin/payments', icon: <PaymentsIcon className="w-5 h-5"/> },
-            { name: 'Nhân viên', path: '/admin/staff', icon: <StaffIcon className="w-5 h-5"/> },
             { name: 'Quản lý Công việc', path: '/admin/jobs', icon: <ClipboardListIcon className="w-5 h-5"/> },
             { name: 'Khuyến mãi', path: '/admin/promotions', icon: <PromotionsIcon className="w-5 h-5"/> },
             { name: 'Báo cáo', path: '/admin/reports', icon: <ReportsIcon className="w-5 h-5"/> },

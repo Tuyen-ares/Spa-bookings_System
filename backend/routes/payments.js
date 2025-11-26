@@ -274,6 +274,9 @@ router.put('/:id/complete', async (req, res) => {
                         lastUpdated: new Date()
                     });
 
+                    // Note: Points history is derived from Payment records, not stored separately
+                    console.log(`✅ User ${payment.userId} earned ${pointsEarned} points from payment`);
+
                     // Cập nhật tier level dựa trên totalSpent mới
                     const { calculateTierInfo } = require('../utils/tierUtils');
                     const newTotalSpent = currentTotalSpent + amount;
@@ -580,6 +583,10 @@ router.get('/vnpay-return', async (req, res) => {
                             totalSpent: currentTotalSpent + amount,
                             lastUpdated: new Date()
                         });
+
+                        // Note: Points history is derived from Payment records, not stored separately
+                        console.log(`✅ User ${payment.userId} earned ${pointsEarned} points from payment`);
+
                         console.log(`✅ [VNPay RETURN] Wallet updated: +${pointsEarned} points, total: ${currentPoints + pointsEarned} points`);
                         console.log(`   Payment ID: ${payment.id}, Amount: ${amount} VND, Old Status: ${oldStatus}`);
                     }

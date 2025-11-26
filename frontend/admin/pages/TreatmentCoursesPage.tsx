@@ -16,9 +16,6 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
     const [filteredCourses, setFilteredCourses] = useState<TreatmentCourse[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Tab state
-    const [activeTab, setActiveTab] = useState<'active' | 'pending'>('active');
-
     // Filters
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [clientFilter, setClientFilter] = useState<string>('all');
@@ -33,36 +30,24 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
         loadData();
     }, []);
 
-    // Helper function to check if a course has pending appointments
-    const hasPendingAppointments = (course: TreatmentCourse): boolean => {
-        // Check if course has any appointments with status 'pending'
+    // Helper function to check if a course has confirmed appointments
+    const hasConfirmedAppointments = (course: TreatmentCourse): boolean => {
+        // Check if course has any appointments with status 'scheduled' or 'upcoming' (confirmed statuses)
         const courseAppointments = appointments.filter(apt => 
             apt.serviceId === course.serviceId && 
             apt.userId === course.clientId &&
-            apt.status === 'pending'
+            (apt.status === 'scheduled' || apt.status === 'upcoming')
         );
         return courseAppointments.length > 0;
     };
 
     useEffect(() => {
-        // Filter courses based on active tab
-        if (activeTab === 'active') {
-            // Show active, completed, expired courses
-            // BUT exclude courses that have pending appointments (they should be in pending tab)
-            const activeCourses = allCourses.filter(course => {
-                const hasStatus = ['active', 'completed', 'expired'].includes(course.status);
-                const hasPending = hasPendingAppointments(course);
-                return hasStatus && !hasPending; // Exclude if has pending appointments
-            });
-            setCourses(activeCourses);
-        } else {
-            // Show pending courses: either status is 'pending' OR has pending appointments
-            const pendingCourses = allCourses.filter(course => 
-                course.status === 'pending' || hasPendingAppointments(course)
-            );
-            setCourses(pendingCourses);
-        }
-    }, [allCourses, activeTab, appointments]);
+        // Only show courses that have at least one confirmed appointment
+        const coursesWithConfirmedAppointments = allCourses.filter(course => 
+            hasConfirmedAppointments(course)
+        );
+        setCourses(coursesWithConfirmedAppointments);
+    }, [allCourses, appointments]);
 
     useEffect(() => {
         applyFilters();
@@ -203,11 +188,6 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
 
     // Stats - calculate based on allCourses, not filtered courses
     const stats = useMemo(() => {
-        // Count courses with pending appointments (either status is 'pending' OR has pending appointments)
-        const coursesWithPendingAppointments = allCourses.filter(c => 
-            c.status === 'pending' || hasPendingAppointments(c)
-        );
-        
         return {
             total: allCourses.length,
             active: allCourses.filter(c => c.status === 'active').length,
@@ -218,9 +198,9 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                 const days = getDaysUntilExpiry(c.expiryDate);
                 return days > 0 && days <= 7;
             }).length,
-            pending: coursesWithPendingAppointments.length
+            pending: allCourses.filter(c => c.status === 'pending').length
         };
-    }, [allCourses, appointments]);
+    }, [allCourses]);
 
     if (isLoading) {
         return (
@@ -268,29 +248,10 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
 
             {/* Tabs */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
-                <div className="border-b border-gray-200">
-                    <nav className="flex -mb-px">
-                        <button
-                            onClick={() => setActiveTab('active')}
-                            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                                activeTab === 'active'
-                                    ? 'border-brand-primary text-brand-primary'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            }`}
-                        >
-                            Liệu trình bình thường ({stats.active + stats.completed + stats.expired})
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('pending')}
-                            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                                activeTab === 'pending'
-                                    ? 'border-brand-primary text-brand-primary'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            }`}
-                        >
-                            Liệu trình chờ xác nhận lịch hẹn ({stats.pending})
-                        </button>
-                    </nav>
+                <div className="border-b border-gray-200 px-6 py-4">
+                    <h2 className="text-lg font-semibold text-gray-800">
+                        Liệu trình ({allCourses.length})
+                    </h2>
                 </div>
             </div>
 

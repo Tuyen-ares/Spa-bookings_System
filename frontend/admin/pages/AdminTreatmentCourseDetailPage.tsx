@@ -307,14 +307,14 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                         >
                             ✏️ Chỉnh sửa
                         </button>
-                        {course.status === 'active' && !course.isPaused && (
+                        {/* {course.status === 'active' && !course.isPaused && (
                             <button
                                 onClick={() => setShowPauseModal(true)}
                                 className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600"
                             >
                                 ⏸️ Tạm dừng
                             </button>
-                        )}
+                        )} */}
                         {course.isPaused && (
                             <button
                                 onClick={handleResume}

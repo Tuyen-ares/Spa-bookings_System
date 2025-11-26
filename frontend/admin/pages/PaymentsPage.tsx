@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Payment, PaymentMethod, PaymentStatus, User } from '../../types';
+import type { Payment, PaymentMethod, PaymentStatus, User, Appointment } from '../../types';
 import { SearchIcon, CurrencyDollarIcon, CheckCircleIcon, ClockIcon, PrinterIcon, ArrowUturnLeftIcon, TrashIcon } from '../../shared/icons';
 import * as apiService from '../../client/services/apiService'; // Import API service
 
@@ -46,10 +46,11 @@ const Pagination: React.FC<{ currentPage: number; totalPages: number; onPageChan
 };
 
 interface PaymentsPageProps {
-    allUsers: User[]; // FIX: Added allUsers prop
+    allUsers: User[];
+    allAppointments: Appointment[];
 }
 
-const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
+const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }) => {
     const [payments, setPayments] = useState<Payment[]>([]);
     // FIX: Removed local users state as it's now passed as a prop.
     // const [users, setUsers] = useState<User[]>([]); 
@@ -183,6 +184,8 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
         }
 
         const user = allUsers.find(u => u.id === payment.userId);
+        const appointment = payment.appointmentId ? allAppointments.find(a => a.id === payment.appointmentId) : null;
+        const quantity = appointment?.quantity || 1;
         
         // Tạo cửa sổ in
         const printWindow = window.open('', '_blank');
@@ -351,8 +354,8 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
         <div class="invoice-header">
             <div class="spa-name">Anh Thơ Spa</div>
             <div class="spa-info">
-                Địa chỉ: 123 Đường ABC, Quận XYZ, TP.HCM<br>
-                Điện thoại: (028) 1234 5678 | Email: info@anthospa.vn<br>
+                123 Beauty St, Hà Nội, Việt Nam<br>
+                Điện thoại: 098-765-4321 | Email: contact@anhthospa.vn<br>
                 Website: www.anthospa.vn
             </div>
         </div>
@@ -375,8 +378,12 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
                 })}</div>
             </div>
             <div class="detail-section">
-                <div class="detail-label">Khách hàng</div>
+                <div class="detail-label">Tên khách hàng</div>
                 <div class="detail-value">${user ? user.name : 'Khách vãng lai'}</div>
+            </div>
+            <div class="detail-section">
+                <div class="detail-label">Số điện thoại</div>
+                <div class="detail-value">${user && user.phone ? user.phone : 'Chưa cập nhật'}</div>
             </div>
             <div class="detail-section">
                 <div class="detail-label">Trạng thái</div>
@@ -386,13 +393,17 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
                     </span>
                 </div>
             </div>
+            <div class="detail-section">
+                <div class="detail-label">Phương thức thanh toán</div>
+                <div class="detail-value">${METHOD_TEXT[payment.method]}</div>
+            </div>
         </div>
 
         <table class="service-table">
             <thead>
                 <tr>
                     <th>Dịch vụ</th>
-                    <th style="text-align: center;">Số lượng</th>
+                    <th style="text-align: center;">Số buổi</th>
                     <th style="text-align: right;">Đơn giá</th>
                     <th style="text-align: right;">Thành tiền</th>
                 </tr>
@@ -400,31 +411,18 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers }) => {
             <tbody>
                 <tr>
                     <td>${payment.serviceName}</td>
-                    <td style="text-align: center;">1</td>
-                    <td style="text-align: right;">${formatPrice(payment.amount)}</td>
+                    <td style="text-align: center;">${quantity} buổi</td>
+                    <td style="text-align: right;">${formatPrice(payment.amount / quantity)}</td>
                     <td style="text-align: right;">${formatPrice(payment.amount)}</td>
                 </tr>
             </tbody>
         </table>
 
         <div class="total-section">
-            <div class="total-row">
-                <span>Tạm tính:</span>
-                <span>${formatPrice(payment.amount)}</span>
-            </div>
-            <div class="total-row">
-                <span>Giảm giá:</span>
-                <span>0 ₫</span>
-            </div>
             <div class="total-row grand-total">
                 <span>TỔNG CỘNG:</span>
                 <span>${formatPrice(payment.amount)}</span>
             </div>
-        </div>
-
-        <div style="margin-top: 30px; padding: 15px; background: #f9f9f9; border-radius: 5px;">
-            <div class="detail-label">Phương thức thanh toán</div>
-            <div class="detail-value" style="margin-top: 5px;">${METHOD_TEXT[payment.method]}</div>
         </div>
 
         <div class="invoice-footer">

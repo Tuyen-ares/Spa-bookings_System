@@ -481,7 +481,17 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 <div className="border-t mt-4 pt-4 flex justify-end items-center gap-3">
                     <button onClick={() => setViewingAppointment(appointment)} className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Xem Chi Tiết</button>
                     {appointment.status !== 'pending' && (
-                        <button onClick={() => setAppointmentToCancel(appointment)} className="px-4 py-2 text-sm font-semibold bg-red-50 text-red-700 rounded-md hover:bg-red-100">Hủy lịch</button>
+                        <button 
+                            onClick={() => setAppointmentToCancel(appointment)} 
+                            disabled={appointment.status === 'upcoming'}
+                            className={`px-4 py-2 text-sm font-semibold rounded-md ${
+                                appointment.status === 'upcoming'
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                    : 'bg-red-50 text-red-700 hover:bg-red-100'
+                            }`}
+                        >
+                            Hủy lịch
+                        </button>
                     )}
                 </div>
             </div>
@@ -634,7 +644,11 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                         
                         {/* Review Section */}
                         {(() => {
-                            const serviceId = course.serviceId;
+                            const serviceId = (course as any).serviceId
+                                ?? (course as any).Service?.id
+                                ?? (course as any).service?.id
+                                ?? (Array.isArray((course as any).services) && course.services.length > 0 ? (course.services[0].serviceId ?? (course.services[0] as any).id) : undefined)
+                                ?? undefined;
                             const existingReview = allReviews.find(r => r.serviceId === serviceId);
                             const isReviewing = reviewingCourseId === course.id;
                             

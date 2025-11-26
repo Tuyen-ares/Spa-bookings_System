@@ -1,6 +1,43 @@
+
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { FacebookIcon, InstagramIcon, TikTokIcon, LogoIcon, LocationIcon, PhoneIcon, MailIcon, ClockIcon, ArrowRightIcon } from '../../shared/icons';
+
+// Helper Components
+const SocialButton = ({ icon, label, color }: { icon: React.ReactNode, label: string, color: string }) => (
+    <a 
+        href="#" 
+        className={`w-10 h-10 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-600 ${color} hover:text-white hover:border-transparent transition-all duration-300 shadow-sm hover:shadow-md`} 
+        aria-label={label}
+    >
+        <div className="w-5 h-5">{icon}</div>
+    </a>
+);
+
+const FooterLink = ({ to, children }: { to: string, children?: React.ReactNode }) => (
+    <li className="transform transition-transform hover:translate-x-1">
+        <Link to={to} className="text-gray-600 hover:text-brand-primary font-medium flex items-center gap-2 group">
+            <span className="w-1.5 h-1.5 rounded-full bg-brand-secondary group-hover:bg-brand-primary transition-colors"></span>
+            {children}
+        </Link>
+    </li>
+);
+
+const ContactItem = ({ icon, title, content, isLink, href }: { icon: React.ReactNode, title: string, content: string, isLink?: boolean, href?: string }) => (
+    <div className="flex items-start gap-4 group">
+        <div className="mt-1 w-8 h-8 rounded-lg bg-brand-secondary flex items-center justify-center text-brand-primary group-hover:bg-brand-primary group-hover:text-white transition-colors duration-300 shrink-0">
+            <div className="w-4 h-4">{icon}</div>
+        </div>
+        <div>
+            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-0.5">{title}</h4>
+            {isLink ? (
+                <a href={href} className="text-gray-700 font-semibold hover:text-brand-primary transition-colors block">{content}</a>
+            ) : (
+                <p className="text-gray-700 font-semibold">{content}</p>
+            )}
+        </div>
+    </div>
+);
 
 const Footer: React.FC = () => {
   return (
@@ -54,10 +91,10 @@ const Footer: React.FC = () => {
                  <span className="absolute bottom-0 left-0 w-1/2 h-0.5 bg-brand-primary rounded-full"></span>
              </h3>
             <div className="space-y-5">
-              <ContactItem icon={<LocationIcon />} title="Địa chỉ" content="87 Đ. Tô Ngọc Vân, P, Thủ Đức, Thành phố Hồ Chí Minh 71300" />
-              <ContactItem icon={<PhoneIcon />} title="Hotline" content="0941-608-915" />
-              <ContactItem icon={<MailIcon />} title="Email" content="contact@anhthospa.vn" />
-              <ContactItem icon={<ClockIcon />} title="Giờ mở cửa" content="9:00 - 22:00 (T2-CN)" />
+              <ContactItem icon={<LocationIcon />} title="Địa chỉ" content="123 Beauty St, Hà Nội, Việt Nam" />
+              <ContactItem icon={<PhoneIcon />} title="Hotline" content="098-765-4321" isLink href="tel:0987654321" />
+              <ContactItem icon={<MailIcon />} title="Email" content="contact@anhthospa.vn" isLink href="mailto:contact@anhthospa.vn" />
+              <ContactItem icon={<ClockIcon />} title="Giờ mở cửa" content="9:00 - 20:00 (T2-CN)" />
             </div>
           </div>
           
@@ -97,41 +134,5 @@ const Footer: React.FC = () => {
     </footer>
   );
 };
-
-// Helper Components
-const SocialButton = ({ icon, label, color }: { icon: React.ReactNode, label: string, color: string }) => (
-    <a 
-        href="#" 
-        className={`w-10 h-10 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-600 ${color} hover:text-white hover:border-transparent transition-all duration-300 shadow-sm hover:shadow-md`} 
-        aria-label={label}
-    >
-        <div className="w-5 h-5">{icon}</div>
-    </a>
-);
-
-const FooterLink = ({ to, children }: { to: string, children: React.ReactNode }) => (
-    <li className="transform transition-transform hover:translate-x-1">
-        <Link to={to} className="text-gray-600 hover:text-brand-primary font-medium flex items-center gap-2 group">
-            <span className="w-1.5 h-1.5 rounded-full bg-brand-secondary group-hover:bg-brand-primary transition-colors"></span>
-            {children}
-        </Link>
-    </li>
-);
-
-const ContactItem = ({ icon, title, content, isLink, href }: { icon: React.ReactNode, title: string, content: string, isLink?: boolean, href?: string }) => (
-    <div className="flex items-start gap-4 group">
-        <div className="mt-1 w-8 h-8 rounded-lg bg-brand-secondary flex items-center justify-center text-brand-primary group-hover:bg-brand-primary group-hover:text-white transition-colors duration-300 shrink-0">
-            <div className="w-4 h-4">{icon}</div>
-        </div>
-        <div>
-            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-0.5">{title}</h4>
-            {isLink ? (
-                <a href={href} className="text-gray-700 font-semibold hover:text-brand-primary transition-colors block">{content}</a>
-            ) : (
-                <p className="text-gray-700 font-semibold">{content}</p>
-            )}
-        </div>
-    </div>
-);
 
 export default Footer;

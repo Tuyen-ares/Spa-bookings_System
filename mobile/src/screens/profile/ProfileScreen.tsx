@@ -9,13 +9,15 @@ import {
   Alert
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { logout, getCurrentUser } from '../../services/apiService';
+import { logout, getCurrentUser, getWallet, getUnreadNotificationsCount } from '../../services/apiService';
 import { formatDate, formatCurrency } from '../../utils/formatters';
-import type { User } from '../../types';
+import type { User, Wallet } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 
 export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [wallet, setWallet] = useState<Wallet | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,7 +25,17 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
       try {
         setLoading(true);
         const currentUser = await getCurrentUser();
+        if (!currentUser) return;
+        
         setUser(currentUser);
+        
+        // Load wallet and notifications count
+        const [walletData, unreadNotifs] = await Promise.all([
+          getWallet(currentUser.id).catch(() => null),
+          getUnreadNotificationsCount(currentUser.id).catch(() => 0)
+        ]);
+        setWallet(walletData);
+        setUnreadCount(unreadNotifs);
       } catch (error) {
         console.error('Error loading user:', error);
       } finally {
@@ -36,9 +48,10 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
 
   const handleLogout = async () => {
     Alert.alert('Đăng xuất', 'Bạn có chắc chắn muốn đăng xuất?', [
-      { text: 'Hủy', onPress: () => {} },
+      { text: 'Hủy', style: 'cancel' },
       {
         text: 'Đăng xuất',
+        style: 'destructive',
         onPress: async () => {
           try {
             await logout();
@@ -52,10 +65,37 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
     ]);
   };
 
+  const refreshProfile = React.useCallback(() => {
+    const loadUser = async () => {
+      try {
+        const currentUser = await getCurrentUser();
+        if (!currentUser) return;
+        
+        setUser(currentUser);
+        
+        // Refresh wallet and notifications
+        const [walletData, unreadNotifs] = await Promise.all([
+          getWallet(currentUser.id).catch(() => null),
+          getUnreadNotificationsCount(currentUser.id).catch(() => 0)
+        ]);
+        setWallet(walletData);
+        setUnreadCount(unreadNotifs);
+      } catch (error) {
+        console.error('Error refreshing user:', error);
+      }
+    };
+    loadUser();
+  }, []);
+
+  React.useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', refreshProfile);
+    return unsubscribe;
+  }, [navigation, refreshProfile]);
+
   if (loading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#8b5cf6" />
+        <ActivityIndicator size="large" color="#d62976" />
       </View>
     );
   }
@@ -64,7 +104,7 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.avatarContainer}>
-          <Ionicons name="person-circle" size={80} color="#8b5cf6" />
+          <Ionicons name="person-circle" size={80} color="#d62976" />
         </View>
         <Text style={styles.userName}>{user?.name || 'Người dùng'}</Text>
         <Text style={styles.userRole}>
@@ -74,8 +114,39 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
         </Text>
       </View>
 
+      {/* Rewards Card */}
+      {wallet && (
+        <TouchableOpacity 
+          style={styles.rewardsCard}
+          onPress={() => navigation.navigate('Rewards')}
+        >
+          <View style={styles.rewardsLeft}>
+            <View style={styles.rewardsIconContainer}>
+              <Ionicons name="star" size={32} color="#f59e0b" />
+            </View>
+            <View>
+              <Text style={styles.rewardsLabel}>Điểm thưởng</Text>
+              <Text style={styles.rewardsPoints}>{wallet.points} điểm</Text>
+            </View>
+          </View>
+          <View style={styles.rewardsRight}>
+            <Text style={styles.rewardsAction}>Đổi quà</Text>
+            <Ionicons name="chevron-forward" size={20} color="#d62976" />
+          </View>
+        </TouchableOpacity>
+      )}
+
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Thông tin cá nhân</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Thông tin cá nhân</Text>
+          <TouchableOpacity 
+            style={styles.editButton}
+            onPress={() => navigation.navigate('EditProfile')}
+          >
+            <Ionicons name="pencil" size={16} color="#d62976" />
+            <Text style={styles.editButtonText}>Chỉnh sửa</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
@@ -90,7 +161,7 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
         {user?.phone && (
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
-              <Ionicons name="call-outline" size={20} color="#8b5cf6" />
+              <Ionicons name="call-outline" size={20} color="#d62976" />
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>Số điện thoại</Text>
                 <Text style={styles.infoValue}>{user.phone}</Text>
@@ -102,7 +173,7 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
         {user?.birthday && (
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
-              <Ionicons name="calendar-outline" size={20} color="#8b5cf6" />
+              <Ionicons name="calendar-outline" size={20} color="#d62976" />
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>Ngày sinh</Text>
                 <Text style={styles.infoValue}>{user.birthday}</Text>
@@ -114,10 +185,22 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
         {user?.gender && (
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
-              <Ionicons name="person-outline" size={20} color="#8b5cf6" />
+              <Ionicons name="person-outline" size={20} color="#d62976" />
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>Giới tính</Text>
                 <Text style={styles.infoValue}>{user.gender}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {user?.address && (
+          <View style={styles.infoCard}>
+            <View style={styles.infoRow}>
+              <Ionicons name="location-outline" size={20} color="#d62976" />
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>Địa chỉ</Text>
+                <Text style={styles.infoValue}>{user.address}</Text>
               </View>
             </View>
           </View>
@@ -129,21 +212,29 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
 
         <TouchableOpacity 
           style={styles.optionButton}
+          onPress={() => navigation.navigate('Notifications')}
+        >
+          <Ionicons name="notifications-outline" size={20} color="#d62976" />
+          <Text style={styles.optionText}>Thông báo</Text>
+          {unreadCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{unreadCount}</Text>
+            </View>
+          )}
+          <Ionicons name="chevron-forward" size={20} color="#ccc" style={{ marginLeft: 'auto' }} />
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.optionButton}
           onPress={() => navigation.navigate('ChangePassword')}
         >
-          <Ionicons name="lock-closed-outline" size={20} color="#8b5cf6" />
+          <Ionicons name="lock-closed-outline" size={20} color="#d62976" />
           <Text style={styles.optionText}>Đổi mật khẩu</Text>
           <Ionicons name="chevron-forward" size={20} color="#ccc" />
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.optionButton}>
-          <Ionicons name="notifications-outline" size={20} color="#8b5cf6" />
-          <Text style={styles.optionText}>Thông báo</Text>
-          <Ionicons name="chevron-forward" size={20} color="#ccc" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.optionButton}>
-          <Ionicons name="help-circle-outline" size={20} color="#8b5cf6" />
+          <Ionicons name="help-circle-outline" size={20} color="#d62976" />
           <Text style={styles.optionText}>Hỗ trợ</Text>
           <Ionicons name="chevron-forward" size={20} color="#ccc" />
         </TouchableOpacity>
@@ -172,7 +263,7 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   header: {
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#d62976',
     paddingTop: 40,
     paddingBottom: 30,
     alignItems: 'center'
@@ -203,15 +294,34 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2
   },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#333',
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0'
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#333'
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#fce4ec'
+  },
+  editButtonText: {
+    fontSize: 12,
+    color: '#d62976',
+    fontWeight: '600'
   },
   infoCard: {
     borderBottomWidth: 1,
@@ -281,5 +391,67 @@ const styles = StyleSheet.create({
   version: {
     fontSize: 12,
     color: '#999'
+  },
+  rewardsCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+    backgroundColor: '#d62976'
+  },
+  rewardsLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12
+  },
+  rewardsIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  rewardsLabel: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: 4
+  },
+  rewardsPoints: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#fff'
+  },
+  rewardsRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4
+  },
+  rewardsAction: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff'
+  },
+  badge: {
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff'
   }
 });

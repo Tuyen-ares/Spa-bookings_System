@@ -70,7 +70,7 @@ const ClientProfileModal: React.FC<ClientProfileModalProps> = ({ client, onClose
                             {clientHistory.appointments.length > 0 ? clientHistory.appointments.slice(0,10).map(app => (
                                 <div key={app.id} className="text-sm p-2 bg-white rounded-md border">
                                     <p className="font-semibold text-gray-800">{app.serviceName}</p>
-                                    <p className="text-xs text-gray-500">{new Date(app.date).toLocaleDateString('vi-VN')} - KTV: {app.therapist}</p>
+                                    <p className="text-xs text-gray-500">{new Date(app.date).toLocaleDateString('vi-VN')} - KTV: {app.therapistId}</p>
                                 </div>
                             )) : <p className="text-sm text-gray-500 italic">Chưa có lịch sử.</p>}
                         </div>

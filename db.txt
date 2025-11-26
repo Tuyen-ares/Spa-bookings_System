@@ -1,255 +1,167 @@
--- =====================================================
--- Database Schema for Anh Thơ Spa Booking System
--- Hệ thống đặt lịch và quản lý dịch vụ làm đẹp
--- =====================================================
--- Tối ưu: 12 bảng - Đủ chức năng quản lý lịch làm việc
--- Admin phê duyệt lịch hẹn, Admin/Staff xem lịch từ appointments
--- Chỉ sử dụng bảng users cơ bản (không tách customers, staff)
--- =====================================================
-
--- 1. Create the database if it doesn't exist
-CREATE DATABASE IF NOT EXISTS `anhthospa_db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- 2. Use the newly created database
-USE `anhthospa_db`;
-
--- Disable foreign key checks temporarily
-SET FOREIGN_KEY_CHECKS = 0;
-
--- =====================================================
--- 3. Drop existing tables in reverse order
--- =====================================================
-DROP TABLE IF EXISTS `staff_tasks`;
-DROP TABLE IF EXISTS `staff_shifts`;
-DROP TABLE IF EXISTS `staff_availability`;
-DROP TABLE IF EXISTS `reviews`;
-DROP TABLE IF EXISTS `treatment_courses`;
-DROP TABLE IF EXISTS `payments`;
 DROP TABLE IF EXISTS `appointments`;
-DROP TABLE IF EXISTS `promotions`;
-DROP TABLE IF EXISTS `wallets`;
-DROP TABLE IF EXISTS `services`;
-DROP TABLE IF EXISTS `service_categories`;
-DROP TABLE IF EXISTS `users`;
-
--- =====================================================
--- 4. CORE TABLES - Bảng cốt lõi
--- =====================================================
-
--- 4.1. Create the 'users' table
-CREATE TABLE `users` (
-  `id` varchar(255) NOT NULL,
-  `name` varchar(255) NOT NULL,
-  `email` varchar(255) NOT NULL,
-  `password` varchar(255) NOT NULL,
-  `phone` varchar(255) DEFAULT NULL,
-  `profilePictureUrl` LONGTEXT DEFAULT NULL,
-  `joinDate` date NOT NULL,
-  `birthday` date DEFAULT NULL,
-  `gender` varchar(50) DEFAULT NULL,
-  `role` enum('Admin','Staff','Client') NOT NULL DEFAULT 'Client',
-  `status` enum('Active','Inactive','Locked') NOT NULL DEFAULT 'Active',
-  `lastLogin` datetime DEFAULT NULL,
-  `loginHistory` json DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `email` (`email`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 4.2. Create the 'service_categories' table
-CREATE TABLE `service_categories` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `name` varchar(255) NOT NULL,
-  `description` text DEFAULT NULL,
-  `iconUrl` LONGTEXT DEFAULT NULL,
-  `order` int DEFAULT 0,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `name` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 4.3. Create the 'services' table
-CREATE TABLE `services` (
-  `id` varchar(255) NOT NULL,
-  `name` varchar(255) NOT NULL,
-  `description` text,
-  `longDescription` text,
-  `duration` int NOT NULL COMMENT 'Duration in minutes',
-  `price` decimal(10,2) NOT NULL,
-  `discountPrice` decimal(10,2) DEFAULT NULL,
-  `imageUrl` LONGTEXT DEFAULT NULL,
-  `category` varchar(255) DEFAULT NULL,
-  `categoryId` int DEFAULT NULL,
-  `rating` decimal(3,2) DEFAULT 0.00,
-  `reviewCount` int DEFAULT 0,
-  `isHot` tinyint(1) DEFAULT 0,
-  `isNew` tinyint(1) DEFAULT 0,
-  `promoExpiryDate` date DEFAULT NULL,
-  `isActive` tinyint(1) DEFAULT 1,
-  PRIMARY KEY (`id`),
-  KEY `categoryId` (`categoryId`),
-  CONSTRAINT `services_fk_category` FOREIGN KEY (`categoryId`) REFERENCES `service_categories` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 4.4. Create the 'wallets' table (Gộp points_history logic vào đây)
-CREATE TABLE `wallets` (
-  `userId` varchar(255) NOT NULL,
-  `balance` decimal(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Số dư tiền mặt',
-  `points` int NOT NULL DEFAULT 0 COMMENT 'Điểm tích lũy hiện tại',
-  `totalEarned` int NOT NULL DEFAULT 0 COMMENT 'Tổng điểm đã tích',
-  `totalSpent` int NOT NULL DEFAULT 0 COMMENT 'Tổng điểm đã dùng',
-  `pointsHistory` json DEFAULT NULL COMMENT 'Lịch sử điểm: [{date, pointsChange, type, source, description}]',
-  PRIMARY KEY (`userId`),
-  CONSTRAINT `wallets_fk_user` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- =====================================================
--- 5. BOOKING & APPOINTMENT TABLES
--- =====================================================
-
--- 5.1. Create the 'appointments' table (Bảng chính để Admin phê duyệt và Admin/Staff xem lịch)
 CREATE TABLE `appointments` (
   `id` varchar(255) NOT NULL,
   `serviceId` varchar(255) NOT NULL,
   `serviceName` varchar(255) NOT NULL,
-  `userId` varchar(255) NOT NULL COMMENT 'ID khách hàng',
-  `userName` varchar(255) DEFAULT NULL COMMENT 'Tên khách hàng (để hiển thị trên lịch)',
-  `date` date NOT NULL COMMENT 'Ngày hẹn (YYYY-MM-DD)',
-  `time` varchar(10) NOT NULL COMMENT 'Giờ hẹn (HH:MM)',
-  `status` enum('upcoming','completed','cancelled','pending','in-progress') NOT NULL DEFAULT 'pending' COMMENT 'pending=chờ duyệt, upcoming=đã duyệt, in-progress=đang thực hiện, completed=hoàn thành, cancelled=đã hủy',
+  `userId` varchar(255) NOT NULL,
+  `date` date NOT NULL,
+  `time` varchar(255) NOT NULL,
+  `status` enum('upcoming','completed','cancelled','pending','in-progress','scheduled') NOT NULL DEFAULT 'pending',
   `paymentStatus` enum('Paid','Unpaid') DEFAULT 'Unpaid',
-  `therapist` varchar(255) DEFAULT NULL COMMENT 'Tên nhân viên (để hiển thị trên lịch)',
-  `therapistId` varchar(255) DEFAULT NULL COMMENT 'ID nhân viên',
+  `therapistId` varchar(255) DEFAULT NULL,
   `notesForTherapist` text,
   `staffNotesAfterSession` text,
-  `isStarted` tinyint(1) DEFAULT 0,
-  `isCompleted` tinyint(1) DEFAULT 0,
-  `reviewRating` int DEFAULT NULL COMMENT 'Đánh giá sau khi hoàn thành (1-5)',
-  `rejectionReason` text COMMENT 'Lý do từ chối/hủy (Admin từ chối)',
-  `bookingGroupId` varchar(255) DEFAULT NULL COMMENT 'Nhóm các booking cùng một lần đặt',
+  `rejectionReason` text,
+  `bookingGroupId` varchar(255) DEFAULT NULL,
+  `promotionId` varchar(255) DEFAULT NULL COMMENT 'ID mã khuyến mãi/voucher được áp dụng',
   PRIMARY KEY (`id`),
   KEY `serviceId` (`serviceId`),
   KEY `userId` (`userId`),
   KEY `therapistId` (`therapistId`),
-  KEY `date_time` (`date`, `time`),
+  KEY `date_time` (`date`,`time`),
   KEY `status` (`status`),
-  CONSTRAINT `appointments_fk_service` FOREIGN KEY (`serviceId`) REFERENCES `services` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `appointments_fk_user` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `appointments_fk_therapist` FOREIGN KEY (`therapistId`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `promotionId` (`promotionId`),
+  CONSTRAINT `appointments_ibfk_1` FOREIGN KEY (`serviceId`) REFERENCES `services` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `appointments_ibfk_2` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `appointments_ibfk_3` FOREIGN KEY (`therapistId`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `appointments_promotionId_fk` FOREIGN KEY (`promotionId`) REFERENCES `promotions` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- 5.2. Create the 'treatment_courses' table (GIỮ LẠI - chức năng riêng)
-CREATE TABLE `treatment_courses` (
+DROP TABLE IF EXISTS `notifications`;
+CREATE TABLE `notifications` (
   `id` varchar(255) NOT NULL,
-  `serviceId` varchar(255) NOT NULL,
-  `serviceName` varchar(255) NOT NULL,
-  `totalSessions` int NOT NULL COMMENT 'Tổng số buổi trong liệu trình',
-  `sessionsPerWeek` int NOT NULL DEFAULT 1 COMMENT 'Số buổi mỗi tuần',
-  `weekDays` json DEFAULT NULL COMMENT 'Mảng các thứ trong tuần: [1,3,5] = Thứ 2, Thứ 4, Thứ 6',
-  `sessionDuration` int NOT NULL DEFAULT 60 COMMENT 'Thời gian mỗi buổi (phút)',
-  `sessionTime` varchar(10) DEFAULT NULL COMMENT 'Giờ cố định cho các buổi (ví dụ: "18:00")',
-  `description` text DEFAULT NULL COMMENT 'Mô tả liệu trình',
-  `imageUrl` LONGTEXT DEFAULT NULL COMMENT 'URL hình ảnh liệu trình',
-  `sessions` json DEFAULT NULL COMMENT 'Mảng các buổi điều trị: [{date, therapist, notes, status}]',
-  `initialAppointmentId` varchar(255) DEFAULT NULL COMMENT 'ID appointment đầu tiên (để lấy userId)',
-  `clientId` varchar(255) DEFAULT NULL COMMENT 'ID khách hàng (NULL cho template)',
-  `therapistId` varchar(255) DEFAULT NULL,
-  `status` enum('active','completed','paused') NOT NULL DEFAULT 'active',
-  `expiryDate` date DEFAULT NULL COMMENT 'Hạn sử dụng liệu trình',
-  `nextAppointmentDate` date DEFAULT NULL COMMENT 'Ngày hẹn tiếp theo (để nhắc nhở)',
+  `userId` varchar(255) NOT NULL,
+  `type` enum('new_appointment','appointment_confirmed','appointment_cancelled','appointment_reminder','treatment_course_reminder','promotion','payment_success','payment_received','system') NOT NULL DEFAULT 'system',
+  `title` varchar(255) NOT NULL,
+  `message` text NOT NULL,
+  `relatedId` varchar(255) DEFAULT NULL COMMENT 'ID của appointment, treatment course, etc.',
+  `isRead` tinyint(1) NOT NULL DEFAULT '0',
+  `sentVia` enum('app','email','both') NOT NULL DEFAULT 'app',
+  `emailSent` tinyint(1) NOT NULL DEFAULT '0',
+  `createdAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `serviceId` (`serviceId`),
-  KEY `initialAppointmentId` (`initialAppointmentId`),
-  KEY `clientId` (`clientId`),
-  KEY `therapistId` (`therapistId`),
-  CONSTRAINT `treatment_courses_fk_service` FOREIGN KEY (`serviceId`) REFERENCES `services` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `treatment_courses_fk_appointment` FOREIGN KEY (`initialAppointmentId`) REFERENCES `appointments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `treatment_courses_fk_client` FOREIGN KEY (`clientId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `treatment_courses_fk_therapist` FOREIGN KEY (`therapistId`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `userId` (`userId`),
+  CONSTRAINT `notifications_ibfk_1` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- =====================================================
--- 6. PAYMENT & PROMOTION TABLES
--- =====================================================
-
--- 6.1. Create the 'payments' table
+DROP TABLE IF EXISTS `payments`;
 CREATE TABLE `payments` (
   `id` varchar(255) NOT NULL,
-  `bookingId` varchar(255) DEFAULT NULL COMMENT 'ID đặt lịch',
+  `transactionId` varchar(255) DEFAULT NULL,
   `userId` varchar(255) NOT NULL,
   `appointmentId` varchar(255) DEFAULT NULL,
   `serviceName` varchar(255) DEFAULT NULL,
   `amount` decimal(10,2) NOT NULL,
   `method` enum('Cash','Card','Momo','VNPay','ZaloPay') DEFAULT NULL,
-  `status` enum('Completed','Pending','Refunded','Failed') DEFAULT 'Pending',
+  `status` enum('Completed','Pending','Refunded','Failed') NOT NULL DEFAULT 'Pending',
   `date` datetime NOT NULL,
-  `transactionId` varchar(255) DEFAULT NULL COMMENT 'Mã giao dịch từ hệ thống thanh toán',
-  `therapistId` varchar(255) DEFAULT NULL COMMENT 'ID nhân viên (để tính hoa hồng)',
+  `therapistId` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `bookingId` (`bookingId`),
   KEY `userId` (`userId`),
   KEY `appointmentId` (`appointmentId`),
   KEY `therapistId` (`therapistId`),
-  CONSTRAINT `payments_fk_booking` FOREIGN KEY (`bookingId`) REFERENCES `appointments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `payments_fk_user` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `payments_fk_appointment` FOREIGN KEY (`appointmentId`) REFERENCES `appointments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  CONSTRAINT `payments_ibfk_1` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `payments_ibfk_2` FOREIGN KEY (`appointmentId`) REFERENCES `appointments` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `payments_ibfk_3` FOREIGN KEY (`therapistId`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- 6.2. Create the 'promotions' table (Gộp vouchers vào đây)
+DROP TABLE IF EXISTS `promotion_usage`;
+CREATE TABLE `promotion_usage` (
+  `id` varchar(255) NOT NULL,
+  `userId` varchar(255) NOT NULL,
+  `promotionId` varchar(255) NOT NULL,
+  `appointmentId` varchar(255) DEFAULT NULL,
+  `serviceId` varchar(255) DEFAULT NULL COMMENT 'Service ID for New Clients promotion tracking',
+  `usedAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `promotionId` (`promotionId`),
+  KEY `appointmentId` (`appointmentId`),
+  KEY `serviceId` (`serviceId`),
+  KEY `promotion_usage_user_promo_idx` (`userId`,`promotionId`),
+  KEY `promotion_usage_user_service_idx` (`userId`,`serviceId`),
+  CONSTRAINT `promotion_usage_ibfk_1` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `promotion_usage_ibfk_2` FOREIGN KEY (`promotionId`) REFERENCES `promotions` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `promotion_usage_ibfk_3` FOREIGN KEY (`appointmentId`) REFERENCES `appointments` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `promotion_usage_ibfk_4` FOREIGN KEY (`serviceId`) REFERENCES `services` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+DROP TABLE IF EXISTS `promotions`;
 CREATE TABLE `promotions` (
   `id` varchar(255) NOT NULL,
   `title` varchar(255) NOT NULL,
   `description` text NOT NULL,
-  `code` varchar(100) NOT NULL,
+  `code` varchar(255) NOT NULL,
   `expiryDate` date NOT NULL,
-  `imageUrl` LONGTEXT DEFAULT NULL,
   `discountType` enum('percentage','fixed') NOT NULL,
   `discountValue` decimal(10,2) NOT NULL,
   `termsAndConditions` text,
-  `targetAudience` enum('All','New Clients','Birthday','Group','VIP','Tier Level 1','Tier Level 2','Tier Level 3','Tier Level 4','Tier Level 5','Tier Level 6','Tier Level 7','Tier Level 8') DEFAULT 'All',
-  `applicableServiceIds` json DEFAULT NULL COMMENT 'Mảng ID dịch vụ áp dụng (rỗng = tất cả)',
-  `minOrderValue` decimal(10,2) DEFAULT 0.00,
-  `usageCount` int DEFAULT 0,
+  `targetAudience` enum('All','New Clients','Birthday','Group','VIP','Tier Level 1','Tier Level 2','Tier Level 3') DEFAULT 'All',
+  `applicableServiceIds` json DEFAULT NULL,
+  `minOrderValue` decimal(10,2) DEFAULT '0.00',
+  `usageCount` int DEFAULT '0',
   `usageLimit` int DEFAULT NULL COMMENT 'NULL = không giới hạn',
-  `pointsRequired` int DEFAULT 0 COMMENT 'Điểm cần để đổi (0 = không cần, >0 = voucher đổi điểm)',
-  `isVoucher` tinyint(1) DEFAULT 0 COMMENT '1 = voucher đổi điểm, 0 = khuyến mãi thông thường',
   `stock` int DEFAULT NULL COMMENT 'Số lượng voucher còn lại (NULL = không giới hạn)',
-  `isActive` tinyint(1) DEFAULT 1,
+  `isActive` tinyint(1) NOT NULL DEFAULT '1',
+  `isPublic` tinyint(1) DEFAULT '1' COMMENT 'true = public (hiển thị trên trang khách hàng), false = private (chỉ dùng khi biết mã)',
+  `pointsRequired` int DEFAULT NULL COMMENT 'Số điểm cần thiết để đổi voucher (chỉ áp dụng cho voucher private)',
   PRIMARY KEY (`id`),
   UNIQUE KEY `code` (`code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- =====================================================
--- 7. REVIEW & FEEDBACK TABLES
--- =====================================================
-
--- 7.1. Create the 'reviews' table
+DROP TABLE IF EXISTS `reviews`;
 CREATE TABLE `reviews` (
   `id` varchar(255) NOT NULL,
-  `userId` varchar(255) NOT NULL,
   `serviceId` varchar(255) NOT NULL,
-  `serviceName` varchar(255) DEFAULT NULL,
+  `userId` varchar(255) NOT NULL,
   `appointmentId` varchar(255) DEFAULT NULL,
-  `userName` varchar(255) NOT NULL,
-  `userImageUrl` LONGTEXT DEFAULT NULL,
-  `rating` int NOT NULL COMMENT 'Điểm đánh giá (1-5)',
+  `rating` int NOT NULL,
   `comment` text,
-  `images` json DEFAULT NULL COMMENT 'Mảng URL ảnh đánh giá: ["url1", "url2"]',
-  `date` datetime NOT NULL,
-  `managerReply` text COMMENT 'Phản hồi từ quản lý',
-  `isHidden` tinyint(1) NOT NULL DEFAULT 0,
+  `date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `appointmentId` (`appointmentId`),
-  KEY `userId` (`userId`),
   KEY `serviceId` (`serviceId`),
-  CONSTRAINT `reviews_fk_user` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `reviews_fk_service` FOREIGN KEY (`serviceId`) REFERENCES `services` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `reviews_fk_appointment` FOREIGN KEY (`appointmentId`) REFERENCES `appointments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `userId` (`userId`),
+  KEY `appointmentId` (`appointmentId`),
+  CONSTRAINT `reviews_ibfk_1` FOREIGN KEY (`serviceId`) REFERENCES `services` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `reviews_ibfk_2` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `reviews_ibfk_3` FOREIGN KEY (`appointmentId`) REFERENCES `appointments` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- =====================================================
--- 9. STAFF MANAGEMENT TABLES - Bảng quản lý nhân viên
--- =====================================================
+DROP TABLE IF EXISTS `sequelizemeta`;
+CREATE TABLE `sequelizemeta` (
+  `name` varchar(255) COLLATE utf8mb3_unicode_ci NOT NULL,
+  PRIMARY KEY (`name`),
+  UNIQUE KEY `name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_unicode_ci;
 
--- 9.1. Create the 'staff_availability' table
+DROP TABLE IF EXISTS `service_categories`;
+CREATE TABLE `service_categories` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `description` text,
+  `displayOrder` int DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name` (`name`)
+) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+DROP TABLE IF EXISTS `services`;
+CREATE TABLE `services` (
+  `id` varchar(255) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `description` text NOT NULL,
+  `price` decimal(10,2) NOT NULL,
+  `discountPercent` int DEFAULT '0' COMMENT 'Phần trăm giảm giá (0-100)',
+  `duration` int NOT NULL COMMENT 'Thời gian dịch vụ (phút)',
+  `categoryId` int DEFAULT NULL,
+  `imageUrl` longtext,
+  `rating` float NOT NULL DEFAULT '0',
+  `reviewCount` int NOT NULL DEFAULT '0',
+  `isActive` tinyint(1) NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`),
+  KEY `categoryId` (`categoryId`),
+  CONSTRAINT `services_ibfk_1` FOREIGN KEY (`categoryId`) REFERENCES `service_categories` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+DROP TABLE IF EXISTS `staff_availability`;
 CREATE TABLE `staff_availability` (
   `id` varchar(255) NOT NULL,
   `staffId` varchar(255) NOT NULL,
@@ -257,156 +169,121 @@ CREATE TABLE `staff_availability` (
   `dayOfWeek` int DEFAULT NULL COMMENT 'Thứ trong tuần: 0=CN, 1=T2, ..., 6=T7 (NULL nếu là lịch cụ thể)',
   `startTime` varchar(10) DEFAULT NULL COMMENT 'Giờ bắt đầu (HH:MM) cho lịch định kỳ',
   `endTime` varchar(10) DEFAULT NULL COMMENT 'Giờ kết thúc (HH:MM) cho lịch định kỳ',
-  `isAvailable` tinyint(1) DEFAULT 1 COMMENT 'Có sẵn sàng không (cho lịch định kỳ)',
+  `isAvailable` tinyint(1) DEFAULT '1' COMMENT 'Có sẵn sàng không (cho lịch định kỳ)',
   `timeSlots` json DEFAULT NULL COMMENT 'Mảng: [{time: "09:00", availableServiceIds: ["sv1", "sv2"]}] (cho lịch cụ thể)',
   PRIMARY KEY (`id`),
   KEY `staffId` (`staffId`),
-  KEY `staffId_date` (`staffId`,`date`),
-  CONSTRAINT `staff_availability_fk_staff` FOREIGN KEY (`staffId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  CONSTRAINT `staff_availability_ibfk_1` FOREIGN KEY (`staffId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- 9.2. Create the 'staff_shifts' table
+DROP TABLE IF EXISTS `staff_shifts`;
 CREATE TABLE `staff_shifts` (
   `id` varchar(255) NOT NULL,
   `staffId` varchar(255) NOT NULL,
   `date` date NOT NULL,
   `shiftType` enum('morning','afternoon','evening','leave','custom') NOT NULL,
   `status` enum('approved','pending','rejected') NOT NULL DEFAULT 'pending',
-  `requestedBy` varchar(255) DEFAULT NULL COMMENT 'ID nhân viên yêu cầu đổi ca',
+  `requestedBy` varchar(255) DEFAULT NULL,
   `notes` text,
   `assignedManagerId` varchar(255) DEFAULT NULL,
-  `shiftHours` json DEFAULT NULL COMMENT '{start: "09:00", end: "17:00"}',
-  `isUpForSwap` tinyint(1) DEFAULT 0,
+  `shiftHours` json DEFAULT NULL,
+  `isUpForSwap` tinyint(1) DEFAULT '0',
   `swapClaimedBy` varchar(255) DEFAULT NULL,
   `managerApprovalStatus` enum('pending_approval','approved','rejected') DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `staffId` (`staffId`),
   KEY `assignedManagerId` (`assignedManagerId`),
-  CONSTRAINT `staff_shifts_fk_staff` FOREIGN KEY (`staffId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `staff_shifts_fk_manager` FOREIGN KEY (`assignedManagerId`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  CONSTRAINT `staff_shifts_ibfk_1` FOREIGN KEY (`staffId`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `staff_shifts_ibfk_2` FOREIGN KEY (`assignedManagerId`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- 9.3. Create the 'staff_tasks' table
-CREATE TABLE `staff_tasks` (
+DROP TABLE IF EXISTS `treatment_courses`;
+CREATE TABLE `treatment_courses` (
   `id` varchar(255) NOT NULL,
-  `title` varchar(255) NOT NULL,
-  `description` text,
-  `assignedToId` varchar(255) NOT NULL COMMENT 'ID nhân viên được giao',
-  `assignedById` varchar(255) NOT NULL COMMENT 'ID admin/manager giao việc',
-  `dueDate` date NOT NULL,
-  `status` enum('pending','in-progress','completed','overdue') NOT NULL DEFAULT 'pending',
-  `createdAt` datetime NOT NULL,
-  `completedAt` datetime DEFAULT NULL,
+  `serviceId` varchar(255) NOT NULL,
+  `serviceName` varchar(255) NOT NULL COMMENT 'Tên dịch vụ',
+  `clientId` varchar(255) NOT NULL,
+  `totalSessions` int NOT NULL COMMENT 'Tổng số buổi (dựa trên số lượng khách chọn khi đặt lịch)',
+  `completedSessions` int NOT NULL DEFAULT '0' COMMENT 'Số buổi đã hoàn thành',
+  `startDate` date NOT NULL COMMENT 'Ngày bắt đầu (từ ngày đặt lịch)',
+  `durationWeeks` int NOT NULL COMMENT 'Số tuần (mặc định: số dịch vụ + 1, admin có thể chỉnh)',
+  `expiryDate` date NOT NULL COMMENT 'Hạn sử dụng (startDate + durationWeeks)',
+  `frequencyType` enum('weeks_per_session','sessions_per_week') DEFAULT NULL COMMENT 'Loại tần suất: weeks_per_session = mấy tuần 1 lần, sessions_per_week = mấy lần 1 tuần',
+  `frequencyValue` int DEFAULT NULL COMMENT 'Giá trị tần suất (ví dụ: 2 tuần 1 lần hoặc 2 lần/tuần)',
+  `therapistId` varchar(255) DEFAULT NULL COMMENT 'ID nhân viên phụ trách',
+  `status` enum('active','completed','expired','cancelled') NOT NULL DEFAULT 'active' COMMENT 'Trạng thái liệu trình',
+  `paymentStatus` enum('Paid','Unpaid') NOT NULL DEFAULT 'Unpaid' COMMENT 'Trạng thái thanh toán (Đã thanh toán, Chưa thanh toán)',
+  `notes` text COMMENT 'Ghi chú tổng quan',
+  `createdAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Ngày tạo',
+  `totalAmount` decimal(15,2) DEFAULT NULL COMMENT 'Tổng số tiền thực tế khi khách đặt lịch (sau khi áp dụng giảm giá/voucher)',
   PRIMARY KEY (`id`),
-  KEY `assignedToId` (`assignedToId`),
-  KEY `assignedById` (`assignedById`),
-  CONSTRAINT `staff_tasks_fk_assigned_to` FOREIGN KEY (`assignedToId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `staff_tasks_fk_assigned_by` FOREIGN KEY (`assignedById`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `idx_tc_service` (`serviceId`),
+  KEY `idx_tc_client` (`clientId`),
+  KEY `idx_tc_therapist` (`therapistId`),
+  KEY `idx_tc_status` (`status`),
+  KEY `idx_tc_expiry` (`expiryDate`),
+  CONSTRAINT `treatment_courses_ibfk_1` FOREIGN KEY (`serviceId`) REFERENCES `services` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `treatment_courses_ibfk_2` FOREIGN KEY (`clientId`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `treatment_courses_ibfk_3` FOREIGN KEY (`therapistId`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+DROP TABLE IF EXISTS `treatment_sessions`;
+CREATE TABLE `treatment_sessions` (
+  `id` varchar(255) NOT NULL,
+  `treatmentCourseId` varchar(255) NOT NULL COMMENT 'ID liệu trình',
+  `appointmentId` varchar(255) DEFAULT NULL COMMENT 'ID lịch hẹn (liên kết với appointments)',
+  `sessionNumber` int NOT NULL COMMENT 'Số thứ tự buổi (1, 2, 3, ...)',
+  `status` enum('scheduled','completed','cancelled','missed') NOT NULL DEFAULT 'scheduled' COMMENT 'Trạng thái buổi điều trị',
+  `sessionDate` date NOT NULL COMMENT 'Ngày thực hiện',
+  `sessionTime` varchar(10) NOT NULL COMMENT 'Giờ thực hiện (HH:MM)',
+  `staffId` varchar(255) DEFAULT NULL COMMENT 'ID nhân viên thực hiện',
+  `customerStatusNotes` text COMMENT 'Ghi chú tình trạng khách (TEXT, không phải ENUM) - Ví dụ: "Khách ổn, da sáng hơn, không có kích ứng"',
+  `adminNotes` text COMMENT 'Ghi chú của admin sau buổi',
+  `completedAt` datetime DEFAULT NULL COMMENT 'Ngày hoàn thành',
+  PRIMARY KEY (`id`),
+  KEY `idx_ts_course` (`treatmentCourseId`),
+  KEY `idx_ts_appointment` (`appointmentId`),
+  KEY `idx_ts_staff` (`staffId`),
+  KEY `idx_ts_date` (`sessionDate`),
+  KEY `idx_ts_status` (`status`),
+  CONSTRAINT `treatment_sessions_ibfk_1` FOREIGN KEY (`treatmentCourseId`) REFERENCES `treatment_courses` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `treatment_sessions_ibfk_2` FOREIGN KEY (`appointmentId`) REFERENCES `appointments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `treatment_sessions_ibfk_3` FOREIGN KEY (`staffId`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- =====================================================
--- 11. INSERT SAMPLE DATA
--- =====================================================
-
--- Re-enable foreign key checks
-SET FOREIGN_KEY_CHECKS = 1;
-
--- 11.1. Insert Service Categories
-INSERT INTO `service_categories` (`id`, `name`) VALUES
-(1, 'Chăm sóc da'),
-(2, 'Massage'),
-(3, 'Triệt lông'),
-(4, 'Tắm trắng'),
-(5, 'Thư giãn'),
-(6, 'Nail');
-
--- 11.2. Insert Users
-INSERT INTO `users` (`id`, `name`, `email`, `password`, `phone`, `profilePictureUrl`, `joinDate`, `birthday`, `gender`, `role`, `status`, `lastLogin`, `loginHistory`) VALUES
-('user-1', 'Thanh Hằng', 'admin@anhtho.com', '$2a$10$hashed_password_here', NULL, 'https://picsum.photos/seed/admin/40/40', CURDATE(), NULL, NULL, 'Admin', 'Active', NULL, NULL),
-('user-2', 'Trần Minh Anh', 'staff@anhtho.com', '$2a$10$hashed_password_here', '0987654321', 'https://picsum.photos/seed/staff2/100/100', CURDATE(), NULL, 'Nữ', 'Staff', 'Active', NULL, NULL),
-('user-3', 'Trần Thị Ngọc Ánh', 'customer@anhtho.com', '$2a$10$hashed_password_here', '0988776655', 'https://picsum.photos/seed/customer1/40/40', CURDATE(), '1990-05-15', 'Nữ', 'Client', 'Active', NULL, NULL),
-('user-4', 'Nguyễn Thuỳ Linh', 'staff1@anhtho.com', '$2a$10$hashed_password_here', '0912345678', 'https://picsum.photos/seed/staff1/100/100', CURDATE(), NULL, 'Nữ', 'Staff', 'Active', NULL, NULL);
-
--- 11.3. Insert Wallets
-INSERT INTO `wallets` (`userId`, `balance`, `points`, `totalEarned`, `totalSpent`) VALUES
-('user-3', 0.00, 250, 250, 0);
-
--- 11.4. Insert Services
-INSERT INTO `services` (`id`, `name`, `description`, `longDescription`, `duration`, `price`, `discountPrice`, `imageUrl`, `category`, `categoryId`, `rating`, `reviewCount`, `isHot`, `isNew`, `promoExpiryDate`, `isActive`) VALUES
-('sv-1', 'Chăm sóc da mặt chuyên sâu', 'Liệu trình làm sạch, tẩy tế bào chết, massage và đắp mặt nạ dưỡng da.', 'Liệu trình chăm sóc da mặt toàn diện với các bước: làm sạch sâu, tẩy tế bào chết, massage thư giãn và đắp mặt nạ dưỡng ẩm chuyên sâu. Phù hợp cho mọi loại da.', 60, 500000.00, NULL, 'https://picsum.photos/seed/spa1/400/300', 'Chăm sóc da', 1, 4.50, 12, 1, 0, NULL, 1),
-('sv-2', 'Massage body thảo dược', 'Massage toàn thân với tinh dầu thảo dược giúp thư giãn, giảm căng thẳng.', 'Massage toàn thân với tinh dầu thảo dược tự nhiên, giúp thư giãn cơ bắp, giảm căng thẳng và mệt mỏi. Kỹ thuật massage chuyên nghiệp.', 90, 750000.00, NULL, 'https://picsum.photos/seed/spa2/400/300', 'Massage', 2, 4.80, 25, 1, 1, NULL, 1);
-
--- 11.5. Insert Appointments
-INSERT INTO `appointments` (`id`, `serviceId`, `serviceName`, `userId`, `userName`, `date`, `time`, `status`, `paymentStatus`, `therapist`, `therapistId`, `notesForTherapist`, `staffNotesAfterSession`, `isStarted`, `isCompleted`, `reviewRating`, `rejectionReason`, `bookingGroupId`) VALUES
-('apt-1', 'sv-1', 'Chăm sóc da mặt chuyên sâu', 'user-3', 'Trần Thị Ngọc Ánh', '2024-08-01', '09:00', 'pending', 'Unpaid', 'Trần Minh Anh', 'user-2', NULL, NULL, 0, 0, NULL, NULL, NULL),
-('apt-2', 'sv-2', 'Massage body thảo dược', 'user-3', 'Trần Thị Ngọc Ánh', '2024-08-01', '14:00', 'upcoming', 'Paid', 'Nguyễn Thuỳ Linh', 'user-4', NULL, NULL, 0, 0, NULL, NULL, NULL);
-
--- 11.6. Insert Treatment Courses
-INSERT INTO `treatment_courses` (`id`, `serviceId`, `serviceName`, `totalSessions`, `sessionsPerWeek`, `weekDays`, `sessionDuration`, `sessionTime`, `description`, `imageUrl`, `sessions`, `initialAppointmentId`, `clientId`, `therapistId`, `status`, `expiryDate`, `nextAppointmentDate`) VALUES
-('tc-template-1', 'sv-1', 'Chăm sóc da mặt chuyên sâu', 8, 2, '[1, 4]', 60, '10:00', 'Liệu trình chăm sóc da mặt toàn diện với 8 buổi, 2 buổi/tuần vào Thứ 2 và Thứ 5. Giúp da sáng mịn, giảm mụn và lỗ chân lông.', 'https://picsum.photos/seed/treatment1/400/300', '[]', NULL, NULL, NULL, 'active', NULL, NULL);
-
--- 11.7. Insert Staff Availability (Lịch khả dụng - để staff xem lịch)
-INSERT INTO `staff_availability` (`id`, `staffId`, `dayOfWeek`, `startTime`, `endTime`, `isAvailable`) VALUES
-('avail-1', 'user-2', 1, '09:00', '17:00', 1),
-('avail-2', 'user-2', 3, '09:00', '17:00', 1),
-('avail-3', 'user-2', 5, '09:00', '17:00', 1),
-('avail-4', 'user-4', 2, '14:00', '20:00', 1),
-('avail-5', 'user-4', 4, '14:00', '20:00', 1);
-
--- 11.8. Insert Staff Shifts (Ca làm việc - để admin quản lý, staff xem)
-INSERT INTO `staff_shifts` (`id`, `staffId`, `date`, `shiftType`, `status`, `shiftHours`) VALUES
-('shift-1', 'user-2', '2024-08-01', 'morning', 'approved', '{"start": "09:00", "end": "17:00"}'),
-('shift-2', 'user-2', '2024-08-02', 'morning', 'approved', '{"start": "09:00", "end": "17:00"}'),
-('shift-3', 'user-4', '2024-08-01', 'afternoon', 'approved', '{"start": "14:00", "end": "20:00"}');
-
--- =====================================================
--- Tổng kết: Database với 12 bảng - Đủ chức năng quản lý lịch làm việc
--- 1. users - Quản lý tài khoản (Admin, Staff, Client)
--- 2. service_categories - Danh mục dịch vụ
--- 3. services - Dịch vụ
--- 4. wallets (gộp points_history) - Ví điểm
--- 5. appointments - Đặt lịch (Admin phê duyệt, Admin/Staff xem lịch)
--- 6. treatment_courses - Liệu trình
--- 7. payments - Thanh toán
--- 8. promotions (gộp vouchers) - Khuyến mãi & Voucher
--- 9. reviews - Đánh giá
--- 10. staff_availability - Lịch khả dụng nhân viên (để staff xem lịch)
--- 11. staff_shifts - Ca làm việc nhân viên (để admin quản lý, staff xem)
--- 12. staff_tasks - Công việc nhân viên (để admin giao việc, staff xem)
--- 
--- Lưu ý về quản lý lịch:
--- - Admin phê duyệt lịch hẹn: Khi khách đặt lịch, status = 'pending'
---   Admin có thể: approve (status = 'upcoming') hoặc reject (status = 'cancelled', rejectionReason)
--- - Admin và Staff xem lịch: Query từ appointments với:
---   + date, time: Thời gian hẹn
---   + userId: Khách hàng (join với users để lấy tên)
---   + therapistId: Nhân viên (join với users để lấy tên)
---   + serviceName: Tên dịch vụ
---   + status IN ('upcoming', 'in-progress'): Chỉ hiển thị lịch đã được phê duyệt
--- - Staff xem lịch của mình: WHERE therapistId = staffId
--- - Admin xem tất cả lịch: Không cần filter theo therapistId
--- =====================================================
--- 1. Tạo bảng rooms
-CREATE TABLE `rooms` (
+DROP TABLE IF EXISTS `users`;
+CREATE TABLE `users` (
   `id` varchar(255) NOT NULL,
   `name` varchar(255) NOT NULL,
-  `capacity` int DEFAULT 1,
-  `equipmentIds` json DEFAULT NULL,
-  `isActive` tinyint(1) DEFAULT 1,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `email` varchar(255) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `phone` varchar(255) DEFAULT NULL,
+  `profilePictureUrl` varchar(255) DEFAULT NULL,
+  `joinDate` date NOT NULL,
+  `birthday` date DEFAULT NULL,
+  `gender` varchar(255) DEFAULT NULL,
+  `role` enum('Admin','Staff','Client') NOT NULL DEFAULT 'Client',
+  `status` enum('Active','Inactive','Locked','Pending') NOT NULL DEFAULT 'Active',
+  `lastLogin` datetime DEFAULT NULL,
+  `emailVerificationToken` varchar(255) DEFAULT NULL,
+  `isEmailVerified` tinyint(1) NOT NULL DEFAULT '0',
+  `passwordResetToken` varchar(255) DEFAULT NULL,
+  `passwordResetTokenExpires` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `email` (`email`),
+  UNIQUE KEY `emailVerificationToken` (`emailVerificationToken`),
+  UNIQUE KEY `passwordResetToken` (`passwordResetToken`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- 2. Thêm cột roomId vào appointments (nếu cần)
-ALTER TABLE `appointments` 
-ADD COLUMN `roomId` varchar(255) DEFAULT NULL,
-ADD KEY `roomId` (`roomId`),
-ADD CONSTRAINT `appointments_fk_room` 
-FOREIGN KEY (`roomId`) REFERENCES `rooms` (`id`) 
-ON DELETE SET NULL ON UPDATE CASCADE;
-
--- 3. Thêm dữ liệu mẫu (nếu cần)
-INSERT INTO `rooms` (`id`, `name`, `capacity`, `isActive`) VALUES
-('room1', 'Phòng 1', 1, 1),
-('room2', 'Phòng 2', 1, 1),
-('room3', 'Phòng 3', 1, 1);
+DROP TABLE IF EXISTS `wallets`;
+CREATE TABLE `wallets` (
+  `id` varchar(255) NOT NULL,
+  `userId` varchar(255) NOT NULL,
+  `points` int NOT NULL DEFAULT '0',
+  `tierLevel` int NOT NULL DEFAULT '1' COMMENT 'Hạng thành viên (1-8)',
+  `totalSpent` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `lastUpdated` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `userId` (`userId`),
+  CONSTRAINT `wallets_ibfk_1` FOREIGN KEY (`userId`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

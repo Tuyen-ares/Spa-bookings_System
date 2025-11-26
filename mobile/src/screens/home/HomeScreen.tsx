@@ -13,6 +13,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as apiService from '../../services/apiService';
+import { getImageUrl } from '../../services/apiService';
 import { Service, Promotion, Review } from '../../types';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency } from '../../utils/formatters';
@@ -75,6 +76,9 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
         apiService.getPromotions(),
         apiService.getReviews(),
       ]);
+      console.log('Loaded services:', servicesData.length);
+      console.log('First service:', servicesData[0]);
+      console.log('First service imageUrl:', servicesData[0]?.imageUrl);
       setServices(servicesData.slice(0, 6)); // Featured services
       setPromotions(promotionsData.filter((p: Promotion) => p.isActive).slice(0, 4));
       setReviews(reviewsData.slice(0, 5));
@@ -103,10 +107,11 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    >
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={styles.container}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
       {/* Hero Slider */}
       <View style={styles.heroContainer}>
         <ScrollView
@@ -169,8 +174,14 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
                 onPress={() => navigation.navigate('ServiceDetail', { id: service.id })}
               >
                 <Image
-                  source={{ uri: service.imageUrl || 'https://via.placeholder.com/200' }}
+                  source={{ uri: getImageUrl(service.imageUrl) }}
                   style={styles.serviceImage}
+                  onLoad={() => console.log('Image loaded successfully:', service.name)}
+                  onError={(error) => {
+                    console.log('Image load error for service:', service.id, service.name);
+                    console.log('Image URL:', getImageUrl(service.imageUrl));
+                  }}
+                  resizeMode="cover"
                 />
                 <View style={styles.serviceInfo}>
                   <Text style={styles.serviceName} numberOfLines={2}>
@@ -189,7 +200,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           </ScrollView>
         ) : (
           <View style={styles.emptyServices}>
-            <Ionicons name="spa-outline" size={48} color="#ccc" />
+            <Ionicons name="flower-outline" size={48} color="#ccc" />
             <Text style={styles.emptyText}>Chưa có dịch vụ nào</Text>
           </View>
         )}
@@ -218,7 +229,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
                     : formatCurrency(promo.discountValue)}
                 </Text>
                 <Text style={styles.promoExpiry}>
-                  HSD: {new Date(promo.endDate).toLocaleDateString('vi-VN')}
+                  HSD: {new Date(promo.expiryDate).toLocaleDateString('vi-VN')}
                 </Text>
               </View>
             </View>
@@ -261,6 +272,16 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       )}
     </ScrollView>
+      
+      {/* Floating Chatbot Button */}
+      <TouchableOpacity
+        style={styles.floatingChatButton}
+        onPress={() => navigation.navigate('ChatbotTab')}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="chatbubbles" size={28} color="#fff" />
+      </TouchableOpacity>
+    </View>
   );
 };
 
@@ -364,6 +385,7 @@ const styles = StyleSheet.create({
     height: 120,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
+    backgroundColor: '#f0f0f0',
   },
   serviceInfo: {
     padding: 12,
@@ -490,5 +512,21 @@ const styles = StyleSheet.create({
   reviewDate: {
     fontSize: 12,
     color: '#999',
+  },
+  floatingChatButton: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#E91E63',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
 });

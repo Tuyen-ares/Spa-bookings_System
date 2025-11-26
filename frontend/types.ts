@@ -50,6 +50,8 @@ export interface Appointment {
   frequencyValue?: number; // Giá trị tần suất
   totalAmount?: number; // Tổng tiền thực tế sau giảm giá/voucher (cho treatment course)
   treatmentCourseNotes?: string; // Ghi chú cho treatment course
+  reviewRating?: number; // Đánh giá số sao (1-5)
+  reviewComment?: string; // Nhận xét đánh giá
   Client?: { // Client association from backend
     id: string;
     name: string;

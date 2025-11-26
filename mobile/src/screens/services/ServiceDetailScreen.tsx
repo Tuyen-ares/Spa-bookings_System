@@ -11,6 +11,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as apiService from '../../services/apiService';
+import { getImageUrl } from '../../services/apiService';
 import { Service, Review } from '../../types';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency } from '../../utils/formatters';
@@ -33,6 +34,8 @@ export const ServiceDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         apiService.getServiceById(id),
         apiService.getReviews(),
       ]);
+      console.log('ServiceDetailScreen - Service:', serviceData.name);
+      console.log('ServiceDetailScreen - imageUrl:', serviceData.imageUrl);
       setService(serviceData);
       setReviews(reviewsData.filter((r: Review) => r.serviceId === id));
     } catch (error) {
@@ -78,8 +81,14 @@ export const ServiceDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       <ScrollView>
         {/* Image Gallery */}
         <Image
-          source={{ uri: service.imageUrl || 'https://via.placeholder.com/400' }}
+          source={{ uri: getImageUrl(service.imageUrl) }}
           style={styles.image}
+          onLoad={() => console.log('Detail image loaded')}
+          onError={(error) => {
+            console.log('Detail image error for:', service.name);
+            console.log('URL:', getImageUrl(service.imageUrl));
+          }}
+          resizeMode="cover"
         />
 
         {/* Service Info */}
@@ -161,6 +170,7 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: 300,
+    backgroundColor: '#f0f0f0',
   },
   content: {
     padding: 20,

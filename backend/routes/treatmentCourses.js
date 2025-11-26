@@ -64,15 +64,54 @@ router.get('/', async (req, res) => {
             order: [['createdAt', 'DESC']],
         });
 
-        // Map courses to include sessions as 'sessions' (for frontend compatibility)
-        const mappedCourses = courses.map(course => {
+        // Đồng bộ totalAmount từ Payment cho từng course
+        const mappedCourses = await Promise.all(courses.map(async (course) => {
             const courseData = course.toJSON();
             if (courseData.TreatmentSessions) {
                 courseData.sessions = courseData.TreatmentSessions;
                 delete courseData.TreatmentSessions;
             }
+
+            // Đồng bộ totalAmount từ Payment nếu có
+            try {
+                const appointmentIds = courseData.sessions
+                    ?.map(s => s.appointmentId)
+                    .filter(id => id !== null) || [];
+                
+                if (appointmentIds.length > 0) {
+                    const payment = await db.Payment.findOne({
+                        where: {
+                            appointmentId: { [Op.in]: appointmentIds }
+                        },
+                        order: [['date', 'DESC']]
+                    });
+                    
+                    if (payment && payment.amount) {
+                        const paymentAmount = parseFloat(payment.amount);
+                        const currentTotalAmount = courseData.totalAmount ? parseFloat(courseData.totalAmount) : null;
+                        
+                        if (!currentTotalAmount || currentTotalAmount === 0 || currentTotalAmount !== paymentAmount) {
+                            await course.update({ 
+                                totalAmount: paymentAmount,
+                                paymentStatus: payment.status === 'Completed' ? 'Paid' : 'Pending'
+                            });
+                            courseData.totalAmount = paymentAmount;
+                            courseData.paymentStatus = 'Paid';
+                            console.log(`✅ [TREATMENT COURSE LIST] Updated totalAmount from Payment: ${paymentAmount} VND for course ${course.id}`);
+                        }
+                    }
+                }
+            } catch (syncError) {
+                console.error(`Error syncing totalAmount for course ${course.id}:`, syncError);
+            }
+
+            // Đảm bảo totalAmount được trả về đúng định dạng
+            if (courseData.totalAmount !== null && courseData.totalAmount !== undefined) {
+                courseData.totalAmount = parseFloat(courseData.totalAmount);
+            }
+
             return courseData;
-        });
+        }));
 
         res.json(mappedCourses);
     } catch (error) {
@@ -134,11 +173,10 @@ router.get('/:id', async (req, res) => {
                 .filter(id => id !== null);
             
             if (appointmentIds.length > 0) {
-                // Tìm Payment record với appointmentId trong danh sách, status = Completed
+                // Tìm Payment record với appointmentId trong danh sách (bất kỳ status nào)
                 const payment = await db.Payment.findOne({
                     where: {
-                        appointmentId: { [Op.in]: appointmentIds },
-                        status: 'Completed'
+                        appointmentId: { [Op.in]: appointmentIds }
                     },
                     order: [['date', 'DESC']] // Lấy payment mới nhất
                 });
@@ -151,7 +189,7 @@ router.get('/:id', async (req, res) => {
                     if (!currentTotalAmount || currentTotalAmount === 0 || currentTotalAmount !== paymentAmount) {
                         await course.update({ 
                             totalAmount: paymentAmount,
-                            paymentStatus: 'Paid' // Đồng bộ payment status nếu có payment Completed
+                            paymentStatus: payment.status === 'Completed' ? 'Paid' : 'Pending'
                         });
                         // Reload để có data mới nhất
                         await course.reload();

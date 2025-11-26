@@ -2,6 +2,7 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { View, Text, StyleSheet } from 'react-native';
 import { HomeScreen } from '../screens/home/HomeScreen';
 import { ServicesListScreen } from '../screens/services/ServicesListScreen';
 import { ServiceDetailScreen } from '../screens/services/ServiceDetailScreen';
@@ -10,10 +11,14 @@ import { AppointmentsScreen } from '../screens/appointments/AppointmentsScreen';
 import { AppointmentDetailScreen } from '../screens/appointments/AppointmentDetailScreen';
 import { PromotionsScreen } from '../screens/promotions/PromotionsScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
+import { EditProfileScreen } from '../screens/profile/EditProfileScreen';
 import { ChangePasswordScreen } from '../screens/profile/ChangePasswordScreen';
+import { NotificationsScreen } from '../screens/profile/NotificationsScreen';
+import { RewardsScreen } from '../screens/profile/RewardsScreen';
 import { TreatmentCoursesScreen } from '../screens/treatments/TreatmentCoursesScreen';
 import { TreatmentCourseDetailScreen } from '../screens/treatments/TreatmentCourseDetailScreen';
-import { ChatbotScreen } from '../screens/chatbot/ChatbotScreen';
+import { ChatbotScreen } from '../screens/client/ChatbotScreen';
+import { notificationPolling } from '../services/notificationPollingService';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -47,11 +52,6 @@ const HomeStack = () => {
         component={BookingScreen}
         options={{ title: 'Đặt lịch' }}
       />
-      <Stack.Screen
-        name="Chatbot"
-        component={ChatbotScreen}
-        options={{ title: 'Trợ lý Anh Thơ Spa' }}
-      />
     </Stack.Navigator>
   );
 };
@@ -84,11 +84,6 @@ const ServicesStack = () => {
         name="Booking"
         component={BookingScreen}
         options={{ title: 'Đặt lịch' }}
-      />
-      <Stack.Screen
-        name="Chatbot"
-        component={ChatbotScreen}
-        options={{ title: 'Trợ lý Anh Thơ Spa' }}
       />
     </Stack.Navigator>
   );
@@ -167,7 +162,7 @@ const PromotionsStack = () => {
       <Stack.Screen
         name="PromotionsMain"
         component={PromotionsScreen}
-        options={{ title: 'Khuyến mãi' }}
+        options={{ title: 'Voucher của tôi' }}
       />
     </Stack.Navigator>
   );
@@ -193,6 +188,21 @@ const ProfileStack = () => {
         options={{ title: 'Hồ sơ' }}
       />
       <Stack.Screen
+        name="EditProfile"
+        component={EditProfileScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Rewards"
+        component={RewardsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
         name="ChangePassword"
         component={ChangePasswordScreen}
         options={{ headerShown: false }}
@@ -201,7 +211,46 @@ const ProfileStack = () => {
   );
 };
 
+// Chatbot Stack
+const ChatbotStack = () => {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false
+      }}
+    >
+      <Stack.Screen
+        name={"Chatbot" as any}
+        component={ChatbotScreen}
+        options={{ title: 'Trợ lý ảo' }}
+      />
+    </Stack.Navigator>
+  );
+};
+
 export const MainNavigator = () => {
+  const [notificationCount, setNotificationCount] = React.useState(0);
+
+  React.useEffect(() => {
+    // Subscribe to notification count updates
+    const unsubscribe = notificationPolling.subscribe((count) => {
+      setNotificationCount(count);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  // Notification Badge Component
+  const NotificationBadge: React.FC<{ count: number }> = ({ count }) => {
+    if (count === 0) return null;
+    
+    return (
+      <View style={styles.badge}>
+        <Text style={styles.badgeText}>{count > 99 ? '99+' : count}</Text>
+      </View>
+    );
+  };
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -266,9 +315,19 @@ export const MainNavigator = () => {
         name="PromotionsTab"
         component={PromotionsStack}
         options={{
-          title: 'Khuyến mãi',
+          title: 'Voucher',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="pricetag" color={color} size={size} />
+          )
+        }}
+      />
+      <Tab.Screen
+        name="ChatbotTab"
+        component={ChatbotStack}
+        options={{
+          title: 'Trợ lý',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbubbles" color={color} size={size} />
           )
         }}
       />
@@ -278,20 +337,35 @@ export const MainNavigator = () => {
         options={{
           title: 'Hồ sơ',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" color={color} size={size} />
-          )
-        }}
-      />
-      <Tab.Screen
-        name="ChatbotTab"
-        component={ChatbotScreen}
-        options={{
-          title: 'Trợ lý',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubbles" color={color} size={size} />
+            <View>
+              <Ionicons name="person" color={color} size={size} />
+              <NotificationBadge count={notificationCount} />
+            </View>
           )
         }}
       />
     </Tab.Navigator>
   );
 };
+
+const styles = StyleSheet.create({
+  badge: {
+    position: 'absolute',
+    right: -8,
+    top: -4,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+});

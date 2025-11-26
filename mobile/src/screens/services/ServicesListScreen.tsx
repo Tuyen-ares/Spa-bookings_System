@@ -13,6 +13,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as apiService from '../../services/apiService';
+import { getImageUrl } from '../../services/apiService';
 import { Service, ServiceCategory } from '../../types';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { EmptyState } from '../../components/EmptyState';
@@ -54,6 +55,10 @@ export const ServicesListScreen: React.FC<Props> = ({ navigation, route }) => {
         apiService.getServices(),
         apiService.getServiceCategories(),
       ]);
+      console.log('ServicesListScreen - Loaded services:', servicesData.length);
+      if (servicesData.length > 0) {
+        console.log('First service imageUrl:', servicesData[0]?.imageUrl);
+      }
       setServices(servicesData.filter((s: Service) => s.isActive !== false));
       setCategories(categoriesData);
     } catch (error) {
@@ -101,8 +106,14 @@ export const ServicesListScreen: React.FC<Props> = ({ navigation, route }) => {
       onPress={() => navigation.navigate('ServiceDetail', { id: item.id })}
     >
       <Image
-        source={{ uri: item.imageUrl || 'https://via.placeholder.com/200' }}
+        source={{ uri: getImageUrl(item.imageUrl) }}
         style={styles.serviceImage}
+        onLoad={() => console.log('Image loaded:', item.name)}
+        onError={(error) => {
+          console.log('Image error for:', item.name);
+          console.log('URL:', getImageUrl(item.imageUrl));
+        }}
+        resizeMode="cover"
       />
       <View style={styles.serviceInfo}>
         <Text style={styles.serviceName} numberOfLines={2}>
@@ -400,6 +411,7 @@ const styles = StyleSheet.create({
     height: 120,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
+    backgroundColor: '#f0f0f0',
   },
   serviceInfo: {
     padding: 12,

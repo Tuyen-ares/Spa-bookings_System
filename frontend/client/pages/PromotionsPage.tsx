@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import type { Promotion, Wallet, RedeemableVoucher, PointsHistory, User, Tier, Prize, Service, Appointment } from '../../types';
+import type { Promotion, Wallet, RedeemableVoucher, PointsHistory, User, Tier, Service, Appointment } from '../../types';
 import * as apiService from '../services/apiService';
 // FIX: Replaced missing icon 'ShareIcon' with 'PaperAirplaneIcon' to fix import error.
 import { ArrowRightIcon, GiftIcon, HistoryIcon, ClockIcon, QrCodeIcon, SparklesIcon, PaperAirplaneIcon } from '../../shared/icons';
@@ -63,30 +63,24 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
     const [redeemableVouchers, setRedeemableVouchers] = useState<RedeemableVoucher[]>([]);
     const [redeemedVouchers, setRedeemedVouchers] = useState<Array<Promotion & { redeemedCount: number }>>([]); // Vouchers đã đổi bằng điểm
     const [pointsHistory, setPointsHistory] = useState<Array<{date: string; pointsChange: number; type: string; source: string; description: string}>>([]);
-    const [luckyWheelPrizes, setLuckyWheelPrizes] = useState<Prize[]>([]);
     
     // New states for extra data and features
     const [allServices, setAllServices] = useState<Service[]>([]);
     const [allAppointments, setAllAppointments] = useState<Appointment[]>([]);
-    const [aiSuggestion, setAiSuggestion] = useState<Promotion | null>(null);
     const [isBirthdayGiftOpened, setIsBirthdayGiftOpened] = useState(false);
     const [showConfetti, setShowConfetti] = useState(false);
     const [qrModalData, setQrModalData] = useState<{ code: string; title: string } | null>(null);
-
+    const [detailModalData, setDetailModalData] = useState<Promotion | null>(null);
     const [activeTab, setActiveTab] = useState<'my_offers' | 'general' | 'history' | 'redeem'>('my_offers');
     
-    // Lucky Wheel State
-    const [isSpinning, setIsSpinning] = useState(false);
-    const [wheelRotation, setWheelRotation] = useState(0);
-    const [spinResultModal, setSpinResultModal] = useState<Prize | null>(null);
+    // (Lucky wheel removed)
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [fetchedPromotions, fetchedRedeemable, fetchedLuckyPrizes, fetchedServices, userAppointments] = await Promise.all([
+                const [fetchedPromotions, fetchedRedeemable, fetchedServices, userAppointments] = await Promise.all([
                     apiService.getPromotions(currentUser ? { userId: currentUser.id } : undefined),
                     apiService.getRedeemableVouchers(),
-                    apiService.getLuckyWheelPrizes(),
                     apiService.getServices(),
                     currentUser ? apiService.getUserAppointments(currentUser.id) : Promise.resolve([]),
                 ]);
@@ -94,7 +88,6 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                 console.log('Fetched redeemable vouchers:', fetchedRedeemable);
                 setPromotions(fetchedPromotions);
                 setRedeemableVouchers(fetchedRedeemable || []);
-                setLuckyWheelPrizes(fetchedLuckyPrizes);
                 setAllServices(fetchedServices);
                 setAllAppointments(userAppointments);
 
@@ -142,22 +135,7 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
         };
     }, [currentUser, setWallet]);
 
-    // AI suggestion logic
-    useEffect(() => {
-        if (currentUser && allServices.length > 0 && allAppointments.length > 0 && promotions.length > 0) {
-            const usedCategoryIds = new Set(
-                allAppointments
-                    .map(app => allServices.find(s => s.id === app.serviceId)?.categoryId)
-                    .filter(Boolean)
-            );
-            const suggestion = promotions.find(p => {
-                if (!p.applicableServiceIds || p.applicableServiceIds.length === 0) return false;
-                const promoService = allServices.find(s => s.id === p.applicableServiceIds![0]);
-                return promoService && !usedCategoryIds.has(promoService.categoryId);
-            });
-            setAiSuggestion(suggestion || null);
-        }
-    }, [currentUser, allServices, allAppointments, promotions]);
+    // (AI suggestion removed per request)
 
     // Check if today is user's birthday
     const isBirthdayToday = useMemo(() => {
@@ -167,14 +145,16 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
         return today.getMonth() === birthDate.getMonth() && today.getDate() === birthDate.getDate();
     }, [currentUser]);
     
-    // Check if user has used a service (for New Clients vouchers)
-    const hasUsedService = useMemo(() => {
-        if (!currentUser || allAppointments.length === 0) return false;
-        // Check if user has any completed/paid appointments
-        return allAppointments.some(app => 
-            (app.status === 'completed' || app.status === 'upcoming' || app.status === 'scheduled') && 
-            app.paymentStatus === 'Paid'
+    // Check if user is truly a new client (no successful bookings at all)
+    const isNewClient = useMemo(() => {
+        if (!currentUser || !allAppointments) return true; // Assume new if no data
+        // User is NEW CLIENT only if they have NO completed/paid appointments AND NO upcoming/scheduled paid appointments
+        const hasAnySuccessfulBooking = allAppointments.some(app => 
+            app.status !== 'cancelled' && 
+            (app.paymentStatus === 'Paid' || 
+             (app.status === 'completed' || app.status === 'upcoming' || app.status === 'scheduled'))
         );
+        return !hasAnySuccessfulBooking;
     }, [currentUser, allAppointments]);
     
     // Get available vouchers for "Ưu đãi của tôi" tab
@@ -191,19 +171,39 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
             if (today > expiryDate) return false;
             if (promo.stock !== null && promo.stock <= 0) return false;
             
-            // Show birthday vouchers if today is birthday
-            if (promo.targetAudience === 'Birthday' && isBirthdayToday) {
+            // Birthday vouchers: Only show if TODAY is birthday (not before, not after)
+            if (promo.targetAudience === 'Birthday') {
+                // Must be exactly today
+                if (!isBirthdayToday) return false;
+                
+                // Check if user already used birthday voucher (check redeemedVouchers or promotions usage)
+                // Birthday voucher can only be used ONCE per year, on the birthday
+                const hasUsedBirthdayVoucher = redeemedVouchers.some(rv => 
+                    rv.targetAudience === 'Birthday' && rv.redeemedCount > 0
+                );
+                
+                if (hasUsedBirthdayVoucher) return false;
+                
                 return true;
             }
             
-            // Show new client vouchers if user hasn't used any service
-            if (promo.targetAudience === 'New Clients' && !hasUsedService) {
+            // New client vouchers: Only show if user is truly NEW (no successful bookings)
+            if (promo.targetAudience === 'New Clients') {
+                if (!isNewClient) return false;
+                
+                // Check if user already redeemed or used "New Clients" voucher
+                const hasUsedNewClientVoucher = redeemedVouchers.some(rv => 
+                    rv.targetAudience === 'New Clients' && rv.redeemedCount > 0
+                );
+                
+                if (hasUsedNewClientVoucher) return false;
+                
                 return true;
             }
             
             return false;
         });
-    }, [currentUser, promotions, isBirthdayToday, hasUsedService]);
+    }, [currentUser, promotions, isBirthdayToday, isNewClient, redeemedVouchers]);
     
     // Get all public promotions for "Ưu đãi chung" tab
     const generalPromotions = useMemo(() => {
@@ -235,96 +235,7 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
         setTimeout(() => setShowConfetti(false), 3000);
     };
 
-    // ... (rest of the logic: availablePromotions, handleRedeemVoucher, handleClaimPromotion, handleSpin, etc.) ...
-     const handleSpin = async () => {
-        // Note: spinsLeft field removed from Wallet type in db.txt
-        // Lucky wheel functionality disabled until spinsLeft is re-added to database
-        if (!currentUser || !wallet || isSpinning) return;
-        alert('Tính năng vòng quay may mắn đang được bảo trì.');
-        return;
-    
-        setIsSpinning(true);
-        try {
-            const prizes = luckyWheelPrizes;
-            if (prizes.length === 0) { setIsSpinning(false); return; }
-            
-            const totalPrizes = prizes.length;
-            const randomPrizeIndex = Math.floor(Math.random() * totalPrizes);
-            const prize = prizes[randomPrizeIndex];
-            const segmentAngle = 360 / totalPrizes;
-            const randomOffset = (Math.random() - 0.5) * (segmentAngle * 0.8);
-            const targetAngle = (randomPrizeIndex * segmentAngle) + (segmentAngle / 2) + randomOffset;
-            const finalRotation = (360 * 5) + (360 - targetAngle);
-    
-            setWheelRotation(prev => prev + finalRotation);
-    
-            setTimeout(async () => {
-                setIsSpinning(false);
-                setSpinResultModal(prize);
-                try {
-                    const freshWallet = await apiService.getUserWallet(currentUser.id);
-                    let walletUpdatePayload: Partial<Wallet> = {};
-                    let newHistoryEntry: { date?: string; pointsChange: number; type?: string; source?: string; description: string } | null = null;
-    
-                    switch (prize.type) {
-                        case 'points':
-                            walletUpdatePayload = { points: freshWallet.points + prize.value };
-                            newHistoryEntry = { description: `Vòng quay may mắn: +${prize.value} điểm`, pointsChange: prize.value, type: 'earned', source: 'lucky_wheel' };
-                            break;
-                        case 'spin':
-                            // Note: spinsLeft removed from Wallet, skip this prize type
-                            newHistoryEntry = { description: `Vòng quay may mắn: +${prize.value} lượt quay (tạm thời không khả dụng)`, pointsChange: 0, type: 'earned', source: 'lucky_wheel' };
-                            break;
-                        case 'voucher':
-                        case 'voucher_fixed':
-                            const newVoucher: Promotion = {
-                                id: `uv-wheel-${Date.now()}`,
-                                title: prize.type === 'voucher' ? `Voucher giảm ${prize.value}%` : `Voucher giảm ${formatCurrency(prize.value)}`,
-                                description: `Voucher từ Vòng quay may mắn.`,
-                                code: `LUCKY${Math.floor(1000 + Math.random() * 9000)}`,
-                                expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                                discountType: prize.type === 'voucher' ? 'percentage' : 'fixed',
-                                discountValue: prize.value,
-                                termsAndConditions: 'Voucher áp dụng cho lần đặt lịch tiếp theo.',
-                            };
-                            setUserVouchers(prev => [...prev, newVoucher!]);
-                            newHistoryEntry = { description: `Vòng quay may mắn: Nhận ${newVoucher.title}`, pointsChange: 0 };
-                            break;
-                    }
-    
-                    if (Object.keys(walletUpdatePayload).length > 0) {
-                        const walletAfterPrize = await apiService.updateUserWallet(currentUser.id, walletUpdatePayload);
-                        setWallet(walletAfterPrize);
-                    }
-    
-                    if (newHistoryEntry) {
-                        await apiService.createPointsHistoryEntry(currentUser.id, newHistoryEntry);
-                        // Refresh points history
-                        const updatedHistory = await apiService.getUserPointsHistory(currentUser.id);
-                        setPointsHistory(updatedHistory.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-                    }
-    
-                } catch (error) { console.error("Failed to apply prize:", error); alert("Đã có lỗi xảy ra khi nhận phần thưởng."); }
-            }, 5500);
-        } catch (error) {
-            console.error("Failed to spin wheel:", error);
-            alert("Vòng quay thất bại.");
-            if(currentUser) {
-                const actualWallet = await apiService.getUserWallet(currentUser.id);
-                setWallet(actualWallet);
-            }
-            setIsSpinning(false);
-        }
-    };
-    const formatWheelLabel = (label: string) => {
-        const words = label.split(' ');
-        if (words.length > 1) {
-            if (!isNaN(Number(words[0]))) { return <div className="flex flex-col items-center leading-tight"><span>{words[0]}</span><span className="text-xs">{words.slice(1).join(' ')}</span></div>; }
-            if (words[0].toLowerCase() === 'thêm' && words.length > 2) { return <div className="flex flex-col items-center leading-tight"><span>{words[0]} {words[1]}</span><span className="text-xs">{words.slice(2).join(' ')}</span></div>; }
-            return <div className="flex flex-col items-center leading-tight"><span>{words[0]}</span><span className="text-xs">{words.slice(1).join(' ')}</span></div>;
-        }
-        return <span>{label}</span>;
-    };
+    // Lucky wheel feature removed from UI and logic
     const handleRedeemVoucher = async (voucher: RedeemableVoucher) => { /* existing logic */ };
     const handleClaimPromotion = async (promoToClaim: Promotion) => { /* existing logic */ };
     
@@ -425,6 +336,12 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                                             <h3 className="font-bold text-lg text-gray-800 mb-2">{promo.title}</h3>
                                             <p className="text-gray-600 text-sm mb-4 line-clamp-2">{promo.description}</p>
                                             <div className="flex gap-2 mt-auto">
+                                                <button
+                                                    onClick={() => setDetailModalData(promo)}
+                                                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md font-semibold hover:bg-gray-200 transition-colors"
+                                                >
+                                                    Chi tiết
+                                                </button>
                                                 <Link 
                                                     to={`/booking?promoCode=${promo.code}${promo.applicableServiceIds && promo.applicableServiceIds.length > 0 ? `&serviceId=${promo.applicableServiceIds[0]}` : ''}`}
                                                     className="flex-1 text-center bg-brand-primary text-white py-2 px-4 rounded-md font-semibold hover:bg-brand-dark transition-colors"
@@ -439,37 +356,13 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                         </div>
                     )}
                     
-                    {myAvailableVouchers.length === 0 && (
+                    {/* {myAvailableVouchers.length === 0 && (
                         <div className="text-center text-gray-500 py-6">
                             <p>Hiện tại không có voucher nào dành cho bạn.</p>
                             {isBirthdayToday && <p className="mt-2">🎂 Chúc mừng sinh nhật! Voucher sinh nhật sẽ xuất hiện ở đây.</p>}
                             {!hasUsedService && <p className="mt-2">🆕 Voucher dành cho khách hàng mới sẽ xuất hiện ở đây.</p>}
                         </div>
-                    )}
-
-                    {/* AI Suggestion */}
-                    {aiSuggestion && (
-                        <div className="bg-white p-6 rounded-lg shadow-soft-lg border border-purple-200/80">
-                            <h3 className="text-xl font-bold font-serif text-brand-text mb-4 flex items-center gap-2"><SparklesIcon className="w-6 h-6 text-purple-500" /> Dành riêng cho bạn</h3>
-                             <div className="flex flex-col sm:flex-row gap-6">
-                                <img src={aiSuggestion.imageUrl} alt={aiSuggestion.title} className="w-full sm:w-48 h-32 object-cover rounded-md flex-shrink-0" />
-                                <div>
-                                    <p className="font-semibold text-lg text-brand-dark">{aiSuggestion.title}</p>
-                                    <p className="text-sm text-gray-600 mt-1 line-clamp-2">{aiSuggestion.description}</p>
-                                    <button onClick={() => handleClaimPromotion(aiSuggestion)} className="mt-4 bg-purple-600 text-white font-semibold py-2 px-5 rounded-lg hover:bg-purple-700 transition-colors text-sm">Nhận ưu đãi</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Lucky Wheel */}
-                    {wallet && luckyWheelPrizes.length > 0 && (
-                        <section className="bg-white p-8 rounded-lg shadow-soft-xl text-center">
-                            {/* ... (Lucky Wheel JSX from before) ... */}
-                        </section>
-                    )}
-                    
-
+                    )} */}
                     {/* My Vouchers - Display redeemed vouchers (vouchers đã đổi bằng điểm) */}
                     <div>
                         <h2 className="text-2xl font-serif font-bold text-gray-800 mb-4">Voucher của tôi</h2>
@@ -500,12 +393,6 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                                                 >
                                                     Dùng ngay
                                                 </Link>
-                                                <button 
-                                                    onClick={() => setQrModalData({ code: voucher.code, title: voucher.title })} 
-                                                    className="p-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
-                                                >
-                                                    <QrCodeIcon className="w-5 h-5"/>
-                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -541,12 +428,20 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                                                     Hết hạn: {new Date(promo.expiryDate).toLocaleDateString('vi-VN')}
                                                 </span>
                                             </div>
-                                            <button 
-                                                onClick={() => handleUsePromotion(promo)}
-                                                className="w-full bg-brand-primary text-white py-2 px-4 rounded-md font-semibold hover:bg-brand-dark transition-colors mt-auto"
-                                            >
-                                                Sử dụng ngay
-                                            </button>
+                                            <div className="flex gap-2 mt-auto">
+                                                <button
+                                                    onClick={() => setDetailModalData(promo)}
+                                                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md font-semibold hover:bg-gray-200 transition-colors"
+                                                >
+                                                    Chi tiết
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleUsePromotion(promo)}
+                                                    className="flex-1 bg-brand-primary text-white py-2 px-4 rounded-md font-semibold hover:bg-brand-dark transition-colors"
+                                                >
+                                                    Sử dụng ngay
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -580,28 +475,29 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                     {redeemablePrivateVouchers.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {redeemablePrivateVouchers.map(promo => {
-                                const discountDisplay = promo.discountType === 'percentage' 
-                                    ? `${promo.discountValue}%` 
-                                    : formatCurrency(promo.discountValue);
-                                const canAfford = wallet && wallet.points >= (promo.pointsRequired || 0);
+                                const p: any = promo as any;
+                                const discountDisplay = p.discountType === 'percentage' 
+                                    ? `${p.discountValue}%` 
+                                    : formatCurrency(p.discountValue);
+                                const canAfford = wallet && wallet.points >= (p.pointsRequired || 0);
                                 return (
-                                    <div key={promo.id} className={`bg-white rounded-lg shadow-md overflow-hidden flex flex-col border-2 ${canAfford ? 'border-purple-500' : 'border-gray-300'}`}>
+                                    <div key={p.id} className={`bg-white rounded-lg shadow-md overflow-hidden flex flex-col border-2 ${canAfford ? 'border-purple-500' : 'border-gray-300'}`}>
                                         <div className="p-5 flex flex-col flex-grow">
                                             <div className="flex items-center gap-2 mb-2">
                                                 <span className="bg-purple-500 text-white text-xs font-bold px-2 py-1 rounded">🔒 PRIVATE</span>
                                                 <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">-{discountDisplay}</span>
                                             </div>
-                                            <h3 className="font-bold text-lg text-gray-800 mb-2">{promo.title}</h3>
-                                            <p className="text-gray-600 text-sm mb-4 line-clamp-2">{promo.description}</p>
+                                            <h3 className="font-bold text-lg text-gray-800 mb-2">{p.title}</h3>
+                                            <p className="text-gray-600 text-sm mb-4 line-clamp-2">{p.description}</p>
                                             <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-4">
                                                 <p className="text-sm font-semibold text-purple-800">
-                                                    💎 {promo.pointsRequired} điểm
+                                                    💎 {p.pointsRequired} điểm
                                                 </p>
                                                 {wallet ? (
                                                     <p className={`text-xs mt-1 ${canAfford ? 'text-green-600' : 'text-red-600'}`}>
                                                         {canAfford 
                                                             ? `✓ Bạn có đủ điểm (${wallet.points} điểm)` 
-                                                            : `✗ Bạn cần thêm ${(promo.pointsRequired || 0) - wallet.points} điểm`}
+                                                            : `✗ Bạn cần thêm ${(p.pointsRequired || 0) - wallet.points} điểm`}
                                                     </p>
                                                 ) : (
                                                     <p className="text-xs mt-1 text-gray-600">
@@ -615,7 +511,7 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                                                         alert('Vui lòng đăng nhập để đổi voucher');
                                                         return;
                                                     }
-                                                    handleRedeemWithPoints(promo);
+                                                    handleRedeemWithPoints(p as Promotion);
                                                 }}
                                                 disabled={!currentUser || !canAfford}
                                                 className={`w-full py-2 px-4 rounded-md font-semibold transition-colors mt-auto ${
@@ -690,6 +586,90 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                             <p className="text-sm text-gray-400 mt-2">Bạn sẽ nhận được điểm khi thanh toán dịch vụ (1000 VNĐ = 1 điểm)</p>
                         </div>
                     )}
+                </div>
+            )}
+
+            {detailModalData && (
+                <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={() => setDetailModalData(null)}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                        <div className="sticky top-0 bg-gradient-to-r from-brand-primary to-brand-dark text-white p-6 rounded-t-2xl">
+                            <div className="flex justify-between items-start">
+                                <div className="flex-1">
+                                    <h3 className="text-2xl font-bold mb-2">{detailModalData.title}</h3>
+                                    <p className="text-white/90 text-sm">{detailModalData.description}</p>
+                                </div>
+                                <button onClick={() => setDetailModalData(null)} className="text-white hover:bg-white/20 rounded-full p-2 transition-colors">
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="p-6 space-y-4">
+                            <div className="bg-gradient-to-r from-red-50 to-orange-50 p-4 rounded-lg border border-red-200">
+                                <p className="text-sm text-gray-600 mb-1">Giảm giá</p>
+                                <p className="text-3xl font-bold text-red-600">
+                                    {detailModalData.discountType === 'percentage' 
+                                        ? `${detailModalData.discountValue}%`
+                                        : `${detailModalData.discountValue.toLocaleString()} VNĐ`}
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-gray-50 p-4 rounded-lg">
+                                    <p className="text-sm text-gray-600 mb-1">Mã voucher</p>
+                                    <p className="font-mono font-bold text-brand-primary">{detailModalData.code}</p>
+                                </div>
+                                <div className="bg-gray-50 p-4 rounded-lg">
+                                    <p className="text-sm text-gray-600 mb-1">Hạn sử dụng</p>
+                                    <p className="font-semibold text-gray-800">{new Date(detailModalData.expiryDate).toLocaleDateString('vi-VN')}</p>
+                                </div>
+                            </div>
+
+                            {detailModalData.targetAudience && (
+                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                    <p className="text-sm text-gray-600 mb-1">Đối tượng áp dụng</p>
+                                    <p className="font-semibold text-blue-800">{detailModalData.targetAudience}</p>
+                                </div>
+                            )}
+
+                            {detailModalData.minOrderValue && detailModalData.minOrderValue > 0 && (
+                                <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                                    <p className="text-sm text-gray-600 mb-1">Giá trị đơn hàng tối thiểu</p>
+                                    <p className="font-semibold text-yellow-800">{detailModalData.minOrderValue.toLocaleString()} VNĐ</p>
+                                </div>
+                            )}
+
+                            {detailModalData.applicableServiceIds && detailModalData.applicableServiceIds.length > 0 && (
+                                <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                                    <p className="text-sm text-gray-600 mb-2">Dịch vụ áp dụng</p>
+                                    <div className="space-y-1">
+                                        {detailModalData.applicableServiceIds.map(serviceId => {
+                                            const service = allServices.find(s => s.id === serviceId);
+                                            return service ? (
+                                                <p key={serviceId} className="text-sm font-medium text-purple-800">• {service.name}</p>
+                                            ) : null;
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {detailModalData.stock !== null && (
+                                <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                                    <p className="text-sm text-gray-600 mb-1">Số lượng còn lại</p>
+                                    <p className="font-semibold text-green-800">{detailModalData.stock} voucher</p>
+                                </div>
+                            )}
+
+                            {detailModalData.pointsRequired && detailModalData.pointsRequired > 0 && (
+                                <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
+                                    <p className="text-sm text-gray-600 mb-1">Điểm cần đổi</p>
+                                    <p className="font-semibold text-indigo-800">{detailModalData.pointsRequired} điểm</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
             )}
 

@@ -89,14 +89,67 @@ class PaymentService {
     /**
      * Create VNPay payment URL
      */
-    createVNPayUrl(paymentData) {
-        const { amount, orderId, orderInfo, returnUrl } = paymentData;
+    async createVNPayUrl(paymentData) {
+        const { amount, orderId, orderInfo, returnUrl, promotionCode, userId } = paymentData;
+
+        let finalAmount = amount;
+
+        // Apply promotion discount if provided
+        if (promotionCode && userId) {
+            try {
+                const promotion = await db.Promotion.findOne({
+                    where: { 
+                        code: promotionCode,
+                        isActive: true
+                    }
+                });
+
+                if (promotion) {
+                    // Check if promotion is still valid
+                    const now = new Date();
+                    const expiryDate = new Date(promotion.expiryDate);
+                    
+                    if (now <= expiryDate) {
+                        // Check usage limit
+                        const usageCount = await db.PromotionUsage.count({
+                            where: {
+                                promotionId: promotion.id,
+                                userId: userId
+                            }
+                        });
+
+                        if (!promotion.usageLimit || usageCount < promotion.usageLimit) {
+                            // Apply discount
+                            let discount = 0;
+                            if (promotion.discountType === 'percentage') {
+                                discount = amount * (promotion.discountValue / 100);
+                                // Apply max discount if set
+                                if (promotion.maxDiscount && discount > promotion.maxDiscount) {
+                                    discount = promotion.maxDiscount;
+                                }
+                            } else {
+                                discount = promotion.discountValue;
+                            }
+
+                            // Check minimum order value
+                            if (!promotion.minOrderValue || amount >= promotion.minOrderValue) {
+                                finalAmount = Math.max(0, amount - discount);
+                                console.log(`Applied promotion ${promotionCode}: ${amount} -> ${finalAmount}`);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error applying promotion to VNPay:', error);
+                // Continue with original amount if promotion fails
+            }
+        }
 
         const vnp_Params = {
             vnp_Version: '2.1.0',
             vnp_Command: 'pay',
             vnp_TmnCode: vnpayConfig.vnp_TmnCode,
-            vnp_Amount: amount * 100, // VNPay yêu cầu số tiền nhân 100
+            vnp_Amount: Math.round(finalAmount) * 100, // VNPay yêu cầu số tiền nhân 100
             vnp_CurrCode: 'VND',
             vnp_TxnRef: orderId,
             vnp_OrderInfo: orderInfo,
@@ -123,7 +176,7 @@ class PaymentService {
      * Process payment (create payment record)
      */
     async processPayment(paymentData) {
-        const { appointmentId, amount, method, userId } = paymentData;
+        const { appointmentId, amount, method, userId, promotionCode } = paymentData;
 
         // Validate appointment exists
         const appointment = await db.Appointment.findByPk(appointmentId);
@@ -155,7 +208,24 @@ class PaymentService {
             paymentStatus: 'Unpaid' // Will be updated to 'Paid' after confirmation
         });
 
-        return payment;
+        // If VNPay, create payment URL
+        if (method === 'VNPay') {
+            const paymentUrl = await this.createVNPayUrl({
+                amount: amount,
+                orderId: payment.transactionId,
+                orderInfo: `Payment for ${appointment.serviceName}`,
+                returnUrl: process.env.VNPAY_RETURN_URL || `${process.env.FRONTEND_URL}/payment-result`,
+                promotionCode: promotionCode,
+                userId: finalUserId
+            });
+
+            return {
+                payment,
+                paymentUrl
+            };
+        }
+
+        return { payment };
     }
 
     /**
