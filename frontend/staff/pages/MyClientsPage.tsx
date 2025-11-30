@@ -85,7 +85,7 @@ const MyClientsPage: React.FC<MyClientsPageProps> = ({ currentUser, allUsers, al
                             onClick={() => setViewingClient(client)}
                         >
                             <div className="flex items-center gap-4 mb-4">
-                                <img src={client.profilePictureUrl} alt={client.name} className="w-16 h-16 rounded-full object-cover ring-2 ring-brand-secondary" />
+                                <img src={client.profilePictureUrl?.startsWith('http') ? client.profilePictureUrl : `http://localhost:3001${client.profilePictureUrl}`} alt={client.name} className="w-16 h-16 rounded-full object-cover ring-2 ring-brand-secondary" />
                                 <div>
                                     <h3 className="font-bold text-lg text-gray-800">{client.name}</h3>
                                     <p className="text-sm text-gray-500">{client.email}</p>

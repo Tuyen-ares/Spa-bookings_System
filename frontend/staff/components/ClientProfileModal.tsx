@@ -51,7 +51,7 @@ const ClientProfileModal: React.FC<ClientProfileModalProps> = ({ client, onClose
                 <div className="p-6 border-b">
                     <div className="flex justify-between items-start">
                         <div className="flex items-center gap-4">
-                            <img src={client.profilePictureUrl} alt={client.name} className="w-20 h-20 rounded-full object-cover ring-4 ring-brand-primary/30"/>
+                            <img src={client.profilePictureUrl?.startsWith('http') ? client.profilePictureUrl : `http://localhost:3001${client.profilePictureUrl}`} alt={client.name} className="w-20 h-20 rounded-full object-cover ring-4 ring-brand-primary/30"/>
                             <div>
                                 <h2 className="text-2xl font-bold text-gray-800">{client.name}</h2>
                                 <p className="text-gray-500">{client.email}</p>

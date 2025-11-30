@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Appointment, User } from '../../types';
-import { ClockIcon, UserIcon, PhoneIcon, ClipboardDocumentCheckIcon } from '../../shared/icons';
+import { ClockIcon, ProfileIcon, PhoneIcon, ClipboardDocumentCheckIcon } from '../../shared/icons';
 import * as apiService from '../../client/services/apiService';
 
 interface AppointmentDetailModalProps {
@@ -111,7 +111,7 @@ const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({ appoint
                         {/* Thông tin khách hàng */}
                         <div className="bg-blue-50 p-4 rounded-lg">
                             <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                                <UserIcon className="w-5 h-5" />
+                                <ProfileIcon className="w-5 h-5" />
                                 Thông tin khách hàng
                             </h3>
                             <div className="space-y-3">

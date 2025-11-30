@@ -9,6 +9,135 @@ const bcrypt = require('bcryptjs');
 
 // --- Helper Functions ---
 
+/**
+ * Helper function: Xác định paymentStatus của appointment dựa trên TreatmentCourse hoặc buổi 1
+ * Logic: Nếu TreatmentCourse đã thanh toán HOẶC buổi 1 đã thanh toán → appointment = 'Paid'
+ */
+async function getAppointmentPaymentStatus(appointmentData) {
+    try {
+        console.log(`\n🔍 [getAppointmentPaymentStatus] Checking appointment ${appointmentData.id}`);
+        console.log(`   Current paymentStatus: ${appointmentData.paymentStatus}`);
+        console.log(`   Has TreatmentSession: ${!!appointmentData.TreatmentSession}`);
+        console.log(`   Has bookingGroupId: ${!!appointmentData.bookingGroupId} (${appointmentData.bookingGroupId || 'N/A'})`);
+        
+        // Cách 1: Kiểm tra TreatmentCourse paymentStatus (nếu có trong query)
+        if (appointmentData.TreatmentSession && appointmentData.TreatmentSession.TreatmentCourse) {
+            const treatmentCourse = appointmentData.TreatmentSession.TreatmentCourse;
+            console.log(`   ✅ Found TreatmentCourse in query: ${treatmentCourse.id}, paymentStatus: ${treatmentCourse.paymentStatus}`);
+            if (treatmentCourse.paymentStatus === 'Paid') {
+                console.log(`   ✅ TreatmentCourse is Paid → Returning 'Paid'`);
+                return 'Paid';
+            }
+        }
+        
+        // Cách 2: Tìm TreatmentCourse qua TreatmentSession hoặc bookingGroupId
+        let treatmentCourseId = null;
+        
+        // Ưu tiên lấy từ TreatmentSession.treatmentCourseId
+        if (appointmentData.TreatmentSession) {
+            // Kiểm tra cả treatmentCourseId và TreatmentCourse.id
+            if (appointmentData.TreatmentSession.treatmentCourseId) {
+                treatmentCourseId = appointmentData.TreatmentSession.treatmentCourseId;
+                console.log(`   ✅ Found treatmentCourseId from TreatmentSession.treatmentCourseId: ${treatmentCourseId}`);
+            } else if (appointmentData.TreatmentSession.TreatmentCourse && appointmentData.TreatmentSession.TreatmentCourse.id) {
+                treatmentCourseId = appointmentData.TreatmentSession.TreatmentCourse.id;
+                console.log(`   ✅ Found treatmentCourseId from TreatmentSession.TreatmentCourse.id: ${treatmentCourseId}`);
+            } else {
+                console.log(`   ⚠️ TreatmentSession exists but no treatmentCourseId field`);
+                console.log(`   TreatmentSession keys:`, Object.keys(appointmentData.TreatmentSession || {}));
+                
+                // Fallback: Tìm lại TreatmentSession từ database để lấy treatmentCourseId
+                try {
+                    const sessionFromDb = await db.TreatmentSession.findOne({
+                        where: { appointmentId: appointmentData.id },
+                        attributes: ['treatmentCourseId']
+                    });
+                    if (sessionFromDb && sessionFromDb.treatmentCourseId) {
+                        treatmentCourseId = sessionFromDb.treatmentCourseId;
+                        console.log(`   ✅ Found treatmentCourseId from database lookup: ${treatmentCourseId}`);
+                    }
+                } catch (dbError) {
+                    console.error(`   ⚠️ Error looking up TreatmentSession from database:`, dbError.message);
+                }
+            }
+        }
+        
+        // Fallback: Lấy từ bookingGroupId
+        if (!treatmentCourseId && appointmentData.bookingGroupId) {
+            // bookingGroupId format: "group-tc-xxx" hoặc "group-xxx"
+            let groupId = appointmentData.bookingGroupId;
+            if (groupId.startsWith('group-')) {
+                groupId = groupId.replace('group-', '');
+            }
+            // Giữ lại prefix 'tc-' nếu có, vì TreatmentCourse.id có format 'tc-xxx'
+            if (groupId.startsWith('tc-')) {
+                treatmentCourseId = groupId; // Giữ nguyên 'tc-xxx'
+            } else {
+                // Nếu không có prefix 'tc-', thêm prefix vào
+                treatmentCourseId = `tc-${groupId}`;
+            }
+            console.log(`   ✅ Found treatmentCourseId from bookingGroupId: ${appointmentData.bookingGroupId} → ${treatmentCourseId}`);
+        }
+        
+        if (treatmentCourseId) {
+            // Kiểm tra TreatmentCourse paymentStatus
+            const treatmentCourse = await db.TreatmentCourse.findByPk(treatmentCourseId, {
+                attributes: ['id', 'paymentStatus']
+            });
+            
+            if (treatmentCourse) {
+                console.log(`   ✅ Found TreatmentCourse ${treatmentCourse.id}, paymentStatus: ${treatmentCourse.paymentStatus}`);
+                if (treatmentCourse.paymentStatus === 'Paid') {
+                    console.log(`   ✅ TreatmentCourse is Paid → Returning 'Paid'`);
+                    return 'Paid';
+                }
+            } else {
+                console.log(`   ⚠️ TreatmentCourse ${treatmentCourseId} not found`);
+            }
+            
+            // Nếu TreatmentCourse chưa thanh toán, kiểm tra buổi 1
+            console.log(`   🔍 Checking session 1 payment status...`);
+            const session1 = await db.TreatmentSession.findOne({
+                where: { 
+                    treatmentCourseId: treatmentCourseId,
+                    sessionNumber: 1
+                },
+                attributes: ['appointmentId']
+            });
+            
+            if (session1 && session1.appointmentId) {
+                console.log(`   ✅ Found session 1, appointmentId: ${session1.appointmentId}`);
+                const appointment1 = await db.Appointment.findByPk(session1.appointmentId, {
+                    attributes: ['paymentStatus']
+                });
+                
+                if (appointment1) {
+                    console.log(`   ✅ Session 1 appointment paymentStatus: ${appointment1.paymentStatus}`);
+                    if (appointment1.paymentStatus === 'Paid') {
+                        console.log(`   ✅ Session 1 is Paid → Returning 'Paid'`);
+                        return 'Paid';
+                    }
+                } else {
+                    console.log(`   ⚠️ Session 1 appointment ${session1.appointmentId} not found`);
+                }
+            } else {
+                console.log(`   ⚠️ Session 1 not found for treatmentCourseId ${treatmentCourseId}`);
+            }
+        } else {
+            console.log(`   ⚠️ No treatmentCourseId found`);
+        }
+        
+        // Trả về paymentStatus hiện tại của appointment
+        const finalStatus = appointmentData.paymentStatus || 'Unpaid';
+        console.log(`   ⚠️ Returning current paymentStatus: ${finalStatus}\n`);
+        return finalStatus;
+    } catch (error) {
+        console.error(`❌ [getAppointmentPaymentStatus] Error for appointment ${appointmentData.id}:`, error.message);
+        console.error(`   Error stack:`, error.stack);
+        return appointmentData.paymentStatus || 'Unpaid';
+    }
+}
+
 // Helper function to create notification for admins
 const notifyAdmins = async (type, title, message, relatedId = null) => {
     try {
@@ -183,15 +312,23 @@ router.get('/', async (req, res) => {
                 {
                     model: db.TreatmentSession,
                     as: 'TreatmentSession',
-                    attributes: ['id', 'sessionNumber', 'adminNotes', 'customerStatusNotes', 'status'],
-                    required: false
+                    attributes: ['id', 'sessionNumber', 'adminNotes', 'customerStatusNotes', 'status', 'treatmentCourseId'],
+                    required: false,
+                    include: [
+                        {
+                            model: db.TreatmentCourse,
+                            as: 'TreatmentCourse',
+                            attributes: ['id', 'paymentStatus'],
+                            required: false
+                        }
+                    ]
                 }
             ],
             order: [['date', 'DESC'], ['time', 'ASC']]
         });
 
         // Map appointments to include client info and treatment session
-        const mappedAppointments = appointments.map(apt => {
+        const mappedAppointments = await Promise.all(appointments.map(async (apt) => {
             const appointmentData = apt.toJSON();
             // Ensure Client association is preserved
             if (appointmentData.Client) {
@@ -202,18 +339,19 @@ router.get('/', async (req, res) => {
                     phone: appointmentData.Client.phone
                 };
             }
-            // Ensure TreatmentSession is preserved
-            if (appointmentData.TreatmentSession) {
-                appointmentData.TreatmentSession = {
-                    id: appointmentData.TreatmentSession.id,
-                    sessionNumber: appointmentData.TreatmentSession.sessionNumber,
-                    adminNotes: appointmentData.TreatmentSession.adminNotes,
-                    customerStatusNotes: appointmentData.TreatmentSession.customerStatusNotes,
-                    status: appointmentData.TreatmentSession.status
-                };
+            
+            // QUAN TRỌNG: Sử dụng helper function để xác định paymentStatus
+            const originalPaymentStatus = appointmentData.paymentStatus;
+            const finalPaymentStatus = await getAppointmentPaymentStatus(appointmentData);
+            appointmentData.paymentStatus = finalPaymentStatus;
+            
+            // Log nếu paymentStatus thay đổi
+            if (originalPaymentStatus !== finalPaymentStatus) {
+                console.log(`✅ [GET /api/appointments] Appointment ${appointmentData.id} paymentStatus changed: ${originalPaymentStatus} → ${finalPaymentStatus}`);
             }
+            
             return appointmentData;
-        });
+        }));
 
         console.log('Appointments API - Fetched', mappedAppointments.length, 'appointments');
         if (mappedAppointments.length > 0) {
@@ -237,6 +375,7 @@ router.get('/:id', async (req, res) => {
         const { id } = req.params;
 
         const appointment = await db.Appointment.findByPk(id, {
+            attributes: ['id', 'serviceId', 'serviceName', 'userId', 'date', 'time', 'status', 'paymentStatus', 'therapistId', 'notesForTherapist', 'staffNotesAfterSession', 'rejectionReason', 'bookingGroupId', 'promotionId'],
             include: [
                 {
                     model: db.User,
@@ -261,7 +400,8 @@ router.get('/:id', async (req, res) => {
                         {
                             model: db.TreatmentCourse,
                             as: 'TreatmentCourse',
-                            attributes: ['id', 'totalSessions', 'completedSessions', 'serviceName']
+                            attributes: ['id', 'totalSessions', 'completedSessions', 'serviceName', 'paymentStatus'],
+                            required: false
                         }
                     ]
                 }
@@ -272,7 +412,21 @@ router.get('/:id', async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy lịch hẹn' });
         }
 
-        res.json(appointment);
+        // Map appointment to include paymentStatus from TreatmentCourse if available
+        const appointmentData = appointment.toJSON();
+        
+        // QUAN TRỌNG: Sử dụng helper function để xác định paymentStatus
+        const originalPaymentStatus = appointmentData.paymentStatus;
+        const finalPaymentStatus = await getAppointmentPaymentStatus(appointmentData);
+        appointmentData.paymentStatus = finalPaymentStatus;
+        
+        if (originalPaymentStatus !== finalPaymentStatus) {
+            console.log(`✅ [GET /api/appointments/:id] Appointment ${appointmentData.id} paymentStatus changed: ${originalPaymentStatus} → ${finalPaymentStatus}`);
+        } else {
+            console.log(`✅ [GET /api/appointments/:id] Appointment ${appointmentData.id} paymentStatus = '${finalPaymentStatus}'`);
+        }
+
+        res.json(appointmentData);
     } catch (error) {
         console.error('Error fetching appointment:', error);
         res.status(500).json({ message: 'Lỗi khi tải thông tin lịch hẹn' });
@@ -311,15 +465,23 @@ router.get('/user/:userId', async (req, res) => {
                 {
                     model: db.TreatmentSession,
                     as: 'TreatmentSession',
-                    attributes: ['id', 'sessionNumber', 'adminNotes', 'customerStatusNotes', 'status'],
-                    required: false
+                    attributes: ['id', 'sessionNumber', 'adminNotes', 'customerStatusNotes', 'status', 'sessionDate', 'sessionTime', 'treatmentCourseId'],
+                    required: false,
+                    include: [
+                        {
+                            model: db.TreatmentCourse,
+                            as: 'TreatmentCourse',
+                            attributes: ['id', 'paymentStatus'],
+                            required: false
+                        }
+                    ]
                 }
             ],
             order: [['date', 'DESC'], ['time', 'ASC']]
         });
 
         // Map appointments to include client, therapist info, and treatment session
-        const mappedAppointments = userAppointments.map(apt => {
+        const mappedAppointments = await Promise.all(userAppointments.map(async (apt) => {
             const appointmentData = apt.toJSON();
 
             // Map price from Service to top level for mobile app
@@ -343,18 +505,94 @@ router.get('/user/:userId', async (req, res) => {
                     phone: appointmentData.Therapist.phone
                 };
             }
-            // Ensure TreatmentSession is preserved
-            if (appointmentData.TreatmentSession) {
+            // QUAN TRỌNG: Đồng bộ paymentStatus - Logic đơn giản: Nếu buổi 1 đã thanh toán, tất cả buổi khác cũng đã thanh toán
+            let treatmentCourse = null;
+            let sessionNumber = null;
+            
+            if (appointmentData.TreatmentSession && appointmentData.TreatmentSession.TreatmentCourse) {
+                // Nếu có TreatmentSession và TreatmentCourse trong query
+                treatmentCourse = appointmentData.TreatmentSession.TreatmentCourse;
+                sessionNumber = appointmentData.TreatmentSession.sessionNumber;
                 appointmentData.TreatmentSession = {
                     id: appointmentData.TreatmentSession.id,
                     sessionNumber: appointmentData.TreatmentSession.sessionNumber,
                     adminNotes: appointmentData.TreatmentSession.adminNotes,
                     customerStatusNotes: appointmentData.TreatmentSession.customerStatusNotes,
-                    status: appointmentData.TreatmentSession.status
+                    status: appointmentData.TreatmentSession.status,
+                    sessionDate: appointmentData.TreatmentSession.sessionDate,
+                    sessionTime: appointmentData.TreatmentSession.sessionTime,
+                    TreatmentCourse: treatmentCourse
                 };
+            } else {
+                // Fallback: Tìm TreatmentSession qua appointmentId
+                try {
+                    const treatmentSession = await db.TreatmentSession.findOne({
+                        where: { appointmentId: appointmentData.id },
+                        include: [{
+                            model: db.TreatmentCourse,
+                            as: 'TreatmentCourse',
+                            attributes: ['id', 'paymentStatus']
+                        }]
+                    });
+                    
+                    if (treatmentSession && treatmentSession.TreatmentCourse) {
+                        treatmentCourse = treatmentSession.TreatmentCourse.toJSON();
+                        sessionNumber = treatmentSession.sessionNumber;
+                        appointmentData.TreatmentSession = {
+                            id: treatmentSession.id,
+                            sessionNumber: treatmentSession.sessionNumber,
+                            adminNotes: treatmentSession.adminNotes,
+                            customerStatusNotes: treatmentSession.customerStatusNotes,
+                            status: treatmentSession.status,
+                            sessionDate: treatmentSession.sessionDate,
+                            sessionTime: treatmentSession.sessionTime,
+                            TreatmentCourse: treatmentCourse
+                        };
+                    }
+                } catch (fallbackError) {
+                    console.error(`⚠️ [GET /api/appointments/user/:userId] Error finding TreatmentSession:`, fallbackError.message);
+                }
+                
+                // Fallback: Tìm TreatmentCourse qua bookingGroupId
+                if (!treatmentCourse && appointmentData.bookingGroupId) {
+                    try {
+                        const courseId = appointmentData.bookingGroupId.replace('group-', '');
+                        const foundCourse = await db.TreatmentCourse.findByPk(courseId, {
+                            attributes: ['id', 'paymentStatus']
+                        });
+                        if (foundCourse) {
+                            treatmentCourse = foundCourse.toJSON();
+                        }
+                    } catch (bookingGroupError) {
+                        // Ignore error
+                    }
+                }
             }
+            
+            // QUAN TRỌNG: Sử dụng helper function để xác định paymentStatus
+            const originalPaymentStatus = appointmentData.paymentStatus;
+            const finalPaymentStatus = await getAppointmentPaymentStatus(appointmentData);
+            appointmentData.paymentStatus = finalPaymentStatus;
+            
+            // Log nếu paymentStatus thay đổi
+            if (originalPaymentStatus !== finalPaymentStatus) {
+                console.log(`✅ [GET /api/appointments/user/:userId] Appointment ${appointmentData.id} paymentStatus changed: ${originalPaymentStatus} → ${finalPaymentStatus}`);
+            }
+            
+            // Format date to YYYY-MM-DD string to avoid timezone issues
+            if (appointmentData.date) {
+                const dateValue = apt.getDataValue('date');
+                if (dateValue) {
+                    const date = new Date(dateValue);
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    appointmentData.date = `${year}-${month}-${day}`;
+                }
+            }
+            
             return appointmentData;
-        });
+        }));
 
         console.log(`✅ Fetched ${mappedAppointments.length} appointments for user ${userId} (as client or therapist)`);
 
@@ -469,6 +707,89 @@ router.post('/', async (req, res) => {
         const service = await db.Service.findByPk(newAppointmentData.serviceId);
         if (!service) return res.status(404).json({ message: 'Service not found' });
 
+        // ==========================================
+        // VALIDATION: Kiểm tra overlap và khoảng cách tối thiểu 1 giờ
+        // ==========================================
+        if (finalUserId && newAppointmentData.date && newAppointmentData.time) {
+            // Kiểm tra time có phải là giờ tròn không (chỉ cho phép XX:00, không cho XX:30, XX:45)
+            const [hours, minutes] = newAppointmentData.time.split(':').map(Number);
+            if (minutes !== 0) {
+                return res.status(400).json({ 
+                    message: 'Vui lòng chọn giờ tròn (ví dụ: 12:00, 13:00, không được 12:30, 12:45). Các lịch hẹn phải cách nhau ít nhất 1 giờ.' 
+                });
+            }
+
+            // Lấy tất cả appointments của user trong ngày đó (cùng ngày, status != cancelled)
+            const existingAppointments = await db.Appointment.findAll({
+                where: {
+                    userId: finalUserId,
+                    date: newAppointmentData.date,
+                    status: { [Op.ne]: 'cancelled' }
+                },
+                include: [{
+                    model: db.Service,
+                    attributes: ['id', 'duration']
+                }]
+            });
+
+            if (existingAppointments.length > 0) {
+                // Convert time to minutes for comparison
+                const newStartMinutes = hours * 60 + minutes;
+                const newDuration = service.duration || 60;
+                const newEndMinutes = newStartMinutes + newDuration;
+
+                // Kiểm tra overlap với từng appointment đã đặt
+                for (const existingApt of existingAppointments) {
+                    const existingService = existingApt.Service;
+                    if (!existingService || !existingService.duration) continue;
+
+                    const [existingHours, existingMinutes] = existingApt.time.split(':').map(Number);
+                    const existingStartMinutes = existingHours * 60 + existingMinutes;
+                    const existingDuration = existingService.duration;
+                    const existingEndMinutes = existingStartMinutes + existingDuration;
+
+                    // Kiểm tra overlap: Hai khoảng thời gian overlap nếu:
+                    // newStart < existingEnd && newEnd > existingStart
+                    const hasOverlap = newStartMinutes < existingEndMinutes && 
+                                       newEndMinutes > existingStartMinutes;
+
+                    if (hasOverlap) {
+                        return res.status(400).json({ 
+                            message: `Khung giờ này trùng với lịch hẹn đã đặt (${existingApt.time} - ${existingService.name}). Vui lòng chọn giờ khác.` 
+                        });
+                    }
+
+                    // Kiểm tra khoảng cách tối thiểu 1 giờ (60 phút)
+                    // Tính khoảng cách giữa 2 appointments (khoảng trống giữa chúng, không tính overlap)
+                    let gapInMinutes = 0;
+                    
+                    // Nếu appointment mới đứng trước appointment đã đặt (newEnd <= existingStart)
+                    // Khoảng cách = existingStart - newEnd (khoảng trống giữa newEnd và existingStart)
+                    if (newEndMinutes <= existingStartMinutes) {
+                        gapInMinutes = existingStartMinutes - newEndMinutes;
+                    }
+                    // Nếu appointment mới đứng sau appointment đã đặt (newStart >= existingEnd)
+                    // Khoảng cách = newStart - existingEnd (khoảng trống giữa existingEnd và newStart)
+                    else if (newStartMinutes >= existingEndMinutes) {
+                        gapInMinutes = newStartMinutes - existingEndMinutes;
+                    }
+
+                    // PHẢI cách nhau ít nhất 1 giờ (60 phút)
+                    // Nếu gapInMinutes = 0, nghĩa là tiếp giáp nhau (không có khoảng trống) → không hợp lệ
+                    // Nếu gapInMinutes > 0 và < 60, nghĩa là có khoảng trống nhưng chưa đủ 1 giờ → không hợp lệ
+                    // Chỉ hợp lệ nếu gapInMinutes >= 60
+                    if (gapInMinutes < 60) {
+                        const gapText = gapInMinutes === 0 
+                            ? 'Các lịch hẹn tiếp giáp nhau không được phép' 
+                            : `Khoảng cách hiện tại: ${Math.floor(gapInMinutes)} phút, cần ít nhất 60 phút`;
+                        return res.status(400).json({ 
+                            message: `Lịch hẹn phải cách lịch đã đặt ít nhất 1 giờ. ${gapText}. Vui lòng chọn giờ khác.` 
+                        });
+                    }
+                }
+            }
+        }
+
         // Validate promotion if provided
         if (newAppointmentData.promotionId) {
             const promotion = await db.Promotion.findByPk(newAppointmentData.promotionId);
@@ -571,6 +892,70 @@ router.post('/', async (req, res) => {
 
                 console.log(`   ✅ [NEW CLIENTS] User can use New Clients voucher for this service`);
                 console.log(`🔍 [NEW CLIENTS VALIDATION] ==========================================\n`);
+            }
+
+            // Validate "Birthday" promotion: chỉ được dùng đúng ngày sinh nhật và chỉ 1 lần
+            if (promotion.targetAudience === 'Birthday' && finalUserId) {
+                console.log(`\n🔍 [BIRTHDAY VALIDATION] ==========================================`);
+                console.log(`   Checking if user can use Birthday voucher`);
+                console.log(`   userId: ${finalUserId}`);
+                console.log(`   promotionId: ${promotion.id}`);
+
+                // Lấy thông tin user để kiểm tra ngày sinh nhật
+                const user = await db.User.findByPk(finalUserId);
+                if (!user || !user.birthday) {
+                    console.log(`   ❌ [BIRTHDAY] User not found or has no birthday`);
+                    console.log(`🔍 [BIRTHDAY VALIDATION] ==========================================\n`);
+                    return res.status(400).json({
+                        message: 'Voucher sinh nhật chỉ áp dụng cho khách hàng có thông tin ngày sinh. Vui lòng cập nhật thông tin ngày sinh trong hồ sơ.'
+                    });
+                }
+
+                // Kiểm tra xem hôm nay có phải là ngày sinh nhật không
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const birthday = new Date(user.birthday);
+                birthday.setHours(0, 0, 0, 0);
+                const isBirthdayToday = birthday.getMonth() === today.getMonth() && 
+                                       birthday.getDate() === today.getDate();
+
+                if (!isBirthdayToday) {
+                    console.log(`   ❌ [BIRTHDAY] Today is not user's birthday`);
+                    console.log(`   - User birthday: ${birthday.toLocaleDateString('vi-VN')}`);
+                    console.log(`   - Today: ${today.toLocaleDateString('vi-VN')}`);
+                    console.log(`🔍 [BIRTHDAY VALIDATION] ==========================================\n`);
+                    return res.status(400).json({
+                        message: 'Voucher sinh nhật chỉ có thể sử dụng đúng ngày sinh nhật của bạn.'
+                    });
+                }
+
+                // Kiểm tra xem user đã dùng voucher sinh nhật chưa (chỉ 1 lần)
+                const hasUsedBirthdayVoucher = await db.PromotionUsage.findOne({
+                    where: {
+                        userId: finalUserId,
+                        appointmentId: { [Op.ne]: null } // Đã được dùng (có appointmentId)
+                    },
+                    include: [{
+                        model: db.Promotion,
+                        where: {
+                            targetAudience: 'Birthday'
+                        },
+                        required: true
+                    }]
+                });
+
+                if (hasUsedBirthdayVoucher) {
+                    console.log(`   ❌ [BIRTHDAY] User has already used Birthday voucher`);
+                    console.log(`   - PromotionUsage ID: ${hasUsedBirthdayVoucher.id}`);
+                    console.log(`   - Appointment ID: ${hasUsedBirthdayVoucher.appointmentId}`);
+                    console.log(`🔍 [BIRTHDAY VALIDATION] ==========================================\n`);
+                    return res.status(400).json({
+                        message: 'Bạn đã sử dụng voucher sinh nhật rồi. Voucher sinh nhật chỉ được dùng 1 lần.'
+                    });
+                }
+
+                console.log(`   ✅ [BIRTHDAY] User can use Birthday voucher (today is birthday and not used yet)`);
+                console.log(`🔍 [BIRTHDAY VALIDATION] ==========================================\n`);
             }
         }
 
@@ -786,42 +1171,57 @@ router.post('/', async (req, res) => {
                         console.log(`   ✅ Found unused voucher: ${unusedRedeemed.id}`);
                         console.log(`   - Current appointmentId: ${unusedRedeemed.appointmentId || 'NULL'}`);
 
-                        // Đánh dấu voucher đã được dùng cho appointment này (trừ voucher)
-                        // Sử dụng raw SQL update để đảm bảo update được commit
-                        const [updateResult, metadata] = await db.sequelize.query(
-                            `UPDATE promotion_usage 
-                             SET appointmentId = :appointmentId, serviceId = :serviceId 
-                             WHERE id = :id AND appointmentId IS NULL`,
-                            {
-                                replacements: {
-                                    id: unusedRedeemed.id,
-                                    appointmentId: createdAppointment.id,
-                                    serviceId: newAppointmentData.serviceId
-                                },
-                                type: QueryTypes.UPDATE
-                            }
-                        );
-
-                        console.log(`   Update result:`, updateResult);
-                        console.log(`   Metadata:`, metadata);
-
-                        // Verify update
-                        const [updated] = await db.sequelize.query(
-                            `SELECT * FROM promotion_usage WHERE id = :id`,
-                            {
-                                replacements: { id: unusedRedeemed.id },
-                                type: QueryTypes.SELECT
-                            }
-                        );
-
-                        if (updated && updated.appointmentId === createdAppointment.id) {
-                            console.log(`   ✅ [SUCCESS] Voucher deducted successfully!`);
-                            console.log(`   - Before update: appointmentId = NULL`);
-                            console.log(`   - After update: appointmentId = ${updated.appointmentId}`);
-                            console.log(`   - Linked to appointment: ${createdAppointment.id}`);
+                        // Tìm PromotionUsage record bằng Sequelize để update
+                        const promotionUsageToUpdate = await db.PromotionUsage.findByPk(unusedRedeemed.id);
+                        
+                        if (!promotionUsageToUpdate) {
+                            console.log(`   ⚠️ [WARNING] PromotionUsage not found by ID: ${unusedRedeemed.id}`);
                         } else {
-                            console.log(`   ⚠️ [WARNING] Update verification failed`);
-                            console.log(`   - Updated record:`, updated);
+                            // Đảm bảo appointmentId hiện tại là NULL (tránh race condition)
+                            if (promotionUsageToUpdate.appointmentId !== null) {
+                                console.log(`   ⚠️ [WARNING] PromotionUsage already has appointmentId: ${promotionUsageToUpdate.appointmentId}`);
+                                console.log(`   - This voucher may have been used already`);
+                            } else {
+                                // Đánh dấu voucher đã được dùng cho appointment này (trừ voucher)
+                                // Sử dụng Sequelize update để đảm bảo transaction được xử lý đúng
+                                // Sử dụng raw SQL với WHERE clause để đảm bảo atomicity
+                                const { QueryTypes } = require('sequelize');
+                                const [updateResult, updateMetadata] = await db.sequelize.query(
+                                    `UPDATE promotion_usage 
+                                     SET appointmentId = :appointmentId, serviceId = :serviceId 
+                                     WHERE id = :id AND appointmentId IS NULL`,
+                                    {
+                                        replacements: {
+                                            id: unusedRedeemed.id,
+                                            appointmentId: createdAppointment.id,
+                                            serviceId: newAppointmentData.serviceId
+                                        },
+                                        type: QueryTypes.UPDATE
+                                    }
+                                );
+
+                                console.log(`   Update result (affected rows):`, updateResult);
+                                
+                                // Verify update - Reload from database to ensure we get the latest data
+                                await promotionUsageToUpdate.reload();
+                                
+                                if (promotionUsageToUpdate.appointmentId === createdAppointment.id) {
+                                    console.log(`   ✅ [SUCCESS] Voucher deducted successfully!`);
+                                    console.log(`   - Before update: appointmentId = NULL`);
+                                    console.log(`   - After update: appointmentId = ${promotionUsageToUpdate.appointmentId}`);
+                                    console.log(`   - Linked to appointment: ${createdAppointment.id}`);
+                                    console.log(`   - Voucher redeemedCount will decrease when querying /my-redeemed API`);
+                                    console.log(`   - When querying /my-redeemed, this voucher will not appear (appointmentId is no longer NULL)`);
+                                } else if (updateResult === 0) {
+                                    console.log(`   ⚠️ [WARNING] Update failed - no rows affected (voucher may have been used by another request)`);
+                                    console.log(`   - Current appointmentId: ${promotionUsageToUpdate.appointmentId || 'NULL'}`);
+                                } else {
+                                    console.log(`   ⚠️ [WARNING] Update verification failed - appointmentId mismatch`);
+                                    console.log(`   - Expected: ${createdAppointment.id}`);
+                                    console.log(`   - Actual: ${promotionUsageToUpdate.appointmentId || 'NULL'}`);
+                                    console.log(`   - Update result: ${updateResult}`);
+                                }
+                            }
                         }
                     } else {
                         console.log(`   ⚠️ [WARNING] No unused redeemed voucher found!`);
@@ -847,34 +1247,24 @@ router.post('/', async (req, res) => {
                     });
                     
                     if (!existingUsage) {
-                        // Tạo PromotionUsage ngay lập tức bằng raw SQL để đảm bảo commit
-                        const { QueryTypes } = require('sequelize');
-                        const newUsageId = `promo-usage-${uuidv4()}`;
-                        
-                        await db.sequelize.query(
-                            `INSERT INTO promotion_usage (id, userId, promotionId, appointmentId, serviceId, usedAt, createdAt, updatedAt) 
-                             VALUES (:id, :userId, :promotionId, :appointmentId, :serviceId, NOW(), NOW(), NOW())`,
-                            {
-                                replacements: {
-                                    id: newUsageId,
-                                    userId: finalUserId,
-                                    promotionId: newAppointmentData.promotionId,
-                                    appointmentId: createdAppointment.id,
-                                    serviceId: newAppointmentData.serviceId
-                                },
-                                type: QueryTypes.INSERT
-                            }
-                        );
+                        // Tạo PromotionUsage ngay lập tức
+                        const newUsage = await db.PromotionUsage.create({
+                            id: `promo-usage-${uuidv4()}`,
+                            userId: finalUserId,
+                            promotionId: newAppointmentData.promotionId,
+                            appointmentId: createdAppointment.id,
+                            serviceId: newAppointmentData.serviceId,
+                        });
                         
                         console.log(`   ✅ [SUCCESS] Public voucher PromotionUsage created!`);
-                        console.log(`   - PromotionUsage ID: ${newUsageId}`);
+                        console.log(`   - PromotionUsage ID: ${newUsage.id}`);
                         console.log(`   - User ID: ${finalUserId}`);
                         console.log(`   - Promotion ID: ${newAppointmentData.promotionId}`);
                         console.log(`   - Appointment ID: ${createdAppointment.id}`);
                         console.log(`   - Service ID: ${newAppointmentData.serviceId}`);
                         console.log(`   - Voucher will now be hidden from user's available vouchers`);
                         
-                        // Trừ stock (nếu có)
+                        // Trừ stock (nếu có) - trừ khi appointment được tạo thành công
                         if (promotion.stock !== null) {
                             await promotion.decrement('stock', { by: 1 });
                             const updatedPromo = await db.Promotion.findByPk(newAppointmentData.promotionId);
@@ -1003,7 +1393,63 @@ router.put('/:id', async (req, res) => {
         
         const oldStatus = appointment.status;
         const oldPaymentStatus = appointment.paymentStatus;
+        const oldDate = appointment.date;
+        const oldTime = appointment.time;
+        
+        // Lưu promotionId trước khi update để đảm bảo hoàn trả voucher hoạt động
+        const promotionIdBeforeUpdate = appointment.promotionId;
+        const userIdBeforeUpdate = appointment.userId;
+        const oldRejectionReason = appointment.rejectionReason;
+        
+        // Update appointment
         await appointment.update(updatedData);
+        
+        // Reload appointment để có dữ liệu mới nhất (bao gồm rejectionReason)
+        await appointment.reload();
+        
+        // Debug: Log để kiểm tra
+        console.log(`\n📝 [APPOINTMENT UPDATE] ==========================================`);
+        console.log(`   Appointment ID: ${id}`);
+        console.log(`   Status: ${oldStatus} -> ${appointment.status}`);
+        console.log(`   RejectionReason (old): ${oldRejectionReason || 'null'}`);
+        console.log(`   RejectionReason (new in updatedData): ${updatedData.rejectionReason || 'null'}`);
+        console.log(`   RejectionReason (new after reload): ${appointment.rejectionReason || 'null'}`);
+        console.log(`   PromotionId (before): ${promotionIdBeforeUpdate || 'null'}`);
+        console.log(`   PromotionId (after): ${appointment.promotionId || 'null'}`);
+        console.log(`   UserId (before): ${userIdBeforeUpdate || 'null'}`);
+        console.log(`   UserId (after): ${appointment.userId || 'null'}`);
+        console.log(`📝 [APPOINTMENT UPDATE] ==========================================\n`);
+        
+        // If date or time is being updated, also update linked treatment session
+        if ((updatedData.date || updatedData.time) && (updatedData.date !== oldDate || updatedData.time !== oldTime)) {
+            try {
+                const treatmentSession = await db.TreatmentSession.findOne({
+                    where: { appointmentId: id }
+                });
+                
+                if (treatmentSession) {
+                    const sessionUpdateData = {};
+                    if (updatedData.date) {
+                        sessionUpdateData.sessionDate = updatedData.date;
+                    }
+                    if (updatedData.time) {
+                        sessionUpdateData.sessionTime = updatedData.time;
+                    }
+                    
+                    await treatmentSession.update(sessionUpdateData);
+                    console.log(`✅ Updated treatment session ${treatmentSession.id} date/time to match appointment ${id}`);
+                    
+                    // Reload treatment session to ensure we have latest data
+                    await treatmentSession.reload();
+                }
+            } catch (sessionError) {
+                console.error('Error updating treatment session date/time:', sessionError);
+                // Don't fail appointment update if session update fails
+            }
+        }
+        
+        // Mark that we need to reload appointment before returning
+        let needsReload = (updatedData.date || updatedData.time) && (updatedData.date !== oldDate || updatedData.time !== oldTime);
         
         // ==========================================
         // TRỪ VOUCHER THƯỜNG KHI ADMIN CHẤP NHẬN LỊCH HẸN
@@ -1101,6 +1547,16 @@ router.put('/:id', async (req, res) => {
                 const service = await db.Service.findByPk(appointment.serviceId);
                 const servicePrice = service ? parseFloat(service.price) : 0;
 
+                // QUAN TRỌNG: Lưu oldPaymentStatus trước khi update để kiểm tra xem có tạo thông báo không
+                // Điều này đảm bảo chỉ tạo thông báo khi payment status thực sự chuyển từ 'Pending' sang 'Completed'
+                const oldPaymentStatus = payment ? payment.status : null;
+                console.log(`🔍 [APPOINTMENT PAYMENT] Checking payment notification:`, {
+                    appointmentId: appointment.id,
+                    hasPayment: !!payment,
+                    oldPaymentStatus: oldPaymentStatus || 'null',
+                    willCreateNewPayment: !payment
+                });
+
                 if (!payment) {
                     // Tạo Payment record mới nếu chưa có
                     // Số tiền = Service.price (giá gốc, vì chưa có Payment record với số tiền thực tế)
@@ -1166,6 +1622,31 @@ router.put('/:id', async (req, res) => {
                         }
                     }
                 }
+
+                // Notify admins about completed payment (async, don't wait)
+                // QUAN TRỌNG: Chỉ tạo thông báo khi payment status thực sự chuyển từ 'Pending' sang 'Completed'
+                // KHÔNG tạo thông báo nếu payment đã là 'Completed' từ trước hoặc vừa được tạo mới với status = 'Completed'
+                if (updatedPayment && updatedPayment.status === 'Completed' && oldPaymentStatus === 'Pending') {
+                    try {
+                        const user = await db.User.findByPk(appointment.userId);
+                        const userName = user ? user.name : 'Khách hàng';
+                        const formatPrice = (price) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
+                        const amount = parseFloat(updatedPayment.amount) || servicePrice;
+                        
+                        console.log(`🔔 [APPOINTMENT PAYMENT] Creating notification - Payment status changed from 'Pending' to 'Completed'`);
+                        notifyAdmins(
+                            'payment_received',
+                            'Thanh toán tiền mặt',
+                            `${userName} đã thanh toán ${formatPrice(amount)} bằng tiền mặt cho ${appointment.serviceName}`,
+                            updatedPayment.id
+                        );
+                    } catch (notifError) {
+                        console.error('Error creating payment notification:', notifError);
+                        // Don't fail payment if notification fails
+                    }
+                } else {
+                    console.log(`ℹ️ [APPOINTMENT PAYMENT] Skipped notification - Payment oldStatus: ${oldPaymentStatus || 'null'}, currentStatus: ${updatedPayment?.status || 'null'}`);
+                }
             } catch (paymentError) {
                 console.error('Error creating/updating payment for appointment:', paymentError);
                 // Don't fail appointment update if payment creation fails
@@ -1206,72 +1687,198 @@ router.put('/:id', async (req, res) => {
         // - Voucher public: hoàn lại stock + xóa PromotionUsage
         // - Voucher đổi điểm: hoàn lại bằng cách set appointmentId = null
         // ==========================================
+        // Sử dụng promotionId trước khi update (đảm bảo có thông tin voucher)
+        const promotionIdToUse = promotionIdBeforeUpdate || appointment.promotionId;
+        const userIdToUse = userIdBeforeUpdate || appointment.userId;
+        
+        // QUAN TRỌNG: Kiểm tra xem appointment có đang bị hủy/từ chối không
+        // - Status thay đổi thành 'cancelled' → hoàn trả voucher
+        // - Có rejectionReason được set → hoàn trả voucher
         const isBeingCancelled = (updatedData.status === 'cancelled');
-        const isBeingRejected = (updatedData.rejectionReason && updatedData.rejectionReason.trim() !== '');
-        const isBeingCancelledOrRejected = (isBeingCancelled || isBeingRejected);
+        const hasRejectionReasonInUpdatedData = (updatedData.rejectionReason && updatedData.rejectionReason.trim() !== '');
+        const hasRejectionReasonAfterReload = (appointment.rejectionReason && appointment.rejectionReason.trim() !== '');
+        const hasRejectionReason = hasRejectionReasonInUpdatedData || hasRejectionReasonAfterReload;
+        const isBeingCancelledOrRejected = (isBeingCancelled || hasRejectionReason);
+        
+        // Debug: Log trạng thái để kiểm tra
+        console.log(`\n🔍 [VOUCHER REFUND CHECK] ==========================================`);
+        console.log(`   Appointment ID: ${id}`);
+        console.log(`   Old status: ${oldStatus}`);
+        console.log(`   New status (in updatedData): ${updatedData.status || 'not set'}`);
+        console.log(`   New status (after reload): ${appointment.status || 'not set'}`);
+        console.log(`   RejectionReason (in updatedData): ${updatedData.rejectionReason || 'null/empty'}`);
+        console.log(`   RejectionReason (after reload): ${appointment.rejectionReason || 'null/empty'}`);
+        console.log(`   Promotion ID (before update): ${promotionIdBeforeUpdate || 'null/undefined'}`);
+        console.log(`   Promotion ID (after reload): ${appointment.promotionId || 'null/undefined'}`);
+        console.log(`   User ID: ${userIdToUse || 'null/undefined'}`);
+        console.log(`   - isBeingCancelled (status = 'cancelled'): ${isBeingCancelled}`);
+        console.log(`   - hasRejectionReasonInUpdatedData: ${hasRejectionReasonInUpdatedData}`);
+        console.log(`   - hasRejectionReasonAfterReload: ${hasRejectionReasonAfterReload}`);
+        console.log(`   - hasRejectionReason (combined): ${hasRejectionReason}`);
+        console.log(`   - isBeingCancelledOrRejected: ${isBeingCancelledOrRejected}`);
+        console.log(`   - Has promotionId: ${!!promotionIdToUse}`);
+        console.log(`   - Has userId: ${!!userIdToUse}`);
+        console.log(`   - Will refund voucher: ${isBeingCancelledOrRejected && promotionIdToUse && userIdToUse}`);
+        console.log(`🔍 [VOUCHER REFUND CHECK] ==========================================\n`);
 
-        if (isBeingCancelledOrRejected && appointment.promotionId && appointment.userId) {
+        if (isBeingCancelledOrRejected && promotionIdToUse && userIdToUse) {
             try {
                 console.log(`\n🔄 [VOUCHER REFUND] ==========================================`);
                 console.log(`   Appointment ID: ${id}`);
-                console.log(`   User ID: ${appointment.userId}`);
-                console.log(`   Promotion ID: ${appointment.promotionId}`);
+                console.log(`   User ID: ${userIdToUse}`);
+                console.log(`   Promotion ID: ${promotionIdToUse}`);
                 console.log(`   Service ID: ${appointment.serviceId}`);
                 console.log(`   Status change: ${oldStatus} -> ${updatedData.status || oldStatus}`);
                 console.log(`   Rejection reason: ${updatedData.rejectionReason || 'N/A'}`);
                 console.log(`   Action: Admin từ chối/hủy lịch hẹn -> Hoàn trả voucher`);
 
-                // Tìm PromotionUsage record được link với appointment này
-                const usedVoucher = await db.PromotionUsage.findOne({
-                    where: {
-                        userId: appointment.userId,
-                        promotionId: appointment.promotionId,
-                        appointmentId: id
-                    }
-                });
-
-                const promotion = await db.Promotion.findByPk(appointment.promotionId);
+                const promotion = await db.Promotion.findByPk(promotionIdToUse);
                 if (!promotion) {
-                    console.log(`   ⚠️ [WARNING] Promotion not found: ${appointment.promotionId}`);
-                } else if (usedVoucher) {
+                    console.log(`   ⚠️ [WARNING] Promotion not found: ${promotionIdToUse}`);
+                } else {
+                    // Tìm PromotionUsage record được link với appointment này
+                    // QUAN TRỌNG: Tìm bằng appointmentId trước, sau đó verify userId và promotionId
+                    let usedVoucher = await db.PromotionUsage.findOne({
+                        where: {
+                            appointmentId: id
+                        }
+                    });
+
+                    // Nếu không tìm được bằng appointmentId, thử tìm bằng userId + promotionId + appointmentId
+                    if (!usedVoucher) {
+                        usedVoucher = await db.PromotionUsage.findOne({
+                            where: {
+                                userId: userIdToUse,
+                                promotionId: promotionIdToUse,
+                                appointmentId: id
+                            }
+                        });
+                    }
+
+                    // Nếu vẫn không tìm được, log để debug
+                    if (!usedVoucher) {
+                        console.log(`   ⚠️ [WARNING] PromotionUsage not found for appointment ${id}`);
+                        console.log(`   - Searching by appointmentId only...`);
+                        const allUsagesForAppointment = await db.PromotionUsage.findAll({
+                            where: {
+                                appointmentId: id
+                            }
+                        });
+                        console.log(`   - Found ${allUsagesForAppointment.length} PromotionUsage records with appointmentId = ${id}`);
+                        
+                        console.log(`   - Searching by userId + promotionId...`);
+                        const allUsagesForUserAndPromo = await db.PromotionUsage.findAll({
+                            where: {
+                                userId: userIdToUse,
+                                promotionId: promotionIdToUse
+                            }
+                        });
+                        console.log(`   - Found ${allUsagesForUserAndPromo.length} PromotionUsage records for user ${userIdToUse} and promotion ${promotionIdToUse}`);
+                        allUsagesForUserAndPromo.forEach((u, idx) => {
+                            const uData = u.toJSON ? u.toJSON() : u;
+                            console.log(`     [${idx + 1}] id: ${uData.id}, appointmentId: ${uData.appointmentId || 'NULL'}, serviceId: ${uData.serviceId || 'NULL'}`);
+                        });
+
+                        // Fallback: Tìm PromotionUsage có appointmentId khớp với appointment này
+                        if (allUsagesForUserAndPromo.length > 0) {
+                            const matchingUsage = allUsagesForUserAndPromo.find(u => u.appointmentId === id);
+                            if (matchingUsage) {
+                                usedVoucher = matchingUsage;
+                                console.log(`   ✅ Found PromotionUsage via fallback search: ${usedVoucher.id}`);
+                            }
+                        }
+                    }
+
+                    if (usedVoucher) {
                     const promoData = promotion.toJSON ? promotion.toJSON() : promotion;
                     const normalizedIsPublic = promoData.isPublic === true || promoData.isPublic === 1 || promoData.isPublic === '1';
+                    
+                    // Kiểm tra loại voucher để quyết định có hoàn trả không
+                    const isNewClientVoucher = promotion.targetAudience === 'New Clients';
+                    const isBirthdayVoucher = promotion.targetAudience === 'Birthday';
+                    const isBeingRejectedFromPending = (oldStatus === 'pending' && (isBeingCancelled || isBeingRejected));
 
                     console.log(`   ✅ Found used voucher: ${usedVoucher.id}`);
                     console.log(`   - Voucher code: ${promotion.code}`);
                     console.log(`   - Is public voucher: ${normalizedIsPublic}`);
                     console.log(`   - Target audience: ${promotion.targetAudience}`);
+                    console.log(`   - Current appointmentId: ${usedVoucher.appointmentId}`);
+                    console.log(`   - Is rejected from pending: ${isBeingRejectedFromPending}`);
 
-                    if (normalizedIsPublic) {
-                        // Public voucher: Hoàn lại stock + xóa PromotionUsage
-                        console.log(`   🔄 Refunding PUBLIC voucher...`);
+                    // QUAN TRỌNG: Logic hoàn trả voucher
+                    // - Tất cả redeemed vouchers (đổi điểm, isPublic = false) LUÔN được hoàn trả khi appointment bị hủy/từ chối
+                    // - Voucher "New Clients" và "Birthday" (public) luôn được hoàn trả khi appointment bị hủy/từ chối
+                    // - Voucher public thường khác chỉ hoàn trả nếu bị từ chối từ pending (chưa được accept)
+                    const isRedeemedVoucher = !normalizedIsPublic;
+                    const isSpecialPublicVoucher = (isNewClientVoucher || isBirthdayVoucher) && normalizedIsPublic;
+                    const shouldRefundRedeemed = isRedeemedVoucher && isBeingCancelledOrRejected;
+                    const shouldRefundSpecialPublic = isSpecialPublicVoucher && isBeingCancelledOrRejected;
+                    const shouldRefundNormalPublic = normalizedIsPublic && isBeingRejectedFromPending;
 
-                        // Hoàn lại stock (nếu có)
-                        if (promotion.stock !== null) {
-                            await promotion.increment('stock', { by: 1 });
-                            const updatedPromo = await db.Promotion.findByPk(appointment.promotionId);
-                            console.log(`   ✅ Stock restored: ${promotion.stock} -> ${updatedPromo?.stock}`);
+                    console.log(`   - Is redeemed voucher (đổi điểm): ${isRedeemedVoucher}`);
+                    console.log(`   - Is special public voucher (New Clients/Birthday): ${isSpecialPublicVoucher}`);
+                    console.log(`   - Should refund redeemed voucher: ${shouldRefundRedeemed}`);
+                    console.log(`   - Should refund special public voucher: ${shouldRefundSpecialPublic}`);
+                    console.log(`   - Should refund normal public voucher: ${shouldRefundNormalPublic}`);
+
+                    // Xử lý hoàn trả voucher
+                    if (shouldRefundRedeemed || shouldRefundSpecialPublic || shouldRefundNormalPublic) {
+                        if (normalizedIsPublic) {
+                            // Public voucher: Hoàn lại stock + xóa PromotionUsage
+                            console.log(`   🔄 Refunding PUBLIC voucher - restoring stock and removing PromotionUsage`);
+                            console.log(`   - Voucher type: ${isNewClientVoucher ? 'New Clients' : isBirthdayVoucher ? 'Birthday' : 'Other'}`);
+
+                            // Hoàn lại stock (nếu có)
+                            if (promotion.stock !== null) {
+                                await promotion.increment('stock', { by: 1 });
+                                const updatedPromo = await db.Promotion.findByPk(appointment.promotionId);
+                                console.log(`   ✅ Stock restored: ${promotion.stock} -> ${updatedPromo?.stock}`);
+                            }
+
+                            // Xóa PromotionUsage để voucher có thể dùng lại
+                            await usedVoucher.destroy();
+                            console.log(`   ✅ PromotionUsage deleted - voucher can be used again`);
+                            if (isNewClientVoucher) {
+                                console.log(`   ✅ [NEW CLIENTS] Voucher refunded - user can now use this voucher for service ${appointment.serviceId} again`);
+                            } else if (isBirthdayVoucher) {
+                                console.log(`   ✅ [BIRTHDAY] Voucher refunded - user can now use this birthday voucher again`);
+                            }
+                        } else {
+                            // Redeemed voucher (đổi điểm): Set appointmentId = null để voucher có thể dùng lại
+                            // QUAN TRỌNG: Tất cả redeemed vouchers (SILVER10, BRONZE50K, SECRET40, GOLD150K, VIP200K, ...) 
+                            // đều được hoàn trả khi appointment bị hủy/từ chối
+                            console.log(`   🔄 Refunding REDEEMED voucher (đổi điểm) - setting appointmentId to null`);
+                            console.log(`   - Voucher code: ${promotion.code}`);
+                            console.log(`   - Current appointmentId: ${usedVoucher.appointmentId}`);
+                            console.log(`   - Setting appointmentId to NULL to refund voucher`);
+
+                            await usedVoucher.update({
+                                appointmentId: null,
+                                serviceId: null
+                            });
+
+                            // Reload để verify
+                            await usedVoucher.reload();
+
+                            console.log(`   ✅ Voucher refunded successfully!`);
+                            console.log(`   - After update: appointmentId = ${usedVoucher.appointmentId || 'NULL'}`);
+                            console.log(`   - Voucher will now appear in user's "Ưu đãi của tôi" again`);
+                            console.log(`   - redeemedCount will increase when querying /my-redeemed API`);
                         }
 
-                        // Xóa PromotionUsage để voucher xuất hiện lại trong danh sách
-                        await usedVoucher.destroy();
-                        console.log(`   ✅ PromotionUsage deleted - voucher will reappear for user`);
+                        console.log(`   ✅ [SUCCESS] Voucher "${promotion.code}" hoàn trả thành công cho user ${userIdToUse}`);
                     } else {
-                        // Redeemed voucher (đổi điểm): Set appointmentId = null để voucher có thể dùng lại
-                        console.log(`   🔄 Refunding REDEEMED voucher (đổi điểm)...`);
-
-                        await usedVoucher.update({
-                            appointmentId: null,
-                            serviceId: null
-                        });
-
-                        console.log(`   ✅ Voucher refunded - appointmentId set to null`);
-                        console.log(`   ✅ User can now use this voucher again for service: ${appointment.serviceId}`);
+                        console.log(`   ℹ️ [INFO] Voucher will not be refunded`);
+                        console.log(`   - This is a normal public voucher that was already accepted (not rejected from pending)`);
+                        console.log(`   - Only redeemed vouchers (đổi điểm) and special vouchers (New Clients/Birthday) are refunded when cancelled/rejected from any status`);
                     }
-
-                    console.log(`   ✅ [SUCCESS] Voucher "${promotion.code}" hoàn trả thành công cho user ${appointment.userId}`);
-                } else {
-                    console.log(`   ℹ️ [INFO] No PromotionUsage found for this appointment - voucher may not have been used`);
+                    } else {
+                        console.log(`   ⚠️ [WARNING] No PromotionUsage found for this appointment after all fallback searches`);
+                        console.log(`   - Voucher may not have been linked to this appointment during booking`);
+                        console.log(`   - Promotion ID: ${appointment.promotionId}`);
+                        console.log(`   - User ID: ${appointment.userId}`);
+                        console.log(`   - Appointment ID: ${id}`);
+                    }
                 }
                 console.log(`🔄 [VOUCHER REFUND] ==========================================\n`);
             } catch (voucherRefundError) {
@@ -1595,6 +2202,9 @@ router.put('/:id', async (req, res) => {
         
         // Gửi thông báo khi status thay đổi
         if (db.Notification && oldStatus !== updatedData.status) {
+            // QUAN TRỌNG: Reload lại appointment một lần nữa trước khi tạo notification để đảm bảo có dữ liệu mới nhất (đặc biệt là rejectionReason)
+            await appointment.reload();
+            
             console.log('🔔 Creating notification:', { oldStatus, newStatus: updatedData.status, userId: appointment.userId });
             
             let notifType = 'system';
@@ -1615,11 +2225,22 @@ router.put('/:id', async (req, res) => {
                 notifType = 'appointment_cancelled';
                 notifTitle = 'Lịch hẹn đã hủy';
                 // Thêm ghi chú của admin (rejectionReason) vào message nếu có
-                const rejectionReason = updatedData.rejectionReason || appointment.rejectionReason;
+                // QUAN TRỌNG: Lấy rejectionReason từ appointment đã reload (sau khi update) để đảm bảo có giá trị mới nhất
+                // Ưu tiên lấy từ appointment.rejectionReason (sau khi reload), nếu không có thì lấy từ updatedData
+                let rejectionReason = appointment.rejectionReason;
+                if (!rejectionReason || rejectionReason.trim() === '') {
+                    rejectionReason = updatedData.rejectionReason;
+                }
+                console.log(`📝 [CANCELLED NOTIFICATION] Creating notification:`, {
+                    appointmentId: appointment.id,
+                    rejectionReasonFromUpdatedData: updatedData.rejectionReason || 'null/empty',
+                    rejectionReasonFromAppointment: appointment.rejectionReason || 'null/empty',
+                    finalRejectionReason: rejectionReason || 'null/empty'
+                });
                 if (rejectionReason && rejectionReason.trim() !== '') {
                     notifMessage = `Lịch hẹn ${appointment.serviceName} vào ${appointment.date} lúc ${appointment.time} đã bị hủy.\n\nLý do: ${rejectionReason.trim()}`;
                 } else {
-                notifMessage = `Lịch hẹn ${appointment.serviceName} vào ${appointment.date} lúc ${appointment.time} đã bị hủy`;
+                    notifMessage = `Lịch hẹn ${appointment.serviceName} vào ${appointment.date} lúc ${appointment.time} đã bị hủy`;
                 }
             } else if (updatedData.status === 'completed') {
                 notifType = 'appointment_completed';
@@ -1691,6 +2312,33 @@ router.put('/:id', async (req, res) => {
                 console.error('❌ Error creating notification:', notifError);
             }
         }
+        
+        // Reload appointment with all associations to return fresh data
+        // Always reload to ensure we have the latest data, especially after date/time updates
+        await appointment.reload({
+            include: [
+                {
+                    model: db.User,
+                    as: 'Client',
+                    attributes: ['id', 'name', 'email', 'phone']
+                },
+                {
+                    model: db.User,
+                    as: 'Therapist',
+                    attributes: ['id', 'name', 'email', 'phone']
+                },
+                {
+                    model: db.Service,
+                    attributes: ['id', 'name', 'description', 'price', 'duration']
+                },
+                {
+                    model: db.TreatmentSession,
+                    as: 'TreatmentSession',
+                    attributes: ['id', 'sessionNumber', 'adminNotes', 'customerStatusNotes', 'status', 'treatmentCourseId', 'sessionDate', 'sessionTime'],
+                    required: false
+                }
+            ]
+        });
         
         res.json(appointment);
     } catch (error) {

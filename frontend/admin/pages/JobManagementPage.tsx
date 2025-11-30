@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { User, StaffShift, Appointment, Service } from '../../types';
 import * as apiService from '../../client/services/apiService';
 import AssignScheduleModal from '../components/AssignScheduleModal';
-import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon, UsersIcon, CheckCircleIcon, ChartBarIcon, PlusIcon, XCircleIcon, CheckIcon } from '../../shared/icons';
+import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon, UsersIcon, CheckCircleIcon, ChartBarIcon, PlusIcon, XCircleIcon, CheckIcon, PhoneIcon, ProfileIcon, ChevronDownIcon, CloseIcon } from '../../shared/icons';
 
 const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactNode }> = ({ title, value, icon }) => (
     <div className="bg-white p-4 rounded-lg shadow-sm flex items-center">
@@ -33,6 +33,11 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
     const [isLoading, setIsLoading] = useState(true);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [filteredStaffId, setFilteredStaffId] = useState('all');
+    const [filteredCustomerId, setFilteredCustomerId] = useState('all');
+    const [showStaffDropdown, setShowStaffDropdown] = useState(false);
+    const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+    const [staffSearch, setStaffSearch] = useState('');
+    const [customerSearch, setCustomerSearch] = useState('');
     const [modalContext, setModalContext] = useState<{ staff: User; date: string; shift?: StaffShift } | null>(null);
     const [appointmentDetailsModal, setAppointmentDetailsModal] = useState<{ staff: User; date: string; appointments: Appointment[] } | null>(null);
     const [showQuickCreate, setShowQuickCreate] = useState(false);
@@ -43,6 +48,18 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
     const [isCreatingShifts, setIsCreatingShifts] = useState(false);
     const [localUsers, setLocalUsers] = useState<User[]>([]);
     const [selectedStaffIds, setSelectedStaffIds] = useState<Set<string>>(new Set());
+    const [highlightedAppointment, setHighlightedAppointment] = useState<{ staffId: string; date: string } | null>(null);
+    const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
+    
+    // Generate 7 days starting from a selected start date (Monday to Sunday)
+    const [startDate, setStartDate] = useState(() => {
+        const today = new Date();
+        const day = today.getDay();
+        // Calculate start of week (Monday = 1, so if today is Sunday (0), go back 6 days, else go back day-1)
+        const diff = today.getDate() - (day === 0 ? 6 : day - 1);
+        today.setDate(diff);
+        return today;
+    });
 
     // Fetch users if allUsers is empty or refresh when allUsers changes
     useEffect(() => {
@@ -140,6 +157,59 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
         return staff;
     }, [localUsers, allUsers]);
 
+    // Get customers who have appointments assigned to staff (therapistId is not null) from today onwards
+    const allCustomers = useMemo(() => {
+        const usersToCheck = localUsers.length > 0 ? localUsers : allUsers;
+        const clients = usersToCheck.filter(u => {
+            const role = (u.role || '').toString().toLowerCase();
+            return role === 'client';
+        });
+        
+        // Get today's date at midnight for comparison
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = today.toISOString().split('T')[0];
+        
+        // Only return customers who have at least one appointment with therapistId assigned from today onwards
+        const customerIdsWithAssignedAppointments = new Set(
+            allAppointments
+                .filter(apt => {
+                    if (!apt.therapistId || apt.status === 'cancelled') {
+                        return false;
+                    }
+                    // Only include appointments from today onwards
+                    return apt.date >= todayStr;
+                })
+                .map(apt => apt.userId)
+        );
+        
+        return clients.filter(client => customerIdsWithAssignedAppointments.has(client.id));
+    }, [localUsers, allUsers, allAppointments]);
+
+    // Filter customers for dropdown search
+    const filteredCustomersForDropdown = useMemo(() => {
+        if (!customerSearch.trim()) {
+            return allCustomers;
+        }
+        const searchLower = customerSearch.toLowerCase();
+        return allCustomers.filter(customer => 
+            (customer.name?.toLowerCase().includes(searchLower) || '') ||
+            (customer.phone?.toLowerCase().includes(searchLower) || '')
+        );
+    }, [allCustomers, customerSearch]);
+
+    // Filter staff for dropdown search
+    const filteredStaffForDropdown = useMemo(() => {
+        if (!staffSearch.trim()) {
+            return staffMembers;
+        }
+        const searchLower = staffSearch.toLowerCase();
+        return staffMembers.filter(staff => 
+            (staff.name?.toLowerCase().includes(searchLower) || '') ||
+            (staff.phone?.toLowerCase().includes(searchLower) || '')
+        );
+    }, [staffMembers, staffSearch]);
+
     const filteredStaff = useMemo(() => {
         const filtered = staffMembers.filter(staff => filteredStaffId === 'all' || staff.id === filteredStaffId);
         console.log('JobManagementPage: Filtered staff:', {
@@ -151,15 +221,130 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
         return filtered;
     }, [staffMembers, filteredStaffId]);
 
-    // Generate 7 days starting from a selected start date (Monday to Sunday)
-    const [startDate, setStartDate] = useState(() => {
+    // Filter appointments by customer if customer filter is set
+    const filteredAppointments = useMemo(() => {
+        if (filteredCustomerId === 'all') {
+            return allAppointments;
+        }
+        return allAppointments.filter(apt => apt.userId === filteredCustomerId);
+    }, [allAppointments, filteredCustomerId]);
+
+    // Find nearest appointment for selected customer and navigate to it
+    const handleCustomerSelect = (customerId: string) => {
+        setFilteredCustomerId(customerId);
+        setCustomerSearch('');
+        setShowCustomerDropdown(false);
+        setHighlightedAppointment(null);
+
+        if (customerId === 'all') {
+            return;
+        }
+
+        // Get today's date at midnight for comparison
         const today = new Date();
-        const day = today.getDay();
-        // Calculate start of week (Monday = 1, so if today is Sunday (0), go back 6 days, else go back day-1)
-        const diff = today.getDate() - (day === 0 ? 6 : day - 1);
-        today.setDate(diff);
-        return today;
-    });
+        today.setHours(0, 0, 0, 0);
+        const todayStr = today.toISOString().split('T')[0];
+
+        // Find all appointments for this customer that are assigned to staff from today onwards
+        const customerAppointments = allAppointments.filter(
+            apt => apt.userId === customerId && apt.therapistId && apt.status !== 'cancelled' && apt.date >= todayStr
+        );
+
+        if (customerAppointments.length === 0) {
+            return;
+        }
+
+        // Find the nearest upcoming appointment (only from today onwards)
+        const now = new Date();
+        const upcomingAppointments = customerAppointments.filter(apt => {
+            const aptDate = new Date(apt.date + 'T' + (apt.time || '00:00'));
+            return aptDate >= now;
+        });
+
+        if (upcomingAppointments.length === 0) {
+            // If no upcoming appointments, use the earliest future appointment (same day but later time)
+            const sameDayAppointments = customerAppointments.filter(apt => apt.date === todayStr);
+            if (sameDayAppointments.length > 0) {
+                // Get the earliest appointment of today
+                const nearestAppointment = sameDayAppointments.reduce((nearest, apt) => {
+                    const nearestTime = nearest.time || '23:59';
+                    const aptTime = apt.time || '23:59';
+                    return aptTime < nearestTime ? apt : nearest;
+                });
+                // Navigate to today's week
+                const appointmentDate = new Date(nearestAppointment.date);
+                const day = appointmentDate.getDay();
+                const diff = appointmentDate.getDate() - (day === 0 ? 6 : day - 1);
+                const weekStart = new Date(appointmentDate);
+                weekStart.setDate(diff);
+                weekStart.setHours(0, 0, 0, 0);
+                setStartDate(weekStart);
+                
+                if (nearestAppointment.therapistId) {
+                    setHighlightedAppointment({
+                        staffId: nearestAppointment.therapistId,
+                        date: nearestAppointment.date
+                    });
+                }
+                return;
+            }
+            return;
+        }
+
+        // Get the nearest upcoming appointment
+        const nearestAppointment = upcomingAppointments.reduce((nearest, apt) => {
+            const nearestDate = new Date(nearest.date + 'T' + (nearest.time || '00:00'));
+            const aptDate = new Date(apt.date + 'T' + (apt.time || '00:00'));
+            return aptDate < nearestDate ? apt : nearest;
+        });
+
+        // Navigate to the week containing this appointment
+        const appointmentDate = new Date(nearestAppointment.date);
+        const day = appointmentDate.getDay();
+        // Calculate start of week (Monday = 1)
+        const diff = appointmentDate.getDate() - (day === 0 ? 6 : day - 1);
+        const weekStart = new Date(appointmentDate);
+        weekStart.setDate(diff);
+        weekStart.setHours(0, 0, 0, 0);
+        setStartDate(weekStart);
+
+        // Set highlighted appointment
+        if (nearestAppointment.therapistId) {
+            setHighlightedAppointment({
+                staffId: nearestAppointment.therapistId,
+                date: nearestAppointment.date
+            });
+        }
+    };
+
+    // Close dropdowns when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (!target.closest('.staff-dropdown-container') && !target.closest('.customer-dropdown-container')) {
+                setShowStaffDropdown(false);
+                setShowCustomerDropdown(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
+
+    // Auto-scroll to highlighted appointment when it changes
+    useEffect(() => {
+        if (highlightedAppointment) {
+            const scrollTimeout = setTimeout(() => {
+                const cellKey = `${highlightedAppointment.staffId}-${highlightedAppointment.date}`;
+                const cellElement = cellRefs.current.get(cellKey);
+                if (cellElement) {
+                    cellElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 300);
+            return () => clearTimeout(scrollTimeout);
+        }
+    }, [highlightedAppointment, startDate]);
     
     const weekDays = useMemo(() => {
         return Array.from({ length: 7 }, (_, i) => {
@@ -900,17 +1085,221 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                 <StatCard title="Số khách đã phục vụ" value={dashboardStats.customersServedToday} icon={<UsersIcon className="w-6 h-6"/>} />
             </div>
 
+            {/* Filters: Staff and Customer */}
             <div className="mb-6 flex flex-col md:flex-row gap-4 bg-white p-4 rounded-lg shadow-sm">
-                <select 
-                    value={filteredStaffId} 
-                    onChange={e => setFilteredStaffId(e.target.value)} 
-                    className="p-2 border rounded-md bg-white w-full md:w-auto"
-                >
-                    <option value="all">Tất cả nhân viên</option>
-                    {staffMembers.map(staff => (
-                        <option key={staff.id} value={staff.id}>{staff.name}</option>
-                    ))}
-                </select>
+                {/* Staff Filter Dropdown */}
+                <div className="relative w-full md:w-auto staff-dropdown-container">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Lọc theo nhân viên
+                    </label>
+                    <div
+                        className="relative w-full min-h-[42px] border border-gray-300 rounded-md bg-white cursor-pointer"
+                        onClick={(e) => {
+                            setShowStaffDropdown(!showStaffDropdown);
+                        }}
+                    >
+                        {filteredStaffId !== 'all' ? (
+                            <div className="flex items-center gap-2 p-2 flex-wrap">
+                                {(() => {
+                                    const selectedStaff = staffMembers.find(s => s.id === filteredStaffId);
+                                    if (!selectedStaff) return null;
+                                    return (
+                                        <>
+                                            {/* Name Chip */}
+                                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-sm">
+                                                <ProfileIcon className="w-4 h-4" />
+                                                <span>{selectedStaff.name}</span>
+                                            </div>
+                                            {/* Phone Chip */}
+                                            {selectedStaff.phone && (
+                                                <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-sm">
+                                                    <PhoneIcon className="w-4 h-4" />
+                                                    <span>{selectedStaff.phone}</span>
+                                                </div>
+                                            )}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setFilteredStaffId('all');
+                                                    setShowStaffDropdown(false);
+                                                }}
+                                                className="ml-auto text-gray-400 hover:text-gray-600"
+                                            >
+                                                <CloseIcon className="w-4 h-4" />
+                                            </button>
+                                        </>
+                                    );
+                                })()}
+                            </div>
+                        ) : (
+                            <>
+                                <input
+                                    type="text"
+                                    value={staffSearch}
+                                    onChange={(e) => {
+                                        setStaffSearch(e.target.value);
+                                        setShowStaffDropdown(true);
+                                    }}
+                                    onFocus={() => setShowStaffDropdown(true)}
+                                    className="w-full p-2 pr-8 border-0 rounded-md focus:ring-0 focus:outline-none bg-transparent"
+                                    placeholder="Chọn nhân viên..."
+                                />
+                                <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                                    <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                                </div>
+                            </>
+                        )}
+                    </div>
+                    {showStaffDropdown && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                            <div
+                                onClick={() => {
+                                    setFilteredStaffId('all');
+                                    setStaffSearch('');
+                                    setShowStaffDropdown(false);
+                                }}
+                                className="p-3 hover:bg-gray-100 cursor-pointer border-b font-medium text-gray-700 bg-gray-50"
+                            >
+                                Tất cả nhân viên
+                            </div>
+                            {filteredStaffForDropdown.length > 0 ? (
+                                filteredStaffForDropdown.map(staff => (
+                                    <div
+                                        key={staff.id}
+                                        onClick={() => {
+                                            setFilteredStaffId(staff.id);
+                                            setStaffSearch(staff.name || '');
+                                            setShowStaffDropdown(false);
+                                        }}
+                                        className="p-3 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-xs">
+                                                <ProfileIcon className="w-3 h-3" />
+                                                <span className="font-medium">{staff.name}</span>
+                                            </div>
+                                            {staff.phone && (
+                                                <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs">
+                                                    <PhoneIcon className="w-3 h-3" />
+                                                    <span>{staff.phone}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="p-3 text-sm text-gray-500 text-center">
+                                    {staffSearch ? 'Không tìm thấy nhân viên' : 'Nhập tên hoặc số điện thoại để tìm kiếm'}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Customer Filter Dropdown */}
+                <div className="relative w-full md:w-auto customer-dropdown-container">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Lọc theo khách hàng
+                    </label>
+                    <div
+                        className="relative w-full min-h-[42px] border border-gray-300 rounded-md bg-white cursor-pointer"
+                        onClick={(e) => {
+                            setShowCustomerDropdown(!showCustomerDropdown);
+                        }}
+                    >
+                        {filteredCustomerId !== 'all' ? (
+                            <div className="flex items-center gap-2 p-2 flex-wrap">
+                                {(() => {
+                                    const selectedCustomer = allCustomers.find(c => c.id === filteredCustomerId);
+                                    if (!selectedCustomer) return null;
+                                    return (
+                                        <>
+                                            {/* Name Chip */}
+                                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-sm">
+                                                <ProfileIcon className="w-4 h-4" />
+                                                <span>{selectedCustomer.name}</span>
+                                            </div>
+                                            {/* Phone Chip */}
+                                            {selectedCustomer.phone && (
+                                                <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-sm">
+                                                    <PhoneIcon className="w-4 h-4" />
+                                                    <span>{selectedCustomer.phone}</span>
+                                                </div>
+                                            )}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setFilteredCustomerId('all');
+                                                    setShowCustomerDropdown(false);
+                                                }}
+                                                className="ml-auto text-gray-400 hover:text-gray-600"
+                                            >
+                                                <CloseIcon className="w-4 h-4" />
+                                            </button>
+                                        </>
+                                    );
+                                })()}
+                            </div>
+                        ) : (
+                            <>
+                                <input
+                                    type="text"
+                                    value={customerSearch}
+                                    onChange={(e) => {
+                                        setCustomerSearch(e.target.value);
+                                        setShowCustomerDropdown(true);
+                                    }}
+                                    onFocus={() => setShowCustomerDropdown(true)}
+                                    className="w-full p-2 pr-8 border-0 rounded-md focus:ring-0 focus:outline-none bg-transparent"
+                                    placeholder="Chọn khách hàng..."
+                                />
+                                <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                                    <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                                </div>
+                            </>
+                        )}
+                    </div>
+                    {showCustomerDropdown && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                            <div
+                                onClick={() => {
+                                    handleCustomerSelect('all');
+                                }}
+                                className="p-3 hover:bg-gray-100 cursor-pointer border-b font-medium text-gray-700 bg-gray-50"
+                            >
+                                Tất cả khách hàng
+                            </div>
+                            {filteredCustomersForDropdown.length > 0 ? (
+                                filteredCustomersForDropdown.map(customer => (
+                                    <div
+                                        key={customer.id}
+                                        onClick={() => {
+                                            handleCustomerSelect(customer.id);
+                                        }}
+                                        className="p-3 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-xs">
+                                                <ProfileIcon className="w-3 h-3" />
+                                                <span className="font-medium">{customer.name}</span>
+                                            </div>
+                                            {customer.phone && (
+                                                <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs">
+                                                    <PhoneIcon className="w-3 h-3" />
+                                                    <span>{customer.phone}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="p-3 text-sm text-gray-500 text-center">
+                                    {customerSearch ? 'Không tìm thấy khách hàng' : 'Nhập tên hoặc số điện thoại để tìm kiếm'}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
             
             <div className="bg-white rounded-lg shadow-md overflow-x-auto">
@@ -962,7 +1351,7 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                                 <tr key={staff.id}>
                                     <td className="p-3 font-semibold text-gray-800 align-top">
                                         <div className="flex items-center gap-2">
-                                            <img src={staff.profilePictureUrl} alt={staff.name} className="w-8 h-8 rounded-full" />
+                                            <img src={staff.profilePictureUrl?.startsWith('http') ? staff.profilePictureUrl : `http://localhost:3001${staff.profilePictureUrl}`} alt={staff.name} className="w-8 h-8 rounded-full" />
                                             <span>{staff.name}</span>
                                         </div>
                                     </td>
@@ -978,7 +1367,7 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                                             s.date === dateString && 
                                             (s.status === 'approved' || s.status === 'pending')
                                         );
-                                        const appointmentsForCell = allAppointments.filter(a => 
+                                        const appointmentsForCell = filteredAppointments.filter(a => 
                                             a.therapistId === staff.id && 
                                             a.date === dateString && 
                                             a.status !== 'cancelled'
@@ -987,11 +1376,20 @@ const JobManagementPage: React.FC<JobManagementPageProps> = ({ allUsers, allServ
                                         const conflicts = getConflictsForCell(dateString, staff.id);
                                         const hasConflict = conflicts.length > 0;
                                         const cellBgColor = getBusynessColor(appointmentsForCell.length, hasConflict);
+                                        const cellKey = `${staff.id}-${dateString}`;
+                                        const isHighlighted = highlightedAppointment?.staffId === staff.id && highlightedAppointment?.date === dateString;
 
                                         return (
                                             <td 
                                                 key={dateString} 
-                                                className={`p-2 align-top h-32 cursor-pointer transition-colors hover:bg-gray-100 ${cellBgColor}`}
+                                                ref={(el) => {
+                                                    if (el) {
+                                                        cellRefs.current.set(cellKey, el);
+                                                    } else {
+                                                        cellRefs.current.delete(cellKey);
+                                                    }
+                                                }}
+                                                className={`p-2 align-top h-32 cursor-pointer transition-all duration-300 hover:bg-gray-100 ${cellBgColor} ${isHighlighted ? 'ring-4 ring-blue-500 ring-opacity-90 shadow-lg bg-blue-50 border-2 border-blue-400' : ''}`}
                                                 onClick={() => handleCellClick(staff, day)}
                                                 onDragOver={handleDragOver}
                                                 onDrop={(e) => handleDrop(e, staff, day)}

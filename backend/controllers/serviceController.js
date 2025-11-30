@@ -128,6 +128,18 @@ class ServiceController {
             res.status(500).json({ error: 'Failed to fetch services', message: error.message });
         }
     }
+
+    async getMostBookedServices(req, res) {
+        try {
+            const limit = parseInt(req.query.limit) || 4;
+            const services = await serviceService.getMostBookedServices(limit);
+            console.log('Backend - getMostBookedServices: Total services found:', services.length);
+            res.json(services);
+        } catch (error) {
+            console.error('Error fetching most booked services:', error);
+            res.status(500).json({ error: 'Failed to fetch most booked services', message: error.message });
+        }
+    }
 }
 
 module.exports = new ServiceController();

@@ -240,6 +240,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             serviceId: string;
             serviceName: string;
             price: number;
+            pricePerSession: number;
             quantity: number;
             totalAmount: number;
         }> = {};
@@ -259,6 +260,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             const service = localServices.find(s => s.id === serviceId);
             const serviceName = payment.serviceName || service?.name || 'Dịch vụ không xác định';
             const quantity = appointment?.quantity || 1;
+            const pricePerSession = payment.amount / quantity; // Giá thực tế trên 1 buổi (đã bao gồm giảm giá)
             
             if (!stats[serviceId]) {
                 stats[serviceId] = {
@@ -266,6 +268,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                     serviceId: serviceId,
                     serviceName: serviceName,
                     price: service?.price || 0,
+                    pricePerSession: pricePerSession,
                     quantity: 0,
                     totalAmount: 0
                 };
@@ -273,6 +276,8 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
             
             stats[serviceId].quantity += quantity;
             stats[serviceId].totalAmount += Number(payment.amount);
+            // Cập nhật giá trung bình trên buổi
+            stats[serviceId].pricePerSession = stats[serviceId].totalAmount / stats[serviceId].quantity;
         });
 
         const result = Object.values(stats).sort((a, b) => b.totalAmount - a.totalAmount);
@@ -313,12 +318,12 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         }
 
         // Create CSV content
-        const headers = ['STT', 'Mã Dịch Vụ', 'Tên Dịch Vụ', 'Giá Gốc', 'Số Buổi', 'Doanh Thu'];
+        const headers = ['STT', 'Mã Dịch Vụ', 'Tên Dịch Vụ', 'Giá/Buổi', 'Số Buổi', 'Doanh Thu'];
         const rows = serviceStats.map((stat, index) => [
             index + 1,
             stat.serviceId,
             stat.serviceName,
-            stat.price.toLocaleString('vi-VN'),
+            stat.pricePerSession.toLocaleString('vi-VN'),
             stat.quantity,
             stat.totalAmount.toLocaleString('vi-VN')
         ]);
@@ -609,7 +614,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                                     <th className="text-left py-4 px-6 font-bold text-sm uppercase tracking-wider">STT</th>
                                     <th className="text-left py-4 px-6 font-bold text-sm uppercase tracking-wider">Mã Dịch Vụ</th>
                                     <th className="text-left py-4 px-6 font-bold text-sm uppercase tracking-wider">Tên Dịch Vụ</th>
-                                    <th className="text-right py-4 px-6 font-bold text-sm uppercase tracking-wider">Giá Gốc</th>
+                                    <th className="text-right py-4 px-6 font-bold text-sm uppercase tracking-wider">Giá/Buổi</th>
                                     <th className="text-right py-4 px-6 font-bold text-sm uppercase tracking-wider">Số Buổi</th>
                                     <th className="text-right py-4 px-6 font-bold text-sm uppercase tracking-wider">Doanh Thu</th>
                                 </tr>
@@ -622,7 +627,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                                                 <td className="py-4 px-6 text-gray-700 font-semibold">{index + 1}</td>
                                                 <td className="py-4 px-6 text-gray-600 font-mono text-sm bg-gray-50 rounded">{stat.serviceId}</td>
                                                 <td className="py-4 px-6 font-semibold text-gray-800">{stat.serviceName}</td>
-                                                <td className="py-4 px-6 text-right text-gray-600 font-medium">{formatCurrency(stat.price)}</td>
+                                                <td className="py-4 px-6 text-right text-gray-600 font-medium">{formatCurrency(stat.pricePerSession)}</td>
                                                 <td className="py-4 px-6 text-right">
                                                     <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-blue-100 text-blue-700">
                                                         {stat.quantity}

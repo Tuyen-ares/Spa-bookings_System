@@ -74,7 +74,7 @@ const EmployeeOfMonth: React.FC<EmployeeOfMonthProps> = ({ allUsers, allAppointm
             {employeeOfMonth ? (
                 <div className="flex items-center gap-4">
                     <img
-                        src={employeeOfMonth.profilePictureUrl}
+                        src={employeeOfMonth.profilePictureUrl?.startsWith('http') ? employeeOfMonth.profilePictureUrl : `http://localhost:3001${employeeOfMonth.profilePictureUrl}`}
                         alt={employeeOfMonth.name}
                         className="w-20 h-20 rounded-full object-cover ring-4 ring-yellow-300"
                     />

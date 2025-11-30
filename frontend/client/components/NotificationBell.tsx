@@ -142,6 +142,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
                 return { icon: <ClockIcon className="w-5 h-5" />, color: 'text-blue-600', bg: 'bg-blue-100' };
             case 'promo_alert':
             case 'promotion':
+            case 'birthday_gift':
                 return { icon: <GiftIcon className="w-5 h-5" />, color: 'text-purple-600', bg: 'bg-purple-100' };
             case 'payment_success':
             case 'payment_received':
@@ -165,6 +166,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
             case 'treatment_course_reminder': return 'Nhắc nhở liệu trình';
             case 'promotion':
             case 'promo_alert': return 'Ưu đãi mới';
+            case 'birthday_gift': return '🎉 Chúc mừng sinh nhật!';
             case 'payment_success': return 'Thanh toán thành công';
             case 'payment_received': return 'Đã nhận thanh toán';
             case 'shift_change': return 'Thay đổi ca làm việc';
@@ -266,19 +268,19 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
                                                     </span>
                                                 </div>
                                                 
-                                                <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">
+                                                <div className="text-xs text-gray-500 leading-relaxed">
                                                     {notif.type === 'appointment_cancelled' && notif.message.includes('Lý do:') ? (
                                                         <>
-                                                            <span>{notif.message.split('Lý do:')[0].trim()}</span>
-                                                            <br />
-                                                            <span className="text-red-500 font-medium bg-red-50 px-1.5 py-0.5 rounded mt-1 inline-block">
-                                                                Lý do: {notif.message.split('Lý do:')[1].trim()}
-                                                            </span>
+                                                            <p className="mb-2">{notif.message.split('Lý do:')[0].trim()}</p>
+                                                            <div className="bg-red-50 border-l-4 border-red-400 p-2 rounded">
+                                                                <p className="text-xs font-semibold text-red-800 mb-1">Lý do hủy:</p>
+                                                                <p className="text-sm text-red-700">{notif.message.split('Lý do:')[1].trim()}</p>
+                                                            </div>
                                                         </>
                                                     ) : (
-                                                        notif.message
+                                                        <p className="line-clamp-2">{notif.message}</p>
                                                     )}
-                                                </p>
+                                                </div>
                                             </div>
 
                                             {/* Hover Action / Status Indicator */}

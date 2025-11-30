@@ -71,6 +71,7 @@ export const PromotionsScreen: React.FC<Props> = ({ navigation }) => {
       new Date(expiry).getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000;
     const isUsed = (item as any).isUsed || false;
     const isRedeemed = activeTab === 'redeemed';
+    const redeemedCount = (item as any).redeemedCount || 0;
 
     return (
       <TouchableOpacity 
@@ -98,8 +99,10 @@ export const PromotionsScreen: React.FC<Props> = ({ navigation }) => {
                 <Text style={styles.expiringText}>Sắp hết hạn</Text>
               </View>
             ) : isRedeemed ? (
-              <View style={styles.availableBadge}>
-                <Text style={styles.availableBadgeText}>Chưa dùng</Text>
+              <View style={[styles.availableBadge, redeemedCount === 1 && styles.lastOneBadge]}>
+                <Text style={[styles.availableBadgeText, redeemedCount === 1 && styles.lastOneText]}>
+                  {redeemedCount === 1 ? 'Còn 1 lượt' : `Còn ${redeemedCount} lượt`}
+                </Text>
               </View>
             ) : null}
           </View>
@@ -261,6 +264,16 @@ export const PromotionsScreen: React.FC<Props> = ({ navigation }) => {
                         {new Date(selectedVoucher.expiryDate || (selectedVoucher as any).endDate).toLocaleDateString('vi-VN')}
                       </Text>
                     </View>
+
+                    {(selectedVoucher as any).redeemedCount && (
+                      <View style={styles.detailRow}>
+                        <Ionicons name="ticket-outline" size={20} color="#10b981" />
+                        <Text style={styles.detailLabel}>Số lượng đã đổi:</Text>
+                        <Text style={styles.detailValue}>
+                          {(selectedVoucher as any).redeemedCount}
+                        </Text>
+                      </View>
+                    )}
                   </View>
 
                   {!(selectedVoucher as any).isUsed && (
@@ -416,6 +429,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#4caf50',
     fontWeight: '600',
+  },
+  lastOneBadge: {
+    backgroundColor: '#fff3e0',
+  },
+  lastOneText: {
+    color: '#f57c00',
   },
   promoDescription: {
     fontSize: 14,

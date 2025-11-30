@@ -174,7 +174,7 @@ export const StaffTransactionHistoryPage: React.FC<StaffTransactionHistoryPagePr
                                     <tr key={payment.id} className="border-b hover:bg-gray-50">
                                         <td className="p-4 font-mono text-xs">{payment.transactionId}</td>
                                         <td className="p-4">
-                                            {client ? (<div className="flex items-center gap-3"><img src={client.profilePictureUrl} alt={client.name} className="w-8 h-8 rounded-full" /><div><p className="font-semibold text-gray-800 text-sm">{client.name}</p></div></div>) : "Không rõ"}
+                                            {client ? (<div className="flex items-center gap-3"><img src={client.profilePictureUrl?.startsWith('http') ? client.profilePictureUrl : `http://localhost:3001${client.profilePictureUrl}`} alt={client.name} className="w-8 h-8 rounded-full" /><div><p className="font-semibold text-gray-800 text-sm">{client.name}</p></div></div>) : "Không rõ"}
                                         </td>
                                         <td className="p-4 text-sm">{payment.serviceName || 'Dịch vụ không rõ'}</td>
                                         <td className="p-4 text-sm font-semibold text-brand-primary">{formatPrice(payment.amount)}</td>

@@ -521,7 +521,7 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
                                         <tr key={payment.id} className="border-b hover:bg-gray-50">
                                             <td className="p-4 font-mono text-xs">{payment.transactionId}</td>
                                             <td className="p-4">
-                                                {user ? (<div className="flex items-center gap-3"><img src={user.profilePictureUrl} alt={user.name} className="w-8 h-8 rounded-full" /><div><p className="font-semibold text-gray-800 text-sm">{user.name}</p></div></div>) : "Không rõ"}
+                                                {user ? (<div className="flex items-center gap-3"><img src={user.profilePictureUrl?.startsWith('http') ? user.profilePictureUrl : `http://localhost:3001${user.profilePictureUrl}`} alt={user.name} className="w-8 h-8 rounded-full" /><div><p className="font-semibold text-gray-800 text-sm">{user.name}</p></div></div>) : "Không rõ"}
                                             </td>
                                             <td className="p-4 text-sm">{payment.serviceName}</td>
                                             <td className="p-4 text-sm font-semibold text-brand-primary">{formatPrice(payment.amount)}</td>

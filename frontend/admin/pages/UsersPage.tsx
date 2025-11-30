@@ -200,7 +200,7 @@ const UserDetailsModal: React.FC<{ user: User; onClose: () => void; allTiers: Ti
                 <div className="p-6">
                     <div className="flex justify-between items-start mb-4">
                         <div className="flex items-center gap-4">
-                            <img src={user.profilePictureUrl} alt={user.name} className="w-16 h-16 rounded-full object-cover" />
+                            <img src={user.profilePictureUrl?.startsWith('http') ? user.profilePictureUrl : `http://localhost:3001${user.profilePictureUrl}`} alt={user.name} className="w-16 h-16 rounded-full object-cover" />
                             <div>
                                 <h2 className="text-2xl font-bold text-gray-800">{user.name}</h2>
                                 <p className="text-gray-500">{user.email}</p>
@@ -855,7 +855,7 @@ const UsersPage: React.FC<UsersPageProps> = ({ allUsers, allTiers }) => {
                                 {paginatedUsers.map(user => {
                                     return (
                                     <tr key={user.id} className="border-b border-gray-200 hover:bg-gray-50">
-                                        <td className="p-4"><div className="flex items-center gap-3"><img src={user.profilePictureUrl} alt={user.name} className="w-10 h-10 rounded-full object-cover" /><div><p className="font-semibold text-gray-800">{user.name}</p><p className="text-sm text-gray-500">{user.email}</p></div></div></td>
+                                        <td className="p-4"><div className="flex items-center gap-3"><img src={user.profilePictureUrl?.startsWith('http') ? user.profilePictureUrl : `http://localhost:3001${user.profilePictureUrl}`} alt={user.name} className="w-10 h-10 rounded-full object-cover" /><div><p className="font-semibold text-gray-800">{user.name}</p><p className="text-sm text-gray-500">{user.email}</p></div></div></td>
                                         <td className="p-4"><span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">{ROLE_TRANSLATIONS[user.role]}</span></td>
                                         <td className="p-4 text-sm text-gray-600 font-semibold">{wallets[user.id]?.points.toLocaleString() || 0}</td>
                                         <td className="p-4"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${user.status === 'Active' ? 'bg-green-100 text-green-800' : user.status === 'Inactive' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>{getStatusText(user.status)}</span></td>

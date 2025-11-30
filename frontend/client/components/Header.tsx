@@ -164,7 +164,19 @@ const Header: React.FC<HeaderProps> = ({ currentUser, onLogout, allServices }) =
                                         aria-haspopup="true" 
                                         aria-expanded={isUserMenuOpen}
                                     >
-                                        <img src={currentUser.profilePictureUrl} alt={currentUser.name} className="w-11 h-11 rounded-full object-cover ring-2 ring-white shadow-sm" />
+                                        <div className="w-11 h-11 rounded-full ring-2 ring-white shadow-sm overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
+                                            {currentUser.profilePictureUrl ? (
+                                                <img 
+                                                    src={currentUser.profilePictureUrl.startsWith('http') ? currentUser.profilePictureUrl : `http://localhost:3001${currentUser.profilePictureUrl}`}
+                                                    alt={currentUser.name} 
+                                                    className="w-full h-full object-cover object-center" 
+                                                    style={{ objectPosition: 'center 30%' }}
+                                                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                />
+                                            ) : (
+                                                <ProfileIcon className="w-6 h-6 text-gray-400" />
+                                            )}
+                                        </div>
                                         <span className="font-bold text-lg text-brand-dark max-w-[140px] truncate">{currentUser.name.split(' ').pop()}</span>
                                         <ChevronDownIcon className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isUserMenuOpen ? 'rotate-180' : ''}`} />
                                     </button>
@@ -249,30 +261,7 @@ const Header: React.FC<HeaderProps> = ({ currentUser, onLogout, allServices }) =
                         </div>
                         
                         <div className="space-y-10 animate-slideUpFade animation-delay-200">
-                            {searchQuery.trim().length < 2 ? (
-                                <div>
-                                    <h4 className="text-lg font-bold text-gray-400 uppercase tracking-wider mb-8 ml-4">Đề xuất cho bạn</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        {suggestedServices.map(service => (
-                                            <Link 
-                                                key={service.id} 
-                                                to={`/service/${service.id}`}
-                                                onClick={() => setIsSearchOpen(false)}
-                                                className="flex items-center gap-6 p-6 rounded-3xl bg-white border border-gray-100 shadow-sm hover:shadow-xl hover:border-brand-primary/30 transition-all group transform hover:-translate-y-1"
-                                            >
-                                                <img src={service.imageUrl} alt={service.name} className="w-20 h-20 object-cover rounded-2xl group-hover:scale-105 transition-transform" />
-                                                <div>
-                                                    <p className="font-bold text-xl text-brand-dark group-hover:text-brand-primary transition-colors mb-1">{service.name}</p>
-                                                    <div className="flex items-center gap-3">
-                                                        <span className="text-xs font-bold bg-green-100 text-green-700 px-3 py-1 rounded-full uppercase tracking-wide">Gợi ý</span>
-                                                        <span className="text-sm text-gray-500 line-through decoration-red-500">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(service.price)}</span>
-                                                    </div>
-                                                </div>
-                                            </Link>
-                                        ))}
-                                    </div>
-                                </div>
-                            ) : (
+                            {searchQuery.trim().length >= 2 && (
                                 <div>
                                      <div className="flex items-center justify-between mb-8 ml-4">
                                          <h4 className="text-lg font-bold text-gray-400 uppercase tracking-wider">Kết quả tìm kiếm ({searchResults.length})</h4>
@@ -363,7 +352,19 @@ const Header: React.FC<HeaderProps> = ({ currentUser, onLogout, allServices }) =
                         {currentUser ? (
                             <div className="space-y-6">
                                 <div className="flex items-center gap-4 mb-6 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                                    <img src={currentUser.profilePictureUrl} alt={currentUser.name} className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md" />
+                                    <div className="w-16 h-16 rounded-full border-2 border-white shadow-md overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
+                                        {currentUser.profilePictureUrl ? (
+                                            <img 
+                                                src={currentUser.profilePictureUrl.startsWith('http') ? currentUser.profilePictureUrl : `http://localhost:3001${currentUser.profilePictureUrl}`}
+                                                alt={currentUser.name} 
+                                                className="w-full h-full object-cover object-center" 
+                                                style={{ objectPosition: 'center 30%' }}
+                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                            />
+                                        ) : (
+                                            <ProfileIcon className="w-8 h-8 text-gray-400" />
+                                        )}
+                                    </div>
                                     <div>
                                         <p className="font-bold text-xl text-gray-900">{currentUser.name}</p>
                                         <p className="text-sm text-gray-500">{currentUser.email}</p>

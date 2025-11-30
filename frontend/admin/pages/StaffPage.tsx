@@ -172,7 +172,7 @@ const StaffPage: React.FC<StaffPageProps> = ({ allUsers, allServices, allAppoint
                                     <tr key={user.id} className="border-b border-gray-200 hover:bg-gray-50">
                                         <td className="p-4">
                                             <div className="flex items-center gap-3">
-                                                <img src={user.profilePictureUrl} alt={user.name} className="w-10 h-10 rounded-full object-cover" />
+                                                <img src={user.profilePictureUrl?.startsWith('http') ? user.profilePictureUrl : `http://localhost:3001${user.profilePictureUrl}`} alt={user.name} className="w-10 h-10 rounded-full object-cover" />
                                                 <div>
                                                     <p className="font-semibold text-gray-800">{user.name}</p>
                                                     <p className="text-sm text-gray-500">{user.email}</p>

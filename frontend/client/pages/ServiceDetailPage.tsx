@@ -55,7 +55,28 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
                 setService(fetchedService);
 
                 const fetchedReviews = await apiService.getReviews({ serviceId: id });
-                setServiceReviews(fetchedReviews.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+                
+                // Fetch user profile pictures for each review based on userId
+                const reviewsWithUserData = await Promise.all(
+                    fetchedReviews.map(async (review) => {
+                        if (review.userId) {
+                            try {
+                                const user = await apiService.getUserById(review.userId);
+                                return {
+                                    ...review,
+                                    userImageUrl: user.profilePictureUrl || review.userImageUrl,
+                                    userName: user.name || review.userName
+                                };
+                            } catch (error) {
+                                console.error(`Failed to fetch user data for review ${review.id}:`, error);
+                                return review;
+                            }
+                        }
+                        return review;
+                    })
+                );
+                
+                setServiceReviews(reviewsWithUserData.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
                 
                 const fetchedUsers = await apiService.getUsers();
                 setAllUsers(fetchedUsers);
@@ -365,12 +386,8 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
                     <div className="p-8 md:w-1/2 flex flex-col">
                         <div>
                             <p className="text-sm text-brand-primary font-semibold">{service.categoryId}</p>
-                            <div className="flex justify-between items-start">
-                                <h1 className="text-2xl sm:text-3xl md:text-4xl font-serif font-bold text-brand-dark mt-2 mb-4">{service.name}</h1>
-                                <button onClick={toggleFavorite} className={`p-2 rounded-full transition-colors duration-300 ${isFavorite ? 'text-red-500 bg-red-100' : 'text-gray-400 hover:bg-gray-100'}`} aria-label="Thêm vào yêu thích">
-                                    <HeartIcon className="w-7 h-7" />
-                                </button>
-                            </div>
+                            <h1 className="text-2xl sm:text-3xl md:text-4xl font-serif font-bold text-brand-dark mt-2 mb-4">{service.name}</h1>
+
                             <div className="flex items-center mb-4">
                                 <div className="flex items-center text-yellow-500">
                                     {[...Array(Math.round(service.rating))].map((_, i) => <StarIcon key={i} className="w-5 h-5"/>)}
@@ -453,7 +470,17 @@ const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({ allServices, curr
                                             : 'bg-white'
                                     }`}
                                 >
-                                    <img src={review.userImageUrl} alt={review.userName} className="w-14 h-14 rounded-full flex-shrink-0" />
+                                    <img 
+                                        src={review.userImageUrl?.startsWith('http') ? review.userImageUrl : `http://localhost:3001${review.userImageUrl}`}
+                                        alt={review.userName} 
+                                        className="w-14 h-14 rounded-full flex-shrink-0 object-cover bg-gray-200"
+                                        onError={(e) => {
+                                            const target = e.target as HTMLImageElement;
+                                            if (!target.src.includes('default-avatar')) {
+                                                target.src = '/uploads/avatars/default-avatar.png';
+                                            }
+                                        }}
+                                    />
                                     <div className="flex-1">
                                         <div className="flex items-center mb-1">
                                             <h4 className="font-bold text-brand-dark mr-2">

@@ -1,14 +1,40 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { User, StaffShift, Appointment } from '../../types';
+import type { User, StaffShift, Appointment, Service } from '../../types';
 import { ChevronLeftIcon, ChevronRightIcon, CheckCircleIcon, XCircleIcon, PendingIcon, CalendarIcon, ClockIcon, UserGroupIcon } from '../../shared/icons';
 import DayDetailsModal from '../components/DayDetailsModal';
+import AppointmentDetailModal from '../components/AppointmentDetailModal';
 import * as apiService from '../../client/services/apiService';
 
 interface StaffSchedulePageProps {
     currentUser: User;
 }
 
-const formatDate = (date: Date) => date.toISOString().split('T')[0];
+const formatDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+// Normalize date string to YYYY-MM-DD format (handles both Date objects and strings)
+const normalizeDateString = (date: string | Date | null | undefined): string => {
+    if (!date) return '';
+    if (typeof date === 'string') {
+        // If already YYYY-MM-DD format, return as is
+        if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            return date;
+        }
+        // Otherwise parse it
+        const d = new Date(date);
+        if (isNaN(d.getTime())) return '';
+        return formatDate(d);
+    }
+    if (date instanceof Date) {
+        if (isNaN(date.getTime())) return '';
+        return formatDate(date);
+    }
+    return '';
+};
 
 const StaffSchedulePage: React.FC<StaffSchedulePageProps> = ({ currentUser }) => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -26,22 +52,39 @@ const StaffSchedulePage: React.FC<StaffSchedulePageProps> = ({ currentUser }) =>
     const [filterStatus, setFilterStatus] = useState<'all' | 'approved' | 'pending' | 'rejected'>('all');
     const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
     const [allUsers, setAllUsers] = useState<User[]>([]);
+    const [allServices, setAllServices] = useState<Service[]>([]);
+    const [hoveredAppointment, setHoveredAppointment] = useState<Appointment | null>(null);
+    const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
 
     useEffect(() => {
         const fetchMyData = async () => {
             setIsLoading(true);
             try {
-                const [shifts, appointments, users] = await Promise.all([
+                const [shifts, appointments, users, services] = await Promise.all([
                     apiService.getStaffShifts(currentUser.id),
                     apiService.getUserAppointments(currentUser.id),
-                    apiService.getUsers()
+                    apiService.getUsers(),
+                    apiService.getServices()
                 ]);
                 setMyShifts(shifts);
                 setAllUsers(users);
+                setAllServices(services);
                 // Filter appointments where this staff is the therapist
-                setMyAppointments(appointments.filter(apt => apt.therapistId === currentUser.id));
+                // Normalize appointment dates to YYYY-MM-DD format to avoid timezone issues
+                const normalizedAppointments = appointments
+                    .filter(apt => apt.therapistId === currentUser.id)
+                    .map(apt => ({
+                        ...apt,
+                        date: normalizeDateString(apt.date)
+                    }));
+                setMyAppointments(normalizedAppointments);
             } catch (e) {
                 console.error("Failed to fetch data", e);
+                // Set empty arrays on error to prevent crashes
+                setMyShifts([]);
+                setAllUsers([]);
+                setAllServices([]);
+                setMyAppointments([]);
             } finally {
                 setIsLoading(false);
             }
@@ -88,8 +131,14 @@ const StaffSchedulePage: React.FC<StaffSchedulePageProps> = ({ currentUser }) =>
     const handleDayClick = (day: number) => {
         const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
         const dateString = formatDate(date);
-        const shiftsOnDay = myShifts.filter(shift => shift.date === dateString);
-        const appointmentsOnDay = myAppointments.filter(apt => apt.date === dateString);
+        const shiftsOnDay = myShifts.filter(shift => {
+            const shiftDate = normalizeDateString(shift.date);
+            return shiftDate === dateString;
+        });
+        const appointmentsOnDay = myAppointments.filter(apt => {
+            const aptDate = normalizeDateString(apt.date);
+            return aptDate === dateString;
+        });
         setSelectedDayInfo({ 
             dateString, 
             dayOfMonth: day, 
@@ -273,8 +322,14 @@ const StaffSchedulePage: React.FC<StaffSchedulePageProps> = ({ currentUser }) =>
                         {daysInMonth.map((day, index) => {
                             const date = day ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
                             const dateString = date ? formatDate(date) : '';
-                            const shiftsOnDay = date ? filteredShifts.filter(shift => shift.date === dateString) : [];
-                            const appointmentsOnDay = date ? myAppointments.filter(apt => apt.date === dateString) : [];
+                            const shiftsOnDay = date ? filteredShifts.filter(shift => {
+                                const shiftDate = normalizeDateString(shift.date);
+                                return shiftDate === dateString;
+                            }) : [];
+                            const appointmentsOnDay = date ? myAppointments.filter(apt => {
+                                const aptDate = normalizeDateString(apt.date);
+                                return aptDate === dateString;
+                            }) : [];
                             const isToday = day && new Date().toDateString() === date?.toDateString();
 
                             return (
@@ -322,14 +377,40 @@ const StaffSchedulePage: React.FC<StaffSchedulePageProps> = ({ currentUser }) =>
                                                 {/* Appointments */}
                                                 {appointmentsOnDay.length > 0 && (
                                                     <div className="space-y-1">
-                                                        {appointmentsOnDay.slice(0, 1).map(apt => (
-                                                            <div key={apt.id} className="bg-purple-50 text-purple-700 rounded px-1.5 py-1">
-                                                                <div className="flex items-center gap-1">
-                                                                    <ClockIcon className="w-3 h-3" />
-                                                                    <span className="text-xs truncate">{apt.time}</span>
+                                                        {appointmentsOnDay.slice(0, 1).map(apt => {
+                                                            const client = allUsers?.find(u => u.id === apt.userId);
+                                                            const service = allServices?.find(s => s.id === apt.serviceId);
+                                                            const appointmentClient = (apt as any).Client;
+                                                            const finalClient = appointmentClient || client;
+                                                            
+                                                            return (
+                                                                <div 
+                                                                    key={apt.id} 
+                                                                    className="bg-purple-50 text-purple-700 rounded px-1.5 py-1 relative group cursor-pointer"
+                                                                    onMouseEnter={(e) => {
+                                                                        setHoveredAppointment(apt);
+                                                                        const rect = e.currentTarget.getBoundingClientRect();
+                                                                        setTooltipPosition({
+                                                                            x: rect.left + rect.width / 2,
+                                                                            y: rect.top - 10
+                                                                        });
+                                                                    }}
+                                                                    onMouseLeave={() => {
+                                                                        setHoveredAppointment(null);
+                                                                        setTooltipPosition(null);
+                                                                    }}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setSelectedAppointment(apt);
+                                                                    }}
+                                                                >
+                                                                    <div className="flex items-center gap-1">
+                                                                        <ClockIcon className="w-3 h-3" />
+                                                                        <span className="text-xs truncate">{apt.time}</span>
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        ))}
+                                                            );
+                                                        })}
                                                         {appointmentsOnDay.length > 1 && (
                                                             <p className="text-xs text-purple-600 italic">+{appointmentsOnDay.length - 1} cuộc hẹn</p>
                                                         )}
@@ -424,6 +505,76 @@ const StaffSchedulePage: React.FC<StaffSchedulePageProps> = ({ currentUser }) =>
                     allUsers={allUsers}
                     onClose={() => setSelectedAppointment(null)}
                 />
+            )}
+
+            {/* Tooltip for appointment details on hover */}
+            {hoveredAppointment && tooltipPosition && (
+                <div 
+                    className="fixed z-50 bg-gray-900 text-white text-sm rounded-lg shadow-xl p-3 max-w-xs pointer-events-none"
+                    style={{
+                        left: `${tooltipPosition.x}px`,
+                        top: `${tooltipPosition.y}px`,
+                        transform: 'translate(-50%, -100%)',
+                    }}
+                >
+                    <div className="space-y-2">
+                        <div className="font-semibold text-white border-b border-gray-700 pb-2">
+                            {(() => {
+                                const client = allUsers?.find(u => u.id === hoveredAppointment.userId);
+                                const appointmentClient = (hoveredAppointment as any).Client;
+                                const finalClient = appointmentClient || client;
+                                return finalClient?.name || 'Khách hàng';
+                            })()}
+                        </div>
+                        <div className="space-y-1 text-gray-300">
+                            <div className="flex items-center gap-2">
+                                <ClockIcon className="w-4 h-4" />
+                                <span>{hoveredAppointment.time}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span>Dịch vụ:</span>
+                                <span className="font-medium">
+                                    {(() => {
+                                        const service = allServices?.find(s => s.id === hoveredAppointment.serviceId);
+                                        return service?.name || hoveredAppointment.serviceName || 'N/A';
+                                    })()}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span>Trạng thái:</span>
+                                <span className={`font-medium ${
+                                    hoveredAppointment.status === 'upcoming' ? 'text-green-400' :
+                                    hoveredAppointment.status === 'completed' ? 'text-blue-400' :
+                                    hoveredAppointment.status === 'cancelled' ? 'text-red-400' :
+                                    'text-yellow-400'
+                                }`}>
+                                    {hoveredAppointment.status === 'upcoming' ? 'Đã xác nhận' :
+                                     hoveredAppointment.status === 'completed' ? 'Hoàn thành' :
+                                     hoveredAppointment.status === 'cancelled' ? 'Đã hủy' :
+                                     'Chờ xác nhận'}
+                                </span>
+                            </div>
+                            {(() => {
+                                const client = allUsers?.find(u => u.id === hoveredAppointment.userId);
+                                const appointmentClient = (hoveredAppointment as any).Client;
+                                const finalClient = appointmentClient || client;
+                                return finalClient?.phone ? (
+                                    <div className="flex items-center gap-2">
+                                        <span>Điện thoại:</span>
+                                        <span className="font-medium">{finalClient.phone}</span>
+                                    </div>
+                                ) : null;
+                            })()}
+                        </div>
+                        <div className="text-xs text-gray-400 pt-2 border-t border-gray-700">
+                            Nhấp để xem chi tiết
+                        </div>
+                    </div>
+                    {/* Arrow pointing down */}
+                    <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full">
+                        <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                </div>
             )}
         </div>
     );

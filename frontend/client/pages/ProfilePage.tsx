@@ -147,9 +147,8 @@ const ProfileSidebar: React.FC<{
         { id: 'profile', label: 'Thông tin cá nhân', icon: <ProfileIcon className="w-6 h-6" /> },
         { id: 'membership', label: 'Hạng thành viên', icon: <TrophyIcon className="w-6 h-6" /> },
         { id: 'appointments', label: 'Lịch hẹn của tôi', icon: <AppointmentsIcon className="w-6 h-6" /> },
-        { id: 'reviews', label: 'Đánh giá của tôi', icon: <StarIcon className="w-6 h-6" /> },
         { id: 'payments', label: 'Lịch sử thanh toán', icon: <CreditCardIcon className="w-6 h-6" /> },
-        { id: 'security', label: 'Bảo mật', icon: <ShieldCheckIcon className="w-6 h-6" /> },
+        { id: 'security', label: 'Đổi mật khẩu', icon: <ShieldCheckIcon className="w-6 h-6" /> },
         { id: 'promotions', label: 'Ưu đãi của tôi', icon: <GiftIcon className="w-6 h-6" /> },
     ];
 
@@ -191,8 +190,21 @@ const ProfileHeader: React.FC<{ currentUser: User; currentTier: Tier | undefined
     return (
         <div className="bg-white p-6 rounded-lg shadow-soft-lg border border-gray-200/50 flex flex-col sm:flex-row items-center gap-6">
             <div className="relative">
-                <div className="w-24 h-24 rounded-full bg-gray-200 ring-4 ring-brand-secondary transition-all flex items-center justify-center">
+                <div className="w-24 h-24 rounded-full bg-gray-200 ring-4 ring-brand-secondary transition-all flex items-center justify-center overflow-hidden">
+                    {currentUser.profilePictureUrl ? (
+                        <img 
+                            src={currentUser.profilePictureUrl.startsWith('http') ? currentUser.profilePictureUrl : `http://localhost:3001${currentUser.profilePictureUrl}`}
+                            alt={currentUser.name} 
+                            className="w-full h-full object-cover object-center" 
+                            style={{ objectPosition: 'center 30%' }}
+                            onError={(e) => {
+                                console.error('Image load error:', currentUser.profilePictureUrl);
+                                (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                        />
+                    ) : (
                         <ProfileIcon className="w-12 h-12 text-gray-400" />
+                    )}
                 </div>
             </div>
             <div className="text-center sm:text-left">
@@ -239,35 +251,70 @@ const ProfileInfoRow: React.FC<{ icon: React.ReactNode; label: string; value: Re
 
 const ProfileInfoTab: React.FC<{ currentUser: User; onUpdateUser: (user: User) => void; }> = ({ currentUser, onUpdateUser }) => {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [editingField, setEditingField] = useState<string | null>(null);
     const [formData, setFormData] = useState({
         name: currentUser.name,
         email: currentUser.email,
         phone: currentUser.phone || '',
         gender: currentUser.gender || '',
-        birthday: currentUser.birthday ? new Date(currentUser.birthday).toISOString().split('T')[0] : ''
+        birthday: currentUser.birthday ? new Date(currentUser.birthday).toISOString().split('T')[0] : '',
+        profilePicture: null as File | null,
+        previewUrl: currentUser.profilePictureUrl || ''
     });
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleEdit = (field: string) => {
-        setEditingField(field);
+    const handleEditAll = () => {
         setIsEditModalOpen(true);
         setError('');
-    };
-
-    const handleCloseModal = () => {
-        setIsEditModalOpen(false);
-        setEditingField(null);
-        setError('');
-        // Reset form data to current user data
         setFormData({
             name: currentUser.name,
             email: currentUser.email,
             phone: currentUser.phone || '',
             gender: currentUser.gender || '',
-            birthday: currentUser.birthday ? new Date(currentUser.birthday).toISOString().split('T')[0] : ''
+            birthday: currentUser.birthday ? new Date(currentUser.birthday).toISOString().split('T')[0] : '',
+            profilePicture: null,
+            previewUrl: currentUser.profilePictureUrl || ''
         });
+    };
+
+    const handleCloseModal = () => {
+        setIsEditModalOpen(false);
+        setError('');
+        setFormData({
+            name: currentUser.name,
+            email: currentUser.email,
+            phone: currentUser.phone || '',
+            gender: currentUser.gender || '',
+            birthday: currentUser.birthday ? new Date(currentUser.birthday).toISOString().split('T')[0] : '',
+            profilePicture: null,
+            previewUrl: currentUser.profilePictureUrl || ''
+        });
+    };
+
+    const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            setError('Vui lòng chọn file ảnh');
+            return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            setError('Kích thước ảnh không được vượt quá 5MB');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setFormData(prev => ({
+                ...prev,
+                profilePicture: file,
+                previewUrl: reader.result as string
+            }));
+        };
+        reader.readAsDataURL(file);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -276,63 +323,83 @@ const ProfileInfoTab: React.FC<{ currentUser: User; onUpdateUser: (user: User) =
         setIsSubmitting(true);
 
         try {
-            // Validate email if editing email
-            if (editingField === 'Email' && formData.email !== currentUser.email) {
-                // Email validation will be done on backend
+            // Validate
+            if (!formData.name.trim()) {
+                setError('Họ và tên không được để trống');
+                setIsSubmitting(false);
+                return;
             }
 
-            // Prepare update data based on editing field
-            const updateData: Partial<User> = {};
-            if (editingField === 'Họ và tên') {
-                if (!formData.name.trim()) {
-                    setError('Họ và tên không được để trống');
-                    setIsSubmitting(false);
-                    return;
-                }
-                updateData.name = formData.name.trim();
-            } else if (editingField === 'Email') {
-                if (!formData.email.trim()) {
-                    setError('Email không được để trống');
-                    setIsSubmitting(false);
-                    return;
-                }
-                // Basic email validation
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                if (!emailRegex.test(formData.email.trim())) {
-                    setError('Email không hợp lệ');
-                    setIsSubmitting(false);
-                    return;
-                }
-                updateData.email = formData.email.trim();
-            } else if (editingField === 'Số điện thoại') {
-                if (formData.phone && !/^[0-9]{10,11}$/.test(formData.phone.replace(/\s/g, ''))) {
-                    setError('Số điện thoại không hợp lệ. Vui lòng nhập 10-11 chữ số.');
-                    setIsSubmitting(false);
-                    return;
-                }
-                updateData.phone = formData.phone.trim() || null;
-            } else if (editingField === 'Ngày sinh & Giới tính') {
-                if (formData.birthday) {
-                    const birthDate = new Date(formData.birthday);
-                    const today = new Date();
-                    if (birthDate > today) {
-                        setError('Ngày sinh không thể là ngày trong tương lai.');
-                        setIsSubmitting(false);
-                        return;
-                    }
-                    const age = today.getFullYear() - birthDate.getFullYear();
-                    if (age < 13 || age > 120) {
-                        setError('Ngày sinh không hợp lệ. Bạn phải từ 13 tuổi trở lên.');
-                        setIsSubmitting(false);
-                        return;
-                    }
-                }
-                updateData.birthday = formData.birthday || null;
-                updateData.gender = formData.gender || null;
+            if (!formData.email.trim()) {
+                setError('Email không được để trống');
+                setIsSubmitting(false);
+                return;
             }
 
-            // Update user
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(formData.email.trim())) {
+                setError('Email không hợp lệ');
+                setIsSubmitting(false);
+                return;
+            }
+
+            if (formData.phone && !/^[0-9]{10,11}$/.test(formData.phone.replace(/\s/g, ''))) {
+                setError('Số điện thoại không hợp lệ. Vui lòng nhập 10-11 chữ số.');
+                setIsSubmitting(false);
+                return;
+            }
+
+            if (formData.birthday) {
+                const birthDate = new Date(formData.birthday);
+                const today = new Date();
+                if (birthDate > today) {
+                    setError('Ngày sinh không thể là ngày trong tương lai.');
+                    setIsSubmitting(false);
+                    return;
+                }
+                const age = today.getFullYear() - birthDate.getFullYear();
+                if (age < 13 || age > 120) {
+                    setError('Ngày sinh không hợp lệ. Bạn phải từ 13 tuổi trở lên.');
+                    setIsSubmitting(false);
+                    return;
+                }
+            }
+
+            // Upload ảnh nếu có và lấy URL mới
+            let newProfilePictureUrl = currentUser.profilePictureUrl;
+            if (formData.profilePicture) {
+                const imageFormData = new FormData();
+                imageFormData.append('profilePicture', formData.profilePicture);
+
+                const response = await fetch(`http://localhost:3001/api/users/${currentUser.id}/profile-picture`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    },
+                    body: imageFormData
+                });
+
+                if (!response.ok) {
+                    throw new Error('Upload ảnh thất bại');
+                }
+
+                const userWithNewImage = await response.json();
+                newProfilePictureUrl = userWithNewImage.profilePictureUrl;
+                console.log('✅ Upload ảnh thành công:', newProfilePictureUrl);
+            }
+
+            // Update thông tin cá nhân (bao gồm cả profilePictureUrl để đảm bảo không bị mất)
+            const updateData: Partial<User> = {
+                name: formData.name.trim(),
+                email: formData.email.trim(),
+                phone: formData.phone.trim() || null,
+                birthday: formData.birthday || null,
+                gender: formData.gender || null,
+                profilePictureUrl: newProfilePictureUrl
+            };
+
             const updatedUser = await apiService.updateUser(currentUser.id, updateData);
+            console.log('✅ User sau khi update:', updatedUser);
             onUpdateUser(updatedUser);
             
             // Refresh appointments to sync with admin/staff
@@ -351,90 +418,146 @@ const ProfileInfoTab: React.FC<{ currentUser: User; onUpdateUser: (user: User) =
     return (
         <>
             <div className="bg-white p-6 sm:p-8 rounded-lg shadow-soft-lg animate-fadeInUp border border-gray-200/50">
-                <h2 className="text-2xl font-bold font-serif text-brand-text mb-6">Thông tin cá nhân</h2>
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold font-serif text-brand-text">Thông tin cá nhân</h2>
+                    <button
+                        onClick={handleEditAll}
+                        className="flex items-center gap-2 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-dark font-semibold transition-colors"
+                    >
+                        <EditIcon className="w-5 h-5" />
+                        Chỉnh sửa
+                    </button>
+                </div>
                 
                 <div className="space-y-2">
-                    <ProfileInfoRow icon={<ProfileIcon className="w-6 h-6"/>} label="Họ và tên" value={currentUser.name} onEdit={() => handleEdit('Họ và tên')} />
-                    <ProfileInfoRow icon={<MailIcon className="w-6 h-6"/>} label="Email" value={currentUser.email} onEdit={() => handleEdit('Email')} />
-                    <ProfileInfoRow icon={<PhoneIcon className="w-6 h-6"/>} label="Số điện thoại" value={currentUser.phone || 'Chưa cập nhật'} onEdit={() => handleEdit('Số điện thoại')} />
-                    <ProfileInfoRow icon={<CakeIcon className="w-6 h-6"/>} label="Ngày sinh & Giới tính" value={`${currentUser.birthday ? new Date(currentUser.birthday).toLocaleDateString('vi-VN') : 'Chưa cập nhật'} - ${currentUser.gender || 'Chưa cập nhật'}`} onEdit={() => handleEdit('Ngày sinh & Giới tính')} />
+                    <ProfileInfoRow icon={<ProfileIcon className="w-6 h-6"/>} label="Họ và tên" value={currentUser.name} />
+                    <ProfileInfoRow icon={<MailIcon className="w-6 h-6"/>} label="Email" value={currentUser.email} />
+                    <ProfileInfoRow icon={<PhoneIcon className="w-6 h-6"/>} label="Số điện thoại" value={currentUser.phone || 'Chưa cập nhật'} />
+                    <ProfileInfoRow icon={<CakeIcon className="w-6 h-6"/>} label="Ngày sinh & Giới tính" value={`${currentUser.birthday ? new Date(currentUser.birthday).toLocaleDateString('vi-VN') : 'Chưa cập nhật'} - ${currentUser.gender || 'Chưa cập nhật'}`} />
                 </div>
             </div>
 
             {/* Edit Modal */}
             {isEditModalOpen && (
                 <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={handleCloseModal}>
-                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-xl font-bold text-gray-800 mb-4">Chỉnh sửa {editingField}</h3>
+                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-2xl font-bold text-gray-800 mb-6">Chỉnh sửa thông tin cá nhân</h3>
                         
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            {editingField === 'Họ và tên' && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Họ và tên</label>
-                                    <input
-                                        type="text"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        required
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
-                                    />
-                                </div>
-                            )}
-
-                            {editingField === 'Email' && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                                    <input
-                                        type="email"
-                                        value={formData.email}
-                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                        required
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
-                                    />
-                                    <p className="text-xs text-gray-500 mt-1">Email phải là duy nhất trong hệ thống</p>
-                                </div>
-                            )}
-
-                            {editingField === 'Số điện thoại' && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Số điện thoại</label>
-                                    <input
-                                        type="tel"
-                                        value={formData.phone}
-                                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                                        placeholder="0123456789"
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
-                                    />
-                                </div>
-                            )}
-
-                            {editingField === 'Ngày sinh & Giới tính' && (
-                                <>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Ngày sinh</label>
-                                        <input
-                                            type="date"
-                                            value={formData.birthday}
-                                            onChange={(e) => setFormData({ ...formData, birthday: e.target.value })}
-                                            max={new Date().toISOString().split('T')[0]}
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Giới tính</label>
-                                        <select
-                                            value={formData.gender}
-                                            onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            {/* Ảnh đại diện */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-3">Ảnh đại diện</label>
+                                <div className="flex items-center gap-4">
+                                    <div className="relative">
+                                        <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+                                            {formData.previewUrl ? (
+                                                <img 
+                                                    src={formData.previewUrl.startsWith('data:') ? formData.previewUrl : (formData.previewUrl.startsWith('http') ? formData.previewUrl : `http://localhost:3001${formData.previewUrl}`)}
+                                                    alt="Preview" 
+                                                    className="w-full h-full object-cover object-center"
+                                                    style={{ objectPosition: 'center 30%' }}
+                                                    onError={(e) => {
+                                                        console.error('Preview load error:', formData.previewUrl);
+                                                        (e.target as HTMLImageElement).style.display = 'none';
+                                                    }}
+                                                />
+                                            ) : (
+                                                <ProfileIcon className="w-12 h-12 text-gray-400" />
+                                            )}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="absolute bottom-0 right-0 bg-brand-primary text-white p-2 rounded-full hover:bg-brand-dark transition-colors shadow-lg"
                                         >
-                                            <option value="">Chọn giới tính</option>
-                                            <option value="Nam">Nam</option>
-                                            <option value="Nữ">Nữ</option>
-                                            <option value="Khác">Khác</option>
-                                        </select>
+                                            <EditIcon className="w-4 h-4" />
+                                        </button>
                                     </div>
-                                </>
-                            )}
+                                    <div>
+                                        <button
+                                            type="button"
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
+                                        >
+                                            Chọn ảnh mới
+                                        </button>
+                                        <p className="text-xs text-gray-500 mt-2">JPG, PNG hoặc GIF (tối đa 5MB)</p>
+                                    </div>
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={handleImageSelect}
+                                        className="hidden"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Họ và tên */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Họ và tên *</label>
+                                <input
+                                    type="text"
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    required
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                />
+                            </div>
+
+                            {/* Email */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+                                <input
+                                    type="email"
+                                    value={formData.email}
+                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                    required
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Email phải là duy nhất trong hệ thống</p>
+                            </div>
+
+                            {/* Số điện thoại */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Số điện thoại</label>
+                                <input
+                                    type="tel"
+                                    value={formData.phone}
+                                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                    placeholder="0123456789"
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                {/* Ngày sinh */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Ngày sinh</label>
+                                    <input
+                                        type="date"
+                                        value={formData.birthday}
+                                        onChange={(e) => setFormData({ ...formData, birthday: e.target.value })}
+                                        max={new Date().toISOString().split('T')[0]}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                    />
+                                </div>
+
+                                {/* Giới tính */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Giới tính</label>
+                                    <select
+                                        value={formData.gender}
+                                        onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                    >
+                                        <option value="">Chọn giới tính</option>
+                                        <option value="Nam">Nam</option>
+                                        <option value="Nữ">Nữ</option>
+                                        <option value="Khác">Khác</option>
+                                    </select>
+                                </div>
+                            </div>
 
                             {error && (
                                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -965,7 +1088,7 @@ const SecurityTab: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     return (
         <>
             <div className="bg-white p-8 rounded-lg shadow-soft-lg animate-fadeInUp">
-                <h2 className="text-2xl font-bold font-serif text-brand-text mb-6">Bảo mật tài khoản</h2>
+                <h2 className="text-2xl font-bold font-serif text-brand-text mb-6">Đổi mật khẩu</h2>
                 <div className="space-y-4">
                     <button 
                         onClick={() => setShowChangePasswordModal(true)}

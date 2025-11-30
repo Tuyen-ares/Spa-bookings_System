@@ -96,25 +96,27 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
     setShowDetailModal(true);
   };
 
-  const renderVoucherCard = (voucher: RedeemableVoucher, isRedeemed: boolean = false) => (
-    <TouchableOpacity
-      key={voucher.id}
-      style={styles.voucherCard}
-      onPress={() => openVoucherDetail(voucher)}
-    >
-      <View style={styles.voucherHeader}>
-        <View style={[styles.voucherIcon, { backgroundColor: isRedeemed ? '#10b98120' : '#d6297620' }]}>
-          <Ionicons 
-            name={isRedeemed ? 'checkmark-circle' : 'gift'} 
-            size={28} 
-            color={isRedeemed ? '#10b981' : '#d62976'} 
-          />
+  const renderVoucherCard = (voucher: RedeemableVoucher, isRedeemed: boolean = false) => {
+    const redeemedCount = (voucher as any).redeemedCount || 0;
+    return (
+      <TouchableOpacity
+        key={voucher.id}
+        style={styles.voucherCard}
+        onPress={() => openVoucherDetail(voucher)}
+      >
+        <View style={styles.voucherHeader}>
+          <View style={[styles.voucherIcon, { backgroundColor: isRedeemed ? '#10b98120' : '#d6297620' }]}>
+            <Ionicons 
+              name={isRedeemed ? 'checkmark-circle' : 'gift'} 
+              size={28} 
+              color={isRedeemed ? '#10b981' : '#d62976'} 
+            />
+          </View>
+          <View style={styles.voucherInfo}>
+            <Text style={styles.voucherTitle} numberOfLines={2}>{voucher.title}</Text>
+            <Text style={styles.voucherCode}>Mã: {voucher.code}</Text>
+          </View>
         </View>
-        <View style={styles.voucherInfo}>
-          <Text style={styles.voucherTitle} numberOfLines={2}>{voucher.title}</Text>
-          <Text style={styles.voucherCode}>Mã: {voucher.code}</Text>
-        </View>
-      </View>
 
       <Text style={styles.voucherDescription} numberOfLines={2}>{voucher.description}</Text>
 
@@ -134,8 +136,10 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
           </View>
         )}
         {isRedeemed && (
-          <View style={styles.redeemedBadge}>
-            <Text style={styles.redeemedText}>Đã đổi</Text>
+          <View style={[styles.redeemedBadge, redeemedCount === 1 && styles.lastOneBadge]}>
+            <Text style={[styles.redeemedText, redeemedCount === 1 && styles.lastOneText]}>
+              {redeemedCount === 1 ? 'Còn 1 lượt' : `Còn ${redeemedCount} lượt`}
+            </Text>
           </View>
         )}
       </View>
@@ -148,6 +152,7 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
       </View>
     </TouchableOpacity>
   );
+  };
 
   if (loading) {
     return <LoadingSpinner />;
@@ -294,6 +299,15 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
                       <Text style={styles.modalDetailLabel}>Điểm cần:</Text>
                       <Text style={styles.modalDetailValue}>
                         {selectedVoucher.pointsRequired} điểm
+                      </Text>
+                    </View>
+                  )}
+                  {(selectedVoucher as any).redeemedCount && (
+                    <View style={styles.modalDetailRow}>
+                      <Ionicons name="ticket-outline" size={20} color="#10b981" />
+                      <Text style={styles.modalDetailLabel}>Số lượng đã đổi:</Text>
+                      <Text style={styles.modalDetailValue}>
+                        {(selectedVoucher as any).redeemedCount}
                       </Text>
                     </View>
                   )}
@@ -536,6 +550,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#065f46'
+  },
+  lastOneBadge: {
+    backgroundColor: '#fff3e0',
+  },
+  lastOneText: {
+    color: '#f57c00',
   },
   expiryContainer: {
     flexDirection: 'row',

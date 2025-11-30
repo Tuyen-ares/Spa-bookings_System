@@ -5,6 +5,38 @@ const db = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
 
+// Helper function to create notification for admins
+const notifyAdmins = async (type, title, message, relatedId = null) => {
+    try {
+        // Get all admin users
+        const admins = await db.User.findAll({
+            where: { role: 'Admin', status: 'Active' }
+        });
+
+        // Create notification for each admin
+        const notifications = admins.map(admin => ({
+            id: `notif-${uuidv4()}`,
+            userId: admin.id,
+            type,
+            title,
+            message,
+            relatedId,
+            sentVia: 'app',
+            isRead: false,
+            emailSent: false,
+            createdAt: new Date(),
+        }));
+
+        if (notifications.length > 0) {
+            await db.Notification.bulkCreate(notifications);
+            console.log(`Created ${notifications.length} admin notifications for type: ${type}`);
+        }
+    } catch (error) {
+        console.error('Error creating admin notifications:', error);
+        // Don't throw error - notification failure shouldn't break main operation
+    }
+};
+
 // Helper: Calculate expiry date based on startDate and durationWeeks
 const calculateExpiryDate = (startDate, durationWeeks) => {
     const expiryDate = new Date(startDate);
@@ -93,7 +125,7 @@ router.get('/', async (req, res) => {
                         if (!currentTotalAmount || currentTotalAmount === 0 || currentTotalAmount !== paymentAmount) {
                             await course.update({ 
                                 totalAmount: paymentAmount,
-                                paymentStatus: payment.status === 'Completed' ? 'Paid' : 'Pending'
+                                paymentStatus: payment.status === 'Completed' ? 'Paid' : 'Unpaid'
                             });
                             courseData.totalAmount = paymentAmount;
                             courseData.paymentStatus = 'Paid';
@@ -189,7 +221,7 @@ router.get('/:id', async (req, res) => {
                     if (!currentTotalAmount || currentTotalAmount === 0 || currentTotalAmount !== paymentAmount) {
                         await course.update({ 
                             totalAmount: paymentAmount,
-                            paymentStatus: payment.status === 'Completed' ? 'Paid' : 'Pending'
+                            paymentStatus: payment.status === 'Completed' ? 'Paid' : 'Unpaid'
                         });
                         // Reload để có data mới nhất
                         await course.reload();
@@ -206,6 +238,23 @@ router.get('/:id', async (req, res) => {
         const courseData = course.toJSON();
         if (courseData.totalAmount !== null && courseData.totalAmount !== undefined) {
             courseData.totalAmount = parseFloat(courseData.totalAmount);
+        }
+        
+        // Ensure TreatmentSessions have sessionDate and sessionTime properly formatted
+        if (courseData.TreatmentSessions && Array.isArray(courseData.TreatmentSessions)) {
+            courseData.TreatmentSessions = courseData.TreatmentSessions.map((session) => {
+                // Ensure sessionDate is in YYYY-MM-DD format
+                if (session.sessionDate) {
+                    const date = new Date(session.sessionDate);
+                    if (!isNaN(date.getTime())) {
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        session.sessionDate = `${year}-${month}-${day}`;
+                    }
+                }
+                return session;
+            });
         }
 
         res.json(courseData);
@@ -434,21 +483,36 @@ router.put('/:id/confirm-payment', async (req, res) => {
 
         // Đồng bộ payment status cho tất cả appointments liên quan đến treatment course này
         try {
+            // Cách 1: Tìm appointments qua TreatmentSession
             const sessions = await db.TreatmentSession.findAll({
                 where: { treatmentCourseId: course.id },
                 attributes: ['appointmentId']
             });
             
-            const appointmentIds = sessions
+            const appointmentIdsFromSessions = sessions
                 .map(s => s.appointmentId)
                 .filter(id => id !== null);
             
-            if (appointmentIds.length > 0) {
+            // Cách 2: Tìm appointments qua bookingGroupId (fallback)
+            const bookingGroupId = `group-${course.id}`;
+            const appointmentsFromGroup = await db.Appointment.findAll({
+                where: { bookingGroupId: bookingGroupId },
+                attributes: ['id']
+            });
+            
+            const appointmentIdsFromGroup = appointmentsFromGroup.map(apt => apt.id);
+            
+            // Kết hợp cả 2 cách và loại bỏ duplicates
+            const allAppointmentIds = [...new Set([...appointmentIdsFromSessions, ...appointmentIdsFromGroup])];
+            
+            if (allAppointmentIds.length > 0) {
                 await db.Appointment.update(
                     { paymentStatus: 'Paid' },
-                    { where: { id: { [Op.in]: appointmentIds } } }
+                    { where: { id: { [Op.in]: allAppointmentIds } } }
                 );
-                console.log(`✅ Synchronized payment status to 'Paid' for ${appointmentIds.length} appointments`);
+                console.log(`✅ Synchronized payment status to 'Paid' for ${allAppointmentIds.length} appointments (${appointmentIdsFromSessions.length} from sessions, ${appointmentIdsFromGroup.length} from bookingGroup)`);
+            } else {
+                console.log(`⚠️ No appointments found to sync for treatment course ${course.id}`);
             }
         } catch (syncError) {
             console.error('Error synchronizing payment status to appointments:', syncError);
@@ -550,11 +614,101 @@ router.put('/:id/confirm-payment', async (req, res) => {
             paymentStatus: payment.status,
             paymentAmount: payment.amount
         });
+
+        // Notify admins about completed payment (async, don't wait)
+        try {
+            const client = await db.User.findByPk(course.clientId);
+            const clientName = client ? client.name : 'Khách hàng';
+            const formatPrice = (price) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
+            
+            notifyAdmins(
+                'payment_received',
+                'Thanh toán tiền mặt',
+                `${clientName} đã thanh toán ${formatPrice(totalAmount)} bằng tiền mặt cho ${course.serviceName || 'liệu trình'}`,
+                payment.id
+            );
+        } catch (notifError) {
+            console.error('Error creating payment notification:', notifError);
+            // Don't fail payment if notification fails
+        }
         
         res.json({ course, payment, message: 'Payment confirmed successfully' });
     } catch (error) {
         console.error('Error confirming payment:', error);
         res.status(500).json({ message: 'Error confirming payment', error: error.message });
+    }
+});
+
+// POST /api/treatment-courses/sync-payment-status - Đồng bộ paymentStatus từ TreatmentCourse sang tất cả appointments liên quan
+router.post('/sync-payment-status', async (req, res) => {
+    try {
+        console.log('🔄 [SYNC PAYMENT STATUS] Starting sync for all treatment courses...');
+        
+        // Lấy tất cả treatment courses đã thanh toán
+        const paidCourses = await db.TreatmentCourse.findAll({
+            where: { paymentStatus: 'Paid' }
+        });
+        
+        console.log(`📊 [SYNC PAYMENT STATUS] Found ${paidCourses.length} paid treatment courses`);
+        
+        let totalUpdated = 0;
+        
+        for (const course of paidCourses) {
+            // Cách 1: Lấy appointments qua TreatmentSession
+            const sessions = await db.TreatmentSession.findAll({
+                where: { treatmentCourseId: course.id },
+                attributes: ['appointmentId']
+            });
+            
+            const appointmentIdsFromSessions = sessions
+                .map(s => s.appointmentId)
+                .filter(id => id !== null);
+            
+            // Cách 2: Lấy appointments qua bookingGroupId (fallback)
+            const bookingGroupId = `group-${course.id}`;
+            const appointmentsFromGroup = await db.Appointment.findAll({
+                where: { bookingGroupId: bookingGroupId },
+                attributes: ['id']
+            });
+            
+            const appointmentIdsFromGroup = appointmentsFromGroup.map(apt => apt.id);
+            
+            // Kết hợp cả 2 cách và loại bỏ duplicates
+            const allAppointmentIds = [...new Set([...appointmentIdsFromSessions, ...appointmentIdsFromGroup])];
+            
+            if (allAppointmentIds.length > 0) {
+                // Cập nhật paymentStatus cho tất cả appointments liên quan
+                const [updatedCount] = await db.Appointment.update(
+                    { paymentStatus: 'Paid' },
+                    { 
+                        where: { 
+                            id: { [Op.in]: allAppointmentIds },
+                            paymentStatus: { [Op.ne]: 'Paid' } // Chỉ cập nhật những cái chưa Paid
+                        }
+                    }
+                );
+                
+                if (updatedCount > 0) {
+                    totalUpdated += updatedCount;
+                    console.log(`✅ [SYNC PAYMENT STATUS] Updated ${updatedCount} appointments for treatment course ${course.id} (${appointmentIdsFromSessions.length} from sessions, ${appointmentIdsFromGroup.length} from bookingGroup)`);
+                }
+            }
+        }
+        
+        console.log(`✅ [SYNC PAYMENT STATUS] Total appointments updated: ${totalUpdated}`);
+        
+        res.json({ 
+            success: true, 
+            message: `Đã đồng bộ paymentStatus cho ${totalUpdated} appointments`,
+            totalUpdated 
+        });
+    } catch (error) {
+        console.error('❌ [SYNC PAYMENT STATUS] Error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Lỗi khi đồng bộ paymentStatus',
+            error: error.message 
+        });
     }
 });
 

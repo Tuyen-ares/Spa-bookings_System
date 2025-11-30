@@ -1380,6 +1380,14 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 const firstService = selectedServices[0].service;
                 const applicable = await apiService.getApplicablePromotions(currentUser.id, firstService.id);
                 setApplicablePromotions(applicable);
+                
+                // Also reload redeemed vouchers to ensure they are up-to-date
+                try {
+                    const fetchedRedeemed = await apiService.getMyRedeemedVouchers(currentUser.id);
+                    setRedeemedVouchers(fetchedRedeemed || []);
+                } catch (error) {
+                    console.error('Error fetching redeemed vouchers:', error);
+                }
             } catch (error) {
                 setApplicablePromotions([]);
             }
@@ -1412,10 +1420,21 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             invalidReason = 'Mã khuyến mãi đã hết hạn';
         }
         
-        // Check stock
-        else if (selectedPromotion.stock !== null && selectedPromotion.stock !== undefined && selectedPromotion.stock <= 0) {
+        // Check stock - CHỈ kiểm tra cho voucher public, KHÔNG kiểm tra cho voucher đổi điểm
+        else if (selectedPromotion.isPublic !== false && selectedPromotion.stock !== null && selectedPromotion.stock !== undefined && selectedPromotion.stock <= 0) {
+            // Voucher public: kiểm tra stock
             isStillValid = false;
             invalidReason = 'Mã khuyến mãi đã hết lượt sử dụng';
+        } else if (selectedPromotion.isPublic === false) {
+            // Voucher đổi điểm: kiểm tra redeemedCount thay vì stock
+            const redeemedVoucher = redeemedVouchers.find((v: any) => 
+                v.code && selectedPromotion.code && 
+                v.code.toUpperCase().trim() === selectedPromotion.code.toUpperCase().trim()
+            );
+            if (!redeemedVoucher || !redeemedVoucher.redeemedCount || redeemedVoucher.redeemedCount <= 0) {
+                isStillValid = false;
+                invalidReason = 'Bạn không còn voucher này để sử dụng';
+            }
         }
         
         // Check minimum order value
@@ -1436,13 +1455,13 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             }
         }
 
-        // Reset voucher if no longer valid
+        // Reset voucher if no longer valid (silently, backend will validate when booking)
         if (!isStillValid) {
             setSelectedPromotion(null);
             setPromoCode('');
-            alert(`Mã voucher "${selectedPromotion.code}" đã bị hủy: ${invalidReason}`);
+            // Removed alert - backend will validate and show error if voucher is invalid when booking
         }
-    }, [selectedServices, selectedPromotion]);
+    }, [selectedServices, selectedPromotion, redeemedVouchers]);
 
     // Helper: Check if promotion is applicable to current booking
     const isPromotionApplicable = (promo: Promotion): boolean => {
@@ -1457,8 +1476,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         expiryDate.setHours(0, 0, 0, 0);
         if (expiryDate < today) return false;
         
-        // 3. Check stock availability
-        if (promo.stock !== null && promo.stock !== undefined && promo.stock <= 0) return false;
+        // 3. Check stock availability - CHỈ cho voucher public, KHÔNG cho voucher đổi điểm
+        if (promo.isPublic !== false && promo.stock !== null && promo.stock !== undefined && promo.stock <= 0) return false;
         
         // 4. Calculate current order total
         const currentOrderTotal = selectedServices.reduce(
@@ -1518,6 +1537,18 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         return true;
     };
 
+    // Helper: Convert time string (HH:mm) to minutes from midnight
+    const timeToMinutes = (time: string): number => {
+        const [hours, minutes] = time.split(':').map(Number);
+        return hours * 60 + minutes;
+    };
+
+    // Helper: Check if time is a round hour (e.g., 12:00, 13:00, not 12:30, 12:45)
+    const isRoundHour = (time: string): boolean => {
+        const [, minutes] = time.split(':').map(Number);
+        return minutes === 0;
+    };
+
     // Step 2: Select Time
     const isTimeSlotBooked = (time: string) => {
         if (!selectedDate) return false;
@@ -1526,6 +1557,109 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             apt.time === time && 
             apt.status !== 'cancelled'
         );
+    };
+
+    // Check if a time slot is blocked by an existing appointment's duration
+    // Logic: Kiểm tra overlap giữa appointment mới (với dịch vụ đang chọn) và appointments đã đặt
+    // Time slot bị chặn nếu có bất kỳ overlap nào (cả đi lùi và đi tiến)
+    const isTimeSlotBlocked = (time: string): boolean => {
+        if (!selectedDate || selectedServices.length === 0) return false;
+        
+        // Lấy duration của dịch vụ đang được chọn (lấy dịch vụ đầu tiên nếu có nhiều)
+        const selectedService = selectedServices[0].service;
+        if (!selectedService || !selectedService.duration) return false;
+
+        const newStartTimeInMinutes = timeToMinutes(time);
+        const newEndTimeInMinutes = newStartTimeInMinutes + selectedService.duration;
+
+        // Lấy tất cả appointments của user trong ngày đó (cùng ngày, status != cancelled)
+        const appointmentsOnSelectedDate = userAppointments.filter(apt => 
+            apt.date === selectedDate && 
+            apt.status !== 'cancelled'
+        );
+
+        // Kiểm tra overlap với từng appointment đã đặt
+        return appointmentsOnSelectedDate.some(apt => {
+            // Tìm service từ appointments để lấy duration
+            const service = services.find(s => s.id === apt.serviceId);
+            if (!service || !service.duration) return false;
+
+            const existingStartTimeInMinutes = timeToMinutes(apt.time);
+            const existingEndTimeInMinutes = existingStartTimeInMinutes + service.duration;
+
+            // Kiểm tra overlap: Hai khoảng thời gian overlap nếu:
+            // newStart < existingEnd && newEnd > existingStart
+            const hasOverlap = newStartTimeInMinutes < existingEndTimeInMinutes && 
+                               newEndTimeInMinutes > existingStartTimeInMinutes;
+
+            return hasOverlap;
+        });
+    };
+
+    // Check if a time slot meets the minimum 1-hour gap requirement from existing appointments
+    // Logic: Nếu khách đã đặt lịch ở 13:00, chỉ được đặt lịch mới cách ít nhất 1 giờ (tròn giờ)
+    // Ví dụ: Đã đặt 13:00 (60 phút = 13:00-14:00) → có thể đặt 12:00 (12:00-13:00, cách 0 phút = không hợp lệ? Không, đây là tiếp giáp)
+    // Thực ra: Nếu đã đặt 13:00-14:00, có thể đặt 12:00-13:00 (tiếp giáp) hoặc 14:00-15:00 (tiếp giáp)
+    // Nhưng theo yêu cầu: "chỉ được đặt cách lịch hiện tại 1 tiếng" → nghĩa là phải cách nhau ít nhất 1 giờ
+    // Ví dụ: Đã đặt 13:00 → có thể đặt 12:00 (12:00-13:00 kết thúc, 13:00-14:00 bắt đầu = cách nhau 0 phút) → KHÔNG hợp lệ
+    // Đã đặt 13:00 → có thể đặt 11:00 (11:00-12:00 kết thúc, 13:00-14:00 bắt đầu = cách nhau 60 phút = 1 giờ) → HỢP LỆ
+    // Đã đặt 13:00 → có thể đặt 14:00 (13:00-14:00 kết thúc, 14:00-15:00 bắt đầu = cách nhau 0 phút) → KHÔNG hợp lệ
+    // Đã đặt 13:00 → có thể đặt 15:00 (13:00-14:00 kết thúc, 15:00-16:00 bắt đầu = cách nhau 60 phút = 1 giờ) → HỢP LỆ
+    const isTimeSlotValidForMinimumGap = (time: string): boolean => {
+        if (!selectedDate || selectedServices.length === 0) return true;
+        
+        // PHẢI là giờ tròn (00 phút) - chỉ cho phép XX:00, không cho XX:30, XX:45
+        if (!isRoundHour(time)) return false;
+
+        // Lấy duration của dịch vụ đang được chọn
+        const selectedService = selectedServices[0].service;
+        if (!selectedService || !selectedService.duration) return true;
+
+        const newStartTimeInMinutes = timeToMinutes(time);
+        const newEndTimeInMinutes = newStartTimeInMinutes + selectedService.duration;
+
+        // Lấy tất cả appointments của user trong ngày đó (cùng ngày, status != cancelled)
+        const appointmentsOnSelectedDate = userAppointments.filter(apt => 
+            apt.date === selectedDate && 
+            apt.status !== 'cancelled'
+        );
+
+        if (appointmentsOnSelectedDate.length === 0) return true;
+
+        // Kiểm tra với từng appointment đã đặt
+        return appointmentsOnSelectedDate.every(apt => {
+            // Tìm service từ appointments để lấy duration
+            const service = services.find(s => s.id === apt.serviceId);
+            if (!service || !service.duration) return true;
+
+            const existingStartTimeInMinutes = timeToMinutes(apt.time);
+            const existingEndTimeInMinutes = existingStartTimeInMinutes + service.duration;
+
+            // Tính khoảng cách giữa 2 appointments (theo phút)
+            // Khoảng cách = khoảng trống giữa chúng (không tính overlap)
+            let gapInMinutes = 0;
+            
+            // Nếu appointment mới đứng trước appointment đã đặt (newEnd <= existingStart)
+            // Khoảng cách = existingStart - newEnd (khoảng trống giữa newEnd và existingStart)
+            if (newEndTimeInMinutes <= existingStartTimeInMinutes) {
+                gapInMinutes = existingStartTimeInMinutes - newEndTimeInMinutes;
+            }
+            // Nếu appointment mới đứng sau appointment đã đặt (newStart >= existingEnd)
+            // Khoảng cách = newStart - existingEnd (khoảng trống giữa existingEnd và newStart)
+            else if (newStartTimeInMinutes >= existingEndTimeInMinutes) {
+                gapInMinutes = newStartTimeInMinutes - existingEndTimeInMinutes;
+            }
+            else {
+                // Có overlap (đã được kiểm tra bởi isTimeSlotBlocked)
+                return false;
+            }
+
+            // PHẢI cách nhau ít nhất 1 giờ (60 phút)
+            // Nếu gapInMinutes = 0, nghĩa là tiếp giáp nhau → không hợp lệ
+            // Nếu gapInMinutes > 0 và < 60, nghĩa là có khoảng trống nhưng chưa đủ 1 giờ → không hợp lệ
+            // Chỉ hợp lệ nếu gapInMinutes >= 60
+            return gapInMinutes >= 60;
+        });
     };
 
     // Step 4: Confirmation
@@ -1559,12 +1693,55 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             const bookingGroupId = uuidv4();
 
             if (selectedPromotion) {
-                const isStillApplicable = applicablePromotions.some(p => p.id === selectedPromotion.id);
-                const isGeneralPromo = promotions.find(p => p.id === selectedPromotion.id && p.isActive !== false);
-                if (!isStillApplicable && !isGeneralPromo) {
-                    alert('Mã khuyến mãi này không còn khả dụng. Vui lòng chọn mã khác.');
-                    setIsPaymentModalOpen(false);
-                    return;
+                // Normalize isPublic to boolean
+                const normalizedIsPublic = selectedPromotion.isPublic === true || selectedPromotion.isPublic === 1 || selectedPromotion.isPublic === '1';
+                const isRedeemedVoucher = !normalizedIsPublic;
+                
+                console.log('🔍 [PRE-BOOKING VALIDATION] Checking voucher:', {
+                    code: selectedPromotion.code,
+                    id: selectedPromotion.id,
+                    isPublic: selectedPromotion.isPublic,
+                    normalizedIsPublic: normalizedIsPublic,
+                    isRedeemedVoucher: isRedeemedVoucher,
+                    redeemedVouchersLength: redeemedVouchers.length
+                });
+                
+                // Đối với voucher đổi điểm (isPublic = false), kiểm tra trong redeemedVouchers
+                if (isRedeemedVoucher) {
+                    const redeemedVoucher = redeemedVouchers.find((v: any) => 
+                        v.code && selectedPromotion.code && 
+                        v.code.toUpperCase().trim() === selectedPromotion.code.toUpperCase().trim()
+                    );
+                    
+                    console.log('🔍 [PRE-BOOKING VALIDATION] Redeemed voucher check:', {
+                        found: !!redeemedVoucher,
+                        redeemedCount: redeemedVoucher?.redeemedCount,
+                        isValid: redeemedVoucher && redeemedVoucher.redeemedCount && redeemedVoucher.redeemedCount > 0
+                    });
+                    
+                    if (!redeemedVoucher || !redeemedVoucher.redeemedCount || redeemedVoucher.redeemedCount <= 0) {
+                        console.error('❌ [PRE-BOOKING VALIDATION] Redeemed voucher not found or count is 0');
+                        alert('Mã khuyến mãi này không còn khả dụng. Vui lòng chọn mã khác.');
+                        setIsPaymentModalOpen(false);
+                        return;
+                    }
+                } else {
+                    // Đối với voucher public, kiểm tra trong applicablePromotions hoặc promotions
+                    const isStillApplicable = applicablePromotions.some(p => p.id === selectedPromotion.id);
+                    const isGeneralPromo = promotions.find(p => p.id === selectedPromotion.id && p.isActive !== false);
+                    
+                    console.log('🔍 [PRE-BOOKING VALIDATION] Public voucher check:', {
+                        isStillApplicable: isStillApplicable,
+                        isGeneralPromo: !!isGeneralPromo,
+                        isValid: isStillApplicable || !!isGeneralPromo
+                    });
+                    
+                    if (!isStillApplicable && !isGeneralPromo) {
+                        console.error('❌ [PRE-BOOKING VALIDATION] Public voucher not found in applicable lists');
+                        alert('Mã khuyến mãi này không còn khả dụng. Vui lòng chọn mã khác.');
+                        setIsPaymentModalOpen(false);
+                        return;
+                    }
                 }
             }
 
@@ -1609,7 +1786,26 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 totalAmount
             );
 
-            // Refresh appointments AND vouchers in app
+            // QUAN TRỌNG: Đợi một chút để đảm bảo backend đã commit update PromotionUsage
+            // Sau đó mới refresh để frontend lấy dữ liệu mới nhất
+            await new Promise(resolve => setTimeout(resolve, 500)); // Đợi 500ms
+            
+            // Reload redeemed vouchers ngay lập tức để cập nhật dropdown và state
+            if (currentUser) {
+                try {
+                    const fetchedRedeemed = await apiService.getMyRedeemedVouchers(currentUser.id);
+                    setRedeemedVouchers(fetchedRedeemed || []);
+                    console.log('✅ Reloaded redeemed vouchers after booking:', fetchedRedeemed?.length || 0);
+                    console.log('📊 Redeemed vouchers details:', fetchedRedeemed?.map((v: any) => ({
+                        code: v.code,
+                        redeemedCount: v.redeemedCount
+                    })));
+                } catch (error) {
+                    console.error('Error reloading redeemed vouchers:', error);
+                }
+            }
+            
+            // Refresh appointments AND vouchers in app (các trang khác sẽ nhận được event này)
             window.dispatchEvent(new Event('refresh-appointments'));
             window.dispatchEvent(new Event('refresh-vouchers'));
 
@@ -1942,17 +2138,31 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                         <div className="grid grid-cols-3 gap-3 max-h-[320px] overflow-y-auto pr-2 custom-scrollbar animate-fadeIn">
                             {availableTimeSlots.map((time, idx) => {
                                 const isBooked = isTimeSlotBooked(time);
+                                const isBlocked = isTimeSlotBlocked(time);
+                                const isValidGap = isTimeSlotValidForMinimumGap(time);
+                                const isDisabled = isBooked || isBlocked || !isValidGap;
                                 const isSelected = selectedTime === time;
+                                
+                                // Determine tooltip/reason for disabled state
+                                let disabledReason = '';
+                                if (isBooked) {
+                                    disabledReason = 'Đã được đặt';
+                                } else if (isBlocked) {
+                                    disabledReason = 'Trùng với lịch đã đặt';
+                                } else if (!isValidGap) {
+                                    disabledReason = 'Phải cách lịch đã đặt ít nhất 1 giờ (chỉ giờ tròn)';
+                                }
                                 
                                 return (
                                     <button
                                         key={time}
-                                        onClick={() => !isBooked && setSelectedTime(time)}
-                                        disabled={isBooked}
+                                        onClick={() => !isDisabled && setSelectedTime(time)}
+                                        disabled={isDisabled}
+                                        title={isDisabled ? disabledReason : ''}
                                         style={{ animationDelay: `${idx * 50}ms` }}
                                         className={`
                                             py-3 rounded-xl text-sm font-bold transition-all duration-300 relative overflow-hidden animate-fadeInUp
-                                            ${isBooked 
+                                            ${isDisabled 
                                                 ? 'bg-gray-50 text-gray-300 cursor-not-allowed border border-gray-100' 
                                                 : isSelected
                                                     ? 'bg-gradient-to-br from-brand-primary to-rose-500 text-white shadow-lg shadow-brand-primary/40 scale-105 z-10 border-transparent'
@@ -2089,18 +2299,47 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                             return;
                                         }
                                         
-                                        // Search in both promotions and applicablePromotions arrays
-                                        const allPromos = [...promotions, ...applicablePromotions];
-                                        const promo = allPromos.find(p => p.code === code && p.isActive !== false);
+                                        // Tìm trong cả promotions, applicablePromotions và redeemedVouchers
+                                        const promo = redeemedVouchers.find((v: any) => 
+                                            v.code && code && 
+                                            v.code.toUpperCase().trim() === code.toUpperCase().trim() &&
+                                            v.redeemedCount > 0
+                                        ) || applicablePromotions.find(p => 
+                                            p.code && code && 
+                                            p.code.toUpperCase().trim() === code.toUpperCase().trim()
+                                        ) || promotions.find(p => 
+                                            p.code && code && 
+                                            p.code.toUpperCase().trim() === code.toUpperCase().trim() &&
+                                            (p.isPublic === true || p.isPublic === 1 || p.isPublic === '1')
+                                        );
                                         console.log('🎫 Voucher selected:', { code, found: !!promo, promo });
                                         
                                         if (promo) {
+                                            // Check if redeemed voucher still has available count
+                                            const redeemedVoucher = redeemedVouchers.find((v: any) => 
+                                                v.code && code && 
+                                                v.code.toUpperCase().trim() === code.toUpperCase().trim()
+                                            );
+                                            if (redeemedVoucher && (!redeemedVoucher.redeemedCount || redeemedVoucher.redeemedCount <= 0)) {
+                                                alert('Bạn đã sử dụng hết voucher này');
+                                                setPromoCode('');
+                                                return;
+                                            }
+                                            
                                             // Validate voucher with backend immediately
+                                            // QUAN TRỌNG: Chỉ validate, KHÔNG trừ voucher. Voucher sẽ chỉ được trừ khi đặt lịch thành công
                                             try {
                                                 const selectedServiceId = selectedServices.length > 0 ? selectedServices[0].service.id : undefined;
+                                                console.log('🔍 [VOUCHER SELECTION] Validating voucher (NOT deducting yet):', {
+                                                    code,
+                                                    userId: currentUser?.id,
+                                                    serviceId: selectedServiceId
+                                                });
                                                 await apiService.applyPromotion(code, currentUser?.id, undefined, selectedServiceId);
                                                 // Validation successful, apply the promotion
+                                                console.log('✅ [VOUCHER SELECTION] Validation passed - voucher selected but NOT deducted yet');
                                                 setSelectedPromotion(promo);
+                                                // KHÔNG reload redeemedVouchers ở đây - voucher chỉ được trừ khi đặt lịch thành công
                                             } catch (error: any) {
                                                 // Validation failed, show error and reset
                                                 console.error('❌ Voucher validation failed:', error);
@@ -2118,29 +2357,134 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                     className="appearance-none w-full pl-10 pr-10 py-3.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-primary focus:border-brand-primary font-medium text-gray-700 shadow-sm hover:border-brand-primary/50 transition-all cursor-pointer"
                                 >
                                     <option value="">-- Chọn mã ưu đãi --</option>
-                                    {/* Filter and show only applicable promotions using helper function */}
+                                    {/* HIỂN THỊ CẢ VOUCHER PUBLIC VÀ VOUCHER ĐỔI ĐIỂM - CHỈ HIỂN THỊ VOUCHER PHÙ HỢP VỚI ĐIỀU KIỆN */}
                                     {(() => {
-                                        // Combine both promotion sources and remove duplicates
-                                        const allPromos = [...applicablePromotions, ...promotions];
-                                        const uniquePromos = allPromos.filter((promo, index, self) => 
-                                            index === self.findIndex(p => p.id === promo.id)
+                                        const today = new Date();
+                                        today.setHours(0, 0, 0, 0);
+                                        const selectedServiceIds = selectedServices.map(s => s.service.id);
+                                        
+                                        // Tính tổng giá trị đơn hàng hiện tại
+                                        const currentOrderTotal = selectedServices.reduce(
+                                            (sum, { service, quantity }) => sum + ((service.discountPrice || service.price) * quantity), 
+                                            0
                                         );
                                         
-                                        // Filter using helper function - only show truly applicable vouchers
-                                        const availablePromos = uniquePromos.filter(promo => isPromotionApplicable(promo));
+                                        // Filter public promotions - SỬ DỤNG ĐẦY ĐỦ ĐIỀU KIỆN
+                                        // Hàm isPromotionApplicable đã kiểm tra: isActive, expiryDate, stock, minOrderValue, applicableServiceIds, targetAudience
+                                        const filteredPromotions = promotions.filter(p => {
+                                            const isPublic = p.isPublic === true || p.isPublic === 1 || p.isPublic === '1';
+                                            if (!isPublic) return false;
+                                            
+                                            // Sử dụng hàm isPromotionApplicable để kiểm tra đầy đủ điều kiện (bao gồm minOrderValue)
+                                            return isPromotionApplicable(p);
+                                        });
+                                        
+                                        // Filter applicable promotions - SỬ DỤNG ĐẦY ĐỦ ĐIỀU KIỆN
+                                        // Hàm isPromotionApplicable đã kiểm tra: isActive, expiryDate, stock, minOrderValue, applicableServiceIds, targetAudience
+                                        const filteredApplicablePromotions = applicablePromotions.filter(p => {
+                                            const isPublic = p.isPublic === true || p.isPublic === 1 || p.isPublic === '1';
+                                            if (!isPublic) return false;
+                                            
+                                            // Sử dụng hàm isPromotionApplicable để kiểm tra đầy đủ điều kiện (bao gồm minOrderValue)
+                                            return isPromotionApplicable(p);
+                                        });
+                                        
+                                        // Filter redeemed vouchers (voucher đổi điểm) - SỬ DỤNG ĐẦY ĐỦ ĐIỀU KIỆN
+                                        // QUAN TRỌNG: CHỈ lấy voucher đổi điểm (isPublic = false), KHÔNG lấy voucher public
+                                        const filteredRedeemedVouchers = redeemedVouchers.filter((v: any) => {
+                                            // CHỈ lấy voucher đổi điểm (isPublic = false)
+                                            const isPublicNormalized = v.isPublic === true || v.isPublic === 1 || v.isPublic === '1';
+                                            if (isPublicNormalized) {
+                                                // Loại bỏ voucher public (voucher public không bao giờ xuất hiện trong dropdown này)
+                                                return false;
+                                            }
+                                            
+                                            // Kiểm tra redeemedCount
+                                            if (!v.redeemedCount || v.redeemedCount <= 0) return false;
+                                            
+                                            // Kiểm tra các điều kiện cơ bản
+                                            if (v.isActive === false) return false;
+                                            
+                                            // Kiểm tra hết hạn
+                                            const expiryDate = new Date(v.expiryDate);
+                                            expiryDate.setHours(0, 0, 0, 0);
+                                            if (today > expiryDate) return false;
+                                            
+                                            // Kiểm tra minOrderValue - QUAN TRỌNG
+                                            if (v.minOrderValue && currentOrderTotal < v.minOrderValue) {
+                                                return false; // Không hiển thị nếu đơn hàng chưa đủ giá trị tối thiểu
+                                            }
+                                            
+                                            // Kiểm tra applicableServiceIds
+                                            if (v.applicableServiceIds && v.applicableServiceIds.length > 0) {
+                                                let applicableServiceIdsArray: string[] = [];
+                                                if (typeof v.applicableServiceIds === 'string') {
+                                                    try {
+                                                        applicableServiceIdsArray = JSON.parse(v.applicableServiceIds);
+                                                    } catch (e) {
+                                                        applicableServiceIdsArray = [];
+                                                    }
+                                                } else if (Array.isArray(v.applicableServiceIds)) {
+                                                    applicableServiceIdsArray = v.applicableServiceIds;
+                                                }
+                                                
+                                                if (applicableServiceIdsArray.length > 0) {
+                                                    const matchesService = selectedServiceIds.some(serviceId => 
+                                                        applicableServiceIdsArray.includes(serviceId)
+                                                    );
+                                                    if (!matchesService) return false;
+                                                }
+                                            }
+                                            
+                                            return true;
+                                        });
+                                        
+                                        // Combine all lists
+                                        const allAvailablePromotions = [
+                                            ...filteredApplicablePromotions,
+                                            ...filteredPromotions.filter(p => {
+                                                return !filteredApplicablePromotions.some(ap => ap.id === p.id || ap.code === p.code);
+                                            }),
+                                            ...filteredRedeemedVouchers
+                                        ];
+                                        
+                                        // Remove duplicates by code
+                                        const uniquePromotionsMap = new Map<string, Promotion>();
+                                        filteredApplicablePromotions.forEach(p => {
+                                            if (p.code) uniquePromotionsMap.set(p.code, p);
+                                        });
+                                        [...filteredPromotions, ...filteredRedeemedVouchers].forEach(p => {
+                                            if (p.code && !uniquePromotionsMap.has(p.code)) {
+                                                uniquePromotionsMap.set(p.code, p);
+                                            }
+                                        });
+                                        const uniquePromotions = Array.from(uniquePromotionsMap.values());
 
-                                        if (availablePromos.length === 0) {
+                                        if (uniquePromotions.length === 0) {
                                             return (
                                                 <option value="" disabled>Không có mã ưu đãi khả dụng</option>
                                             );
                                         }
 
-                                        return availablePromos.map(promo => (
-                                            <option key={promo.id} value={promo.code}>
-                                                {promo.code} - {promo.title} {promo.discountType === 'percentage' ? `(-${promo.discountValue}%)` : `(-${formatPrice(promo.discountValue)})`}
-                                                {promo.minOrderValue ? ` (Đơn tối thiểu: ${formatPrice(promo.minOrderValue)})` : ''}
-                                            </option>
-                                        ));
+                                        return uniquePromotions.map((promo: any) => {
+                                            // CHỈ hiển thị "[Voucher đã đổi]" cho voucher đổi điểm (isPublic = false)
+                                            const isPublicNormalized = promo.isPublic === true || promo.isPublic === 1 || promo.isPublic === '1';
+                                            const isRedeemedVoucher = !isPublicNormalized;
+                                            
+                                            // Chỉ hiển thị text "[Voucher đã đổi]" cho voucher đổi điểm có redeemedCount
+                                            const showRedeemedText = isRedeemedVoucher && promo.redeemedCount && promo.redeemedCount > 0;
+                                            
+                                            return (
+                                                <option key={promo.id} value={promo.code}>
+                                                    {promo.code} - {promo.title} 
+                                                    {promo.discountType === 'percentage' 
+                                                        ? ` (Giảm ${promo.discountValue}%)` 
+                                                        : ` (Giảm ${formatPrice(promo.discountValue)})`}
+                                                    {promo.minOrderValue ? ` (Đơn tối thiểu: ${formatPrice(promo.minOrderValue)})` : ''}
+                                                    {showRedeemedText && promo.redeemedCount > 1 ? ` [Bạn có ${promo.redeemedCount} voucher]` : showRedeemedText ? ' [Voucher đã đổi]' : ''}
+                                                </option>
+                                            );
+                                        });
                                     })()}
                                 </select>
                                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">

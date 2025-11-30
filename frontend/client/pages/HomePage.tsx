@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import ServiceCard from '../components/ServiceCard';
 import PromotionCard from '../components/PromotionCard';
 import { ServiceCardSkeleton } from '../components/SkeletonLoader';
-import { ChevronLeftIcon, ChevronRightIcon, StarIcon, SparklesIcon, CheckCircleIcon, ArrowRightIcon } from '../../shared/icons';
+import { ChevronLeftIcon, ChevronRightIcon, StarIcon, SparklesIcon, CheckCircleIcon, ArrowRightIcon, ProfileIcon } from '../../shared/icons';
 import * as apiService from '../services/apiService';
 import type { Service, Promotion, Review } from '../../types';
 
@@ -391,6 +391,8 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
     const [isLoadingReviews, setIsLoadingReviews] = useState(true);
     const [localServices, setLocalServices] = useState<Service[]>([]);
     const [isLoadingServices, setIsLoadingServices] = useState(false);
+    const [mostBookedServices, setMostBookedServices] = useState<Service[]>([]);
+    const [isLoadingMostBooked, setIsLoadingMostBooked] = useState(false);
 
     useEffect(() => {
         const fetchServices = async () => {
@@ -415,11 +417,49 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
     }, [allServices]);
 
     useEffect(() => {
+        const fetchMostBooked = async () => {
+            try {
+                setIsLoadingMostBooked(true);
+                const fetchedMostBooked = await apiService.getMostBookedServices(4);
+                setMostBookedServices(fetchedMostBooked);
+            } catch (error) {
+                console.error("Failed to fetch most booked services:", error);
+                setMostBookedServices([]);
+            } finally {
+                setIsLoadingMostBooked(false);
+            }
+        };
+
+        fetchMostBooked();
+    }, []);
+
+    useEffect(() => {
         const fetchReviews = async () => {
             try {
                 setIsLoadingReviews(true);
                 const fetchedReviews = await apiService.getReviews({});
-                setRecentReviews(fetchedReviews);
+                
+                // Fetch user profile pictures for each review based on userId
+                const reviewsWithUserData = await Promise.all(
+                    fetchedReviews.map(async (review) => {
+                        if (review.userId) {
+                            try {
+                                const user = await apiService.getUserById(review.userId);
+                                return {
+                                    ...review,
+                                    userImageUrl: user.profilePictureUrl || review.userImageUrl,
+                                    userName: user.name || review.userName
+                                };
+                            } catch (error) {
+                                console.error(`Failed to fetch user data for review ${review.id}:`, error);
+                                return review;
+                            }
+                        }
+                        return review;
+                    })
+                );
+                
+                setRecentReviews(reviewsWithUserData);
             } catch (error) {
                 console.error("Failed to fetch reviews:", error);
                 setRecentReviews([]);
@@ -437,6 +477,12 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
     }, [localServices, allServices]);
 
     const featuredServices = useMemo(() => {
+        // Use mostBookedServices if available, otherwise fallback to top rated
+        if (mostBookedServices && mostBookedServices.length > 0) {
+            return mostBookedServices.slice(0, 4);
+        }
+        
+        // Fallback: show top-rated services
         if (!servicesToUse || servicesToUse.length === 0) return [];
         const toBoolean = (value: any, defaultValue: boolean = false): boolean => {
             if (value === undefined || value === null) return defaultValue;
@@ -456,8 +502,8 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                 const ratingB = typeof b.rating === 'string' ? parseFloat(b.rating) : (b.rating || 0);
                 return ratingB - ratingA;
             })
-            .slice(0, 12);
-    }, [servicesToUse]);
+            .slice(0, 4);
+    }, [mostBookedServices, servicesToUse]);
     
     const comboServices = useMemo(() => {
         if (!servicesToUse || servicesToUse.length === 0) return [];
@@ -599,7 +645,7 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
             <section className="py-12 bg-white relative">
                 <div className="container mx-auto px-4 relative z-10">
                     <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
-                        <SectionHeader title="Dịch Vụ Cốt Lõi" subtitle="Những liệu trình được yêu thích nhất." badgeText="Top Rated" />
+                        <SectionHeader title="Dịch Vụ Cốt Lõi" subtitle="4 dịch vụ được đặt nhiều nhất." badgeText="Most Booked" />
                         
                         {featuredServices.length > serviceCarousel.itemsPerView && (
                              <div className="hidden md:flex gap-2 mb-4">
@@ -609,7 +655,7 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                         )}
                     </div>
 
-                    {(isLoading || isLoadingServices) ? (
+                    {(isLoadingMostBooked || isLoadingServices) ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                             {[...Array(4)].map((_, index) => <ServiceCardSkeleton key={index} />)}
                         </div>
@@ -618,21 +664,10 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                             <p className="text-lg text-gray-500">Không có dịch vụ nổi bật nào.</p>
                         </div>
                     ) : (
-                        <div className="relative overflow-hidden -mx-4 px-4 py-4">
-                            <div 
-                                className="flex transition-transform duration-700 ease-out will-change-transform" 
-                                style={{ transform: `translateX(-${serviceCarousel.currentIndex * (100 / serviceCarousel.itemsPerView)}%)` }}
-                            >
-                                {featuredServices.map(service => (
-                                    <div 
-                                        key={service.id} 
-                                        className="flex-shrink-0 px-3"
-                                        style={{ flexBasis: `${100 / serviceCarousel.itemsPerView}%` }}
-                                    >
-                                        <ServiceCard service={service} />
-                                    </div>
-                                ))}
-                            </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            {featuredServices.map(service => (
+                                <ServiceCard key={service.id} service={service} />
+                            ))}
                         </div>
                     )}
                      <div className="mt-8 text-center">
@@ -688,7 +723,7 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                         <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-4">
                             <div>
                                 <span className="inline-block py-1 px-4 rounded-full bg-white border border-brand-accent text-brand-accent font-bold text-[10px] uppercase tracking-wider mb-3 shadow-sm">Limited Time</span>
-                                <h2 className="text-3xl md:text-4xl font-serif font-extrabold text-brand-dark mb-3">Combo Ưu Đãi Tháng</h2>
+                                <h2 className="text-3xl md:text-4xl font-serif font-extrabold text-brand-dark mb-3">Ưu Đãi Tháng</h2>
                                 <p className="text-gray-600 text-base font-medium">Cơ hội trải nghiệm dịch vụ 5 sao với mức giá hấp dẫn.</p>
                             </div>
                             
@@ -788,7 +823,27 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                                      </div>
                                      
                                      <div className="flex items-center gap-3 mb-4">
-                                        <img src={review.userImageUrl} alt={review.userName} className="w-12 h-12 rounded-full object-cover border-2 border-brand-secondary" />
+                                        <div className="w-12 h-12 rounded-full border-2 border-brand-secondary overflow-hidden bg-gray-200 flex items-center justify-center">
+                                            {review.userImageUrl ? (
+                                                <img 
+                                                    src={review.userImageUrl.startsWith('http') ? review.userImageUrl : `http://localhost:3001${review.userImageUrl}`}
+                                                    alt={review.userName}
+                                                    className="w-full h-full object-cover object-center" 
+                                                    style={{ objectPosition: 'center 30%' }}
+                                                    onError={(e) => {
+                                                        e.currentTarget.style.display = 'none';
+                                                        const parent = e.currentTarget.parentElement;
+                                                        if (parent && !parent.querySelector('svg')) {
+                                                            const icon = document.createElement('div');
+                                                            icon.innerHTML = '<svg class="w-6 h-6 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path></svg>';
+                                                            parent.appendChild(icon.firstChild);
+                                                        }
+                                                    }}
+                                                />
+                                            ) : (
+                                                <ProfileIcon className="w-6 h-6 text-gray-400" />
+                                            )}
+                                        </div>
                                         <div>
                                              <h4 className="font-bold text-lg text-brand-text">{review.userName}</h4>
                                              <div className="flex text-yellow-400 mt-0.5">
@@ -797,8 +852,9 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                                         </div>
                                      </div>
                                     <p className="text-gray-600 text-base italic leading-relaxed font-medium">"{review.comment}"</p>
-                                    <div className="mt-4 pt-4 border-t border-gray-100">
+                                    <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
                                         <p className="text-[10px] text-brand-primary font-bold uppercase tracking-wider">{review.serviceName}</p>
+                                        <p className="text-xs text-gray-400">{new Date(review.date).toLocaleDateString('vi-VN')}</p>
                                     </div>
                                 </div>
                             ))}

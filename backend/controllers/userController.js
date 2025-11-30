@@ -45,6 +45,43 @@ class UserController {
     }
 
     /**
+     * POST /api/users/:id/profile-picture - Upload profile picture
+     */
+    async uploadProfilePicture(req, res) {
+        try {
+            const { id } = req.params;
+            
+            if (!req.file) {
+                return res.status(400).json({ error: 'Không có file được upload' });
+            }
+
+            // Tạo URL cho ảnh
+            const profilePictureUrl = `/uploads/avatars/${req.file.filename}`;
+
+            // Cập nhật user với URL ảnh mới
+            const updatedUser = await userService.updateUser(id, { profilePictureUrl });
+
+            res.json(updatedUser);
+        } catch (error) {
+            console.error('Error uploading profile picture:', error);
+            
+            // Xóa file nếu có lỗi
+            if (req.file) {
+                const fs = require('fs');
+                const filePath = req.file.path;
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                }
+            }
+            
+            res.status(500).json({
+                error: 'Failed to upload profile picture',
+                message: error.message
+            });
+        }
+    }
+
+    /**
      * POST /api/users - Create new user
      */
     async createUser(req, res) {

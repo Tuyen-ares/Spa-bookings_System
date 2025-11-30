@@ -16,8 +16,33 @@ router.get('/', async (req, res) => {
     }
 
     try {
-        const reviews = await db.Review.findAll({ where: whereClause });
-        res.json(reviews);
+        const reviews = await db.Review.findAll({ 
+            where: whereClause,
+            include: [{
+                model: db.User,
+                attributes: ['profilePictureUrl', 'name'],
+                required: false
+            }],
+            order: [['date', 'DESC']]
+        });
+        
+        // Map reviews to include current user's profile picture
+        const reviewsWithCurrentPicture = reviews.map(review => {
+            const reviewData = review.toJSON();
+            // If we have user data from join, use their current profile picture
+            if (reviewData.User && reviewData.User.profilePictureUrl) {
+                reviewData.profilePictureUrl = reviewData.User.profilePictureUrl;
+                reviewData.userImageUrl = reviewData.User.profilePictureUrl; // Keep for backward compatibility
+            }
+            // Update userName if it exists in User table (in case name changed)
+            if (reviewData.User && reviewData.User.name) {
+                reviewData.userName = reviewData.User.name;
+            }
+            delete reviewData.User; // Remove the nested User object
+            return reviewData;
+        });
+        
+        res.json(reviewsWithCurrentPicture);
     } catch (error) {
         console.error('Error fetching reviews:', error);
         res.status(500).json({ message: 'Internal server error' });

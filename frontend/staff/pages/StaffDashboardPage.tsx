@@ -133,7 +133,7 @@ const StaffDashboardPage: React.FC<StaffDashboardPageProps> = ({ currentUser, al
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
                 {/* Personal Info Card */}
                 <div className="bg-white p-6 rounded-lg shadow-sm flex items-center gap-4">
-                    <img src={currentUser.profilePictureUrl} alt={currentUser.name} className="w-16 h-16 rounded-full object-cover border-2 border-brand-primary/50" />
+                    <img src={currentUser.profilePictureUrl?.startsWith('http') ? currentUser.profilePictureUrl : `http://localhost:3001${currentUser.profilePictureUrl}`} alt={currentUser.name} className="w-16 h-16 rounded-full object-cover border-2 border-brand-primary/50" />
                     <div>
                         <p className="text-lg font-bold text-gray-800">{currentUser.name}</p>
                         <p className="text-sm text-gray-500">{currentUser.email}</p>

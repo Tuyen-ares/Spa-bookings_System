@@ -447,7 +447,7 @@ export interface InternalNotification {
   id: string;
   recipientId: string;
   recipientType: 'staff' | 'client' | 'all';
-  type: 'appointment_new' | 'appointment_cancelled' | 'shift_change' | 'admin_message' | 'promo_alert' | 'system_news' | 'client_feedback';
+  type: 'appointment_new' | 'appointment_cancelled' | 'shift_change' | 'admin_message' | 'promo_alert' | 'system_news' | 'client_feedback' | 'birthday_gift';
   message: string;
   date: string;
   isRead: boolean;

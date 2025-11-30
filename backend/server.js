@@ -27,6 +27,9 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Serve static files from the assets directory
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
+// Serve uploaded files
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
+
 // Sync database and start server
 // Allow an opt-in ALTER sync to apply non-destructive schema changes when
 // needed. This is disabled by default to avoid accidental schema mutations.

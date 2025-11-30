@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
+const { Op } = require('sequelize');
 const emailService = require('./emailService');
 
 class AuthService {
@@ -152,6 +153,65 @@ class AuthService {
         await user.update({
             lastLogin: new Date()
         });
+
+        // Check if today is user's birthday and create birthday notification if needed (only for Clients)
+        if (user.role === 'Client' && user.birthday) {
+            try {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const birthday = new Date(user.birthday);
+                birthday.setHours(0, 0, 0, 0);
+                const isBirthdayToday = birthday.getMonth() === today.getMonth() && 
+                                       birthday.getDate() === today.getDate();
+
+                if (isBirthdayToday) {
+                    // Check if birthday notification already exists for today
+                    const todayStart = new Date(today);
+                    todayStart.setHours(0, 0, 0, 0);
+                    const todayEnd = new Date(today);
+                    todayEnd.setHours(23, 59, 59, 999);
+
+                    const existingNotification = await db.Notification.findOne({
+                        where: {
+                            userId: user.id,
+                            type: 'birthday_gift',
+                            createdAt: {
+                                [Op.between]: [todayStart, todayEnd]
+                            }
+                        }
+                    });
+
+                    if (!existingNotification) {
+                        // Find birthday promotion
+                        const birthdayPromotion = await db.Promotion.findOne({
+                            where: {
+                                targetAudience: 'Birthday',
+                                isActive: true
+                            }
+                        });
+
+                        if (birthdayPromotion) {
+                            await db.Notification.create({
+                                id: `notif-${uuidv4()}`,
+                                userId: user.id,
+                                type: 'birthday_gift',
+                                title: '🎉 Chúc mừng sinh nhật!',
+                                message: `Chúc mừng sinh nhật bạn! Bạn đã nhận được voucher "${birthdayPromotion.title}". Hãy đến phần Ưu đãi để sử dụng nhé!`,
+                                relatedId: birthdayPromotion.id,
+                                sentVia: 'app',
+                                isRead: false,
+                                emailSent: false,
+                                createdAt: new Date(),
+                            });
+                            console.log(`✅ Birthday notification created for user ${user.name} (${user.id})`);
+                        }
+                    }
+                }
+            } catch (birthdayError) {
+                console.error('Error creating birthday notification:', birthdayError);
+                // Don't fail login if birthday notification fails
+            }
+        }
 
         // Generate token
         const token = this.generateToken(user);

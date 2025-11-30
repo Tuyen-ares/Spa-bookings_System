@@ -30,14 +30,46 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
         loadData();
     }, []);
 
-    // Helper function to check if a course has confirmed appointments
+    // Helper function to check if a course has confirmed appointments (appointments that admin has approved)
     const hasConfirmedAppointments = (course: TreatmentCourse): boolean => {
-        // Check if course has any appointments with status 'scheduled' or 'upcoming' (confirmed statuses)
-        const courseAppointments = appointments.filter(apt => 
-            apt.serviceId === course.serviceId && 
-            apt.userId === course.clientId &&
-            (apt.status === 'scheduled' || apt.status === 'upcoming')
-        );
+        // Check if course has any appointments that are linked to this treatment course via bookingGroupId
+        // and have status that is NOT 'pending' (meaning admin has approved them)
+        const courseId = course.id;
+        const courseAppointments = appointments.filter(apt => {
+            // Check if appointment is linked to this treatment course via bookingGroupId
+            if (!apt.bookingGroupId) return false;
+            
+            // bookingGroupId format: "group-{courseId}" or "group-tc-{courseId}"
+            // courseId format: "tc-xxx" or just "xxx"
+            // We need to check if bookingGroupId matches the courseId
+            
+            // Normalize bookingGroupId: remove "group-" prefix
+            let normalizedGroupId = apt.bookingGroupId;
+            if (normalizedGroupId.startsWith('group-')) {
+                normalizedGroupId = normalizedGroupId.replace('group-', '');
+            }
+            
+            // Check if normalizedGroupId matches courseId (with or without tc- prefix)
+            // Examples:
+            // - bookingGroupId: "group-tc-123" -> normalized: "tc-123" -> matches courseId: "tc-123" ✓
+            // - bookingGroupId: "group-123" -> normalized: "123" -> matches courseId: "tc-123" if we remove tc- ✓
+            // - bookingGroupId: "group-tc-123" -> normalized: "tc-123" -> matches courseId: "123" if we add tc- ✓
+            const matchesCourseId = normalizedGroupId === courseId || 
+                                   normalizedGroupId === courseId.replace(/^tc-/, '') ||
+                                   normalizedGroupId === `tc-${courseId.replace(/^tc-/, '')}` ||
+                                   apt.bookingGroupId === `group-${courseId}` ||
+                                   apt.bookingGroupId === `group-tc-${courseId.replace(/^tc-/, '')}`;
+            
+            if (!matchesCourseId) return false;
+            
+            // Only count appointments that are NOT 'pending' (admin has approved them)
+            // Approved statuses: 'upcoming', 'scheduled', 'in-progress', 'completed'
+            // Exclude: 'pending', 'cancelled'
+            const isApproved = apt.status !== 'pending' && apt.status !== 'cancelled';
+            
+            return isApproved;
+        });
+        
         return courseAppointments.length > 0;
     };
 
@@ -186,21 +218,22 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
     const startIndex = (currentPage - 1) * itemsPerPage;
     const paginatedCourses = filteredCourses.slice(startIndex, startIndex + itemsPerPage);
 
-    // Stats - calculate based on allCourses, not filtered courses
+    // Stats - calculate based on filteredCourses (số lượng hiển thị) and only courses with confirmed appointments
     const stats = useMemo(() => {
+        // Only count courses that have confirmed appointments (already filtered in 'courses' state)
+        // Use filteredCourses to reflect the current filter/search state
         return {
-            total: allCourses.length,
-            active: allCourses.filter(c => c.status === 'active').length,
-            completed: allCourses.filter(c => c.status === 'completed').length,
-            expired: allCourses.filter(c => c.status === 'expired' || (c.expiryDate && new Date(c.expiryDate) < new Date())).length,
-            expiringSoon: allCourses.filter(c => {
+            total: filteredCourses.length,
+            active: filteredCourses.filter(c => c.status === 'active').length,
+            completed: filteredCourses.filter(c => c.status === 'completed').length,
+            expired: filteredCourses.filter(c => c.status === 'expired' || (c.expiryDate && new Date(c.expiryDate) < new Date())).length,
+            expiringSoon: filteredCourses.filter(c => {
                 if (!c.expiryDate) return false;
                 const days = getDaysUntilExpiry(c.expiryDate);
                 return days > 0 && days <= 7;
-            }).length,
-            pending: allCourses.filter(c => c.status === 'pending').length
+            }).length
         };
-    }, [allCourses]);
+    }, [filteredCourses]);
 
     if (isLoading) {
         return (
@@ -219,7 +252,7 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
                 <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                     <div className="text-sm text-gray-600">Tổng số</div>
                     <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
@@ -227,10 +260,6 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                 <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                     <div className="text-sm text-gray-600">Đang hoạt động</div>
                     <div className="text-2xl font-bold text-green-600">{stats.active}</div>
-                </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-                    <div className="text-sm text-gray-600">Chờ xác nhận</div>
-                    <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
                 </div>
                 <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                     <div className="text-sm text-gray-600">Hoàn thành</div>
@@ -250,7 +279,7 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
                 <div className="border-b border-gray-200 px-6 py-4">
                     <h2 className="text-lg font-semibold text-gray-800">
-                        Liệu trình ({allCourses.length})
+                        Liệu trình ({filteredCourses.length})
                     </h2>
                 </div>
             </div>
@@ -327,14 +356,13 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Tiến độ</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Trạng thái</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Hạn sử dụng</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Nhắc nhở</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Hành động</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
                             {paginatedCourses.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
                                         Không tìm thấy liệu trình nào
                                     </td>
                                 </tr>
@@ -345,7 +373,6 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                                     const service = allServices.find(s => s.id === course.serviceId);
                                     const progress = getProgressPercentage(course);
                                     const daysUntilExpiry = course.expiryDate ? getDaysUntilExpiry(course.expiryDate) : null;
-                                    const nextReminder = getNextSessionReminder(course);
 
                                     return (
                                         <tr key={course.id} className="hover:bg-gray-50">
@@ -402,24 +429,6 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                                             </td>
                                             <td className="px-4 py-3 text-sm text-gray-600">
                                                 {course.expiryDate ? new Date(course.expiryDate).toLocaleDateString('vi-VN') : '-'}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                {nextReminder ? (
-                                                    <div className="text-sm">
-                                                        <div className="text-gray-900">
-                                                            {new Date(nextReminder.date).toLocaleDateString('vi-VN')} {nextReminder.time}
-                                                        </div>
-                                                        {nextReminder.daysUntil > 0 && (
-                                                            <div className={`text-xs ${nextReminder.daysUntil <= 2 ? 'text-red-600 font-semibold' : 'text-orange-600'}`}>
-                                                                {nextReminder.daysUntil === 0 ? 'Hôm nay' : 
-                                                                 nextReminder.daysUntil === 1 ? 'Ngày mai' : 
-                                                                 `Còn ${nextReminder.daysUntil} ngày`}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-sm text-gray-400">-</span>
-                                                )}
                                             </td>
                                             <td className="px-4 py-3">
                                                 <button

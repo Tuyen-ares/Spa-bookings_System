@@ -48,8 +48,21 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     const [view, setView] = useState<View>('month');
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
-    const handleAppointmentSelect = useCallback((appointment: Appointment) => {
+    const [selectedAppointmentDetail, setSelectedAppointmentDetail] = useState<Appointment | null>(null);
+    const handleAppointmentSelect = useCallback(async (appointment: Appointment) => {
         setSelectedAppointment(appointment);
+        // Fetch fresh appointment detail from API to get latest payment status
+        try {
+            setIsLoadingModalData(true);
+            const detail = await apiService.getAppointmentById(appointment.id);
+            setSelectedAppointmentDetail(detail);
+        } catch (error) {
+            console.error('Error fetching appointment detail:', error);
+            // Fallback to using appointment from list
+            setSelectedAppointmentDetail(appointment);
+        } finally {
+            setIsLoadingModalData(false);
+        }
     }, []);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -62,8 +75,13 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStaff, setFilterStaff] = useState('all');
+    const [filterCustomer, setFilterCustomer] = useState('all');
     const [filterService, setFilterService] = useState('all');
     const [filterStatus, setFilterStatus] = useState<Appointment['status'] | 'all'>('all');
+    const [showStaffDropdown, setShowStaffDropdown] = useState(false);
+    const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+    const [staffSearch, setStaffSearch] = useState('');
+    const [customerSearch, setCustomerSearch] = useState('');
 
     // New state for cancellation reason
     const [appointmentToCancel, setAppointmentToCancel] = useState<Appointment | null>(null);
@@ -79,6 +97,128 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             setLocalUsers(allUsers);
         }
     }, [allUsers]);
+
+    // Get staff members
+    const staffMembers = useMemo(() => {
+        return localUsers.filter(u => (u.role === 'Staff' || u.role === 'Admin') && u.status === 'Active');
+    }, [localUsers]);
+
+    // Get customers who have appointments from today onwards
+    const allCustomers = useMemo(() => {
+        const clients = localUsers.filter(u => u.role === 'Client');
+        
+        // Get today's date at midnight for comparison
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = today.toISOString().split('T')[0];
+        
+        // Only return customers who have at least one appointment from today onwards
+        const customerIdsWithAppointments = new Set(
+            appointments
+                .filter(apt => apt.status !== 'cancelled' && apt.date >= todayStr)
+                .map(apt => apt.userId)
+        );
+        
+        return clients.filter(client => customerIdsWithAppointments.has(client.id));
+    }, [localUsers, appointments]);
+
+    // Filter staff for dropdown search
+    const filteredStaffForDropdown = useMemo(() => {
+        if (!staffSearch.trim()) {
+            return staffMembers;
+        }
+        const searchLower = staffSearch.toLowerCase();
+        return staffMembers.filter(staff => 
+            (staff.name?.toLowerCase().includes(searchLower) || '') ||
+            (staff.phone?.toLowerCase().includes(searchLower) || '')
+        );
+    }, [staffMembers, staffSearch]);
+
+    // Filter customers for dropdown search
+    const filteredCustomersForDropdown = useMemo(() => {
+        if (!customerSearch.trim()) {
+            return allCustomers;
+        }
+        const searchLower = customerSearch.toLowerCase();
+        return allCustomers.filter(customer => 
+            (customer.name?.toLowerCase().includes(searchLower) || '') ||
+            (customer.phone?.toLowerCase().includes(searchLower) || '')
+        );
+    }, [allCustomers, customerSearch]);
+
+    // Handle customer select and navigate to nearest appointment
+    const handleCustomerSelect = (customerId: string) => {
+        setFilterCustomer(customerId);
+        setCustomerSearch('');
+        setShowCustomerDropdown(false);
+
+        if (customerId === 'all') {
+            return;
+        }
+
+        // Get today's date at midnight for comparison
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = today.toISOString().split('T')[0];
+
+        // Find all appointments for this customer from today onwards
+        const customerAppointments = appointments.filter(
+            apt => apt.userId === customerId && apt.status !== 'cancelled' && apt.date >= todayStr
+        );
+
+        if (customerAppointments.length === 0) {
+            return;
+        }
+
+        // Find the nearest upcoming appointment
+        const now = new Date();
+        const upcomingAppointments = customerAppointments.filter(apt => {
+            const aptDate = new Date(apt.date + 'T' + (apt.time || '00:00'));
+            return aptDate >= now;
+        });
+
+        if (upcomingAppointments.length === 0) {
+            // If no upcoming appointments, use the earliest future appointment (same day but later time)
+            const sameDayAppointments = customerAppointments.filter(apt => apt.date === todayStr);
+            if (sameDayAppointments.length > 0) {
+                const nearestAppointment = sameDayAppointments.reduce((nearest, apt) => {
+                    const nearestTime = nearest.time || '23:59';
+                    const aptTime = apt.time || '23:59';
+                    return aptTime < nearestTime ? apt : nearest;
+                });
+                // Navigate to today
+                setCurrentDate(new Date());
+                return;
+            }
+            return;
+        }
+
+        // Get the nearest upcoming appointment
+        const nearestAppointment = upcomingAppointments.reduce((nearest, apt) => {
+            const nearestDate = new Date(nearest.date + 'T' + (nearest.time || '00:00'));
+            const aptDate = new Date(apt.date + 'T' + (apt.time || '00:00'));
+            return aptDate < nearestDate ? apt : nearest;
+        });
+
+        // Navigate to the date of this appointment
+        const appointmentDate = new Date(nearestAppointment.date);
+        setCurrentDate(appointmentDate);
+    };
+
+    // Close dropdowns when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (!target.closest('.staff-dropdown-container') && !target.closest('.customer-dropdown-container')) {
+                setShowStaffDropdown(false);
+                setShowCustomerDropdown(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
 
     // Fetch users when appointment detail modal opens if needed
     useEffect(() => {
@@ -155,8 +295,8 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     // State for selected services (for table display)
     const [selectedServices, setSelectedServices] = useState<{ id: string; name: string; price: number; quantity: number }[]>([]);
 
-    // State for dropdown visibility
-    const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+    // State for dropdown visibility (for add appointment modal)
+    const [showAddModalCustomerDropdown, setShowAddModalCustomerDropdown] = useState(false);
     const [showQuickAddCustomer, setShowQuickAddCustomer] = useState(false);
 
     // State for expanded dates in calendar
@@ -192,22 +332,36 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         }
     }, [allServices]);
 
-    // Fetch appointments if needed
+    // Fetch appointments if needed and listen for refresh events
     useEffect(() => {
         const fetchAppointments = async () => {
-            if (initialAppointments.length === 0) {
-                setIsLoading(true);
-                try {
-                    const data = await apiService.getAppointments();
-                    setAppointments(data);
-                } catch (err: any) {
-                    setError(err.message || 'Không thể tải lịch hẹn');
-                } finally {
-                    setIsLoading(false);
-                }
+            setIsLoading(true);
+            try {
+                const data = await apiService.getAppointments();
+                setAppointments(data);
+            } catch (err: any) {
+                setError(err.message || 'Không thể tải lịch hẹn');
+            } finally {
+                setIsLoading(false);
             }
         };
-        fetchAppointments();
+        
+        // Fetch on mount if needed
+        if (initialAppointments.length === 0) {
+            fetchAppointments();
+        }
+
+        // Listen for refresh events
+        const handleRefresh = () => {
+            fetchAppointments();
+        };
+        window.addEventListener('refresh-appointments', handleRefresh);
+        window.addEventListener('appointments-updated', handleRefresh);
+
+        return () => {
+            window.removeEventListener('refresh-appointments', handleRefresh);
+            window.removeEventListener('appointments-updated', handleRefresh);
+        };
     }, []);
 
     // Handle confirm appointment
@@ -339,9 +493,36 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
 
     const stats = useMemo(() => {
         if (isLoading || error) return { pending: 0, upcoming: 0, completed: 0, cancelled: 0, inProgress: 0 };
+        
+        // "Đã xác nhận" = số lần admin xác nhận, không phải số appointments
+        // Logic: Mỗi bookingGroupId (liệu trình) chỉ đếm 1 lần, dù có nhiều buổi
+        // Appointments không có bookingGroupId (single appointments) đếm từng cái một
+        
+        // Lấy tất cả appointments đã được xác nhận (status: 'upcoming' hoặc 'scheduled')
+        const confirmedAppointments = appointments.filter(a => 
+            (a.status === 'upcoming' || a.status === 'scheduled')
+        );
+        
+        // Nhóm các appointments đã xác nhận theo bookingGroupId
+        const confirmedBookingGroups = new Set<string>();
+        let singleConfirmedAppointments = 0; // Appointments không có bookingGroupId
+        
+        confirmedAppointments.forEach(apt => {
+            if (apt.bookingGroupId) {
+                // Có bookingGroupId: nhóm lại, mỗi group chỉ đếm 1 lần
+                confirmedBookingGroups.add(apt.bookingGroupId);
+            } else {
+                // Không có bookingGroupId: đếm từng appointment
+                singleConfirmedAppointments++;
+            }
+        });
+        
+        // Tổng số lần xác nhận = số booking groups + số single appointments
+        const totalConfirmed = confirmedBookingGroups.size + singleConfirmedAppointments;
+        
         return {
             pending: appointments.filter(a => a.status === 'pending').length,
-            upcoming: appointments.filter(a => a.status === 'upcoming').length,
+            upcoming: totalConfirmed, // Số lần admin xác nhận (mỗi booking group = 1 lần)
             completed: appointments.filter(a => a.status === 'completed').length,
             cancelled: appointments.filter(a => a.status === 'cancelled').length,
             inProgress: appointments.filter(a => a.status === 'in-progress').length,
@@ -434,20 +615,20 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         }
     };
 
-    // Get all customers for dropdown
-    const allCustomers = useMemo(() => {
+    // Get all customers for add appointment modal dropdown
+    const allCustomersForModal = useMemo(() => {
         return localUsers.filter(u => u.role === 'Client');
     }, [localUsers]);
 
-    // Filter customers based on search
-    const filteredCustomersForDropdown = useMemo(() => {
-        if (!newAppointmentForm.customerSearch) return allCustomers.slice(0, 10);
+    // Filter customers based on search for add appointment modal
+    const filteredCustomersForModalDropdown = useMemo(() => {
+        if (!newAppointmentForm.customerSearch) return allCustomersForModal.slice(0, 10);
         const search = newAppointmentForm.customerSearch.toLowerCase();
-        return allCustomers.filter(u =>
+        return allCustomersForModal.filter(u =>
             u.name?.toLowerCase().includes(search) ||
             u.phone?.includes(search)
         ).slice(0, 10);
-    }, [newAppointmentForm.customerSearch, allCustomers]);
+    }, [newAppointmentForm.customerSearch, allCustomersForModal]);
 
     // Get pending appointments for "Lịch hẹn chưa xác nhận" tab
     const pendingAppointments = useMemo(() => {
@@ -487,9 +668,10 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 app.serviceName.toLowerCase().includes(search.toLowerCase()) ||
                 (user && user.name.toLowerCase().includes(search.toLowerCase()));
             const staffMatch = staffFilter === 'all' || app.therapistId === staffFilter;
+            const customerMatch = filterCustomer === 'all' || app.userId === filterCustomer;
             const serviceMatch = serviceFilter === 'all' || app.serviceId === serviceFilter;
             const statusMatch = statusFilter === 'all' || app.status === statusFilter;
-            if (searchMatch && staffMatch && serviceMatch && statusMatch) {
+            if (searchMatch && staffMatch && customerMatch && serviceMatch && statusMatch) {
                 result.push(app);
             }
         }
@@ -682,7 +864,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 frequencyValue: undefined,
             });
             setSelectedServices([]);
-            setShowCustomerDropdown(false);
+            setShowAddModalCustomerDropdown(false);
             setShowQuickAddCustomer(false);
             setShowAddModal(false);
 
@@ -735,10 +917,11 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 app.serviceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (user && user.name.toLowerCase().includes(searchTerm.toLowerCase()));
             const staffMatch = filterStaff === 'all' || app.therapistId === filterStaff;
+            const customerMatch = filterCustomer === 'all' || app.userId === filterCustomer;
             const serviceMatch = filterService === 'all' || app.serviceId === filterService;
             const statusMatch = filterStatus === 'all' || app.status === filterStatus;
 
-            return searchMatch && staffMatch && serviceMatch && statusMatch;
+            return searchMatch && staffMatch && customerMatch && serviceMatch && statusMatch;
         });
 
         // Group appointments by date
@@ -1000,6 +1183,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                     app.serviceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                     (user && user.name.toLowerCase().includes(searchTerm.toLowerCase()));
                 const staffMatch = filterStaff === 'all' || app.therapistId === filterStaff;
+                const customerMatch = filterCustomer === 'all' || app.userId === filterCustomer;
                 const serviceMatch = filterService === 'all' || app.serviceId === filterService;
                 const statusMatch = filterStatus === 'all' || app.status === filterStatus;
 
@@ -1474,49 +1658,59 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             )}
 
             {selectedAppointment && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSelectedAppointment(null)}>
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setSelectedAppointment(null); setSelectedAppointmentDetail(null); }}>
                     <div className="bg-white rounded-lg shadow-xl max-w-md w-full" onClick={e => e.stopPropagation()}>
                         <div className="p-6">
                             <h3 className="text-xl font-bold text-gray-800 mb-4">Chi tiết lịch hẹn</h3>
-                            {(() => {
+                            {isLoadingModalData ? (
+                                <div className="text-center py-8">
+                                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                                    <p className="mt-2 text-gray-600">Đang tải...</p>
+                                </div>
+                            ) : (() => {
+                                // Use selectedAppointmentDetail if available, otherwise fallback to selectedAppointment
+                                const appointmentToDisplay = selectedAppointmentDetail || selectedAppointment;
+                                
                                 // Combine allUsers and localUsers for lookup - prioritize localUsers
                                 const allUsersList = [...localUsers, ...allUsers.filter(u => !localUsers.find(lu => lu.id === u.id))];
 
                                 // Debug log
                                 console.log('Appointment detail modal - Debug info:', {
-                                    appointmentId: selectedAppointment.id,
-                                    userId: selectedAppointment.userId,
-                                    therapistId: selectedAppointment.therapistId,
+                                    appointmentId: appointmentToDisplay.id,
+                                    userId: appointmentToDisplay.userId,
+                                    therapistId: appointmentToDisplay.therapistId,
+                                    paymentStatus: appointmentToDisplay.paymentStatus,
                                     allUsersListLength: allUsersList.length,
                                     localUsersLength: localUsers.length,
                                     allUsersLength: allUsers.length,
-                                    appointmentData: selectedAppointment
+                                    appointmentData: appointmentToDisplay,
+                                    usingDetail: !!selectedAppointmentDetail
                                 });
 
                                 // Get client information - try multiple sources
-                                let client = (selectedAppointment as any).Client;
-                                if (!client && selectedAppointment.userId) {
-                                    client = allUsersList.find(u => u.id === selectedAppointment.userId);
+                                let client = (appointmentToDisplay as any).Client;
+                                if (!client && appointmentToDisplay.userId) {
+                                    client = allUsersList.find(u => u.id === appointmentToDisplay.userId);
                                 }
 
                                 const clientName = client?.name ||
-                                    (selectedAppointment as any).userName ||
-                                    (selectedAppointment as any).customerName ||
+                                    (appointmentToDisplay as any).userName ||
+                                    (appointmentToDisplay as any).customerName ||
                                     'N/A';
                                 const clientPhone = client?.phone ||
-                                    (selectedAppointment as any).phone ||
-                                    (selectedAppointment as any).customerPhone ||
+                                    (appointmentToDisplay as any).phone ||
+                                    (appointmentToDisplay as any).customerPhone ||
                                     '';
 
                                 // Get therapist information - try multiple sources
-                                let therapist = (selectedAppointment as any).Therapist;
-                                if (!therapist && selectedAppointment.therapistId) {
-                                    therapist = allUsersList.find(u => u.id === selectedAppointment.therapistId);
+                                let therapist = (appointmentToDisplay as any).Therapist;
+                                if (!therapist && appointmentToDisplay.therapistId) {
+                                    therapist = allUsersList.find(u => u.id === appointmentToDisplay.therapistId);
                                 }
 
                                 const therapistName = therapist?.name ||
-                                    (selectedAppointment as any).therapist ||
-                                    (selectedAppointment as any).therapistName ||
+                                    (appointmentToDisplay as any).therapist ||
+                                    (appointmentToDisplay as any).therapistName ||
                                     'Chưa phân công';
 
                                 console.log('Resolved info:', {
@@ -1524,22 +1718,23 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                     clientPhone,
                                     therapistName,
                                     clientFound: !!client,
-                                    therapistFound: !!therapist
+                                    therapistFound: !!therapist,
+                                    paymentStatus: appointmentToDisplay.paymentStatus
                                 });
 
                                 return (
                                     <div className="space-y-2 text-sm">
-                                        <p><strong>Dịch vụ:</strong> {selectedAppointment.serviceName}</p>
+                                        <p><strong>Dịch vụ:</strong> {appointmentToDisplay.serviceName}</p>
                                         <p><strong>Khách hàng:</strong> {clientName}</p>
                                         <p><strong>Số điện thoại:</strong> {clientPhone || 'N/A'}</p>
-                                        <p><strong>Thời gian:</strong> {selectedAppointment.time}, {new Date(selectedAppointment.date).toLocaleDateString('vi-VN')}</p>
+                                        <p><strong>Thời gian:</strong> {appointmentToDisplay.time}, {new Date(appointmentToDisplay.date).toLocaleDateString('vi-VN')}</p>
                                         <p><strong>Kỹ thuật viên:</strong> {therapistName}</p>
-                                        <p><strong>Trạng thái:</strong> <span className={`font-semibold ${STATUS_CONFIG[selectedAppointment.status].color}`}>{STATUS_CONFIG[selectedAppointment.status].text}</span></p>
-                                        <p><strong>Thanh toán:</strong> <span className={`font-semibold ${selectedAppointment.paymentStatus === 'Paid' ? 'text-green-600' : 'text-yellow-600'}`}>
-                                            {selectedAppointment.paymentStatus === 'Paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                                        <p><strong>Trạng thái:</strong> <span className={`font-semibold ${STATUS_CONFIG[appointmentToDisplay.status].color}`}>{STATUS_CONFIG[appointmentToDisplay.status].text}</span></p>
+                                        <p><strong>Thanh toán:</strong> <span className={`font-semibold ${appointmentToDisplay.paymentStatus === 'Paid' ? 'text-green-600' : 'text-yellow-600'}`}>
+                                            {appointmentToDisplay.paymentStatus === 'Paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
                                         </span></p>
-                                        {selectedAppointment.notesForTherapist && (
-                                            <p><strong>Ghi chú:</strong> {selectedAppointment.notesForTherapist}</p>
+                                        {appointmentToDisplay.notesForTherapist && (
+                                            <p><strong>Ghi chú:</strong> {appointmentToDisplay.notesForTherapist}</p>
                                         )}
                                     </div>
                                 );
@@ -1553,18 +1748,19 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                             setAppointmentToApprove(selectedAppointment);
                                             setSelectedTherapistId(selectedAppointment.therapistId || '');
                                             setSelectedAppointment(null);
+                                            setSelectedAppointmentDetail(null);
                                         }}
                                         className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 text-sm font-semibold"
                                     >
                                         Xác nhận
                                     </button>
-                                    <button onClick={() => { setAppointmentToCancel(selectedAppointment); setSelectedAppointment(null); }} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold">Từ chối</button>
+                                    <button onClick={() => { setAppointmentToCancel(selectedAppointment); setSelectedAppointment(null); setSelectedAppointmentDetail(null); }} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold">Từ chối</button>
                                 </>
                             )}
                             {(selectedAppointment.status === 'upcoming' || selectedAppointment.status === 'in-progress') && (
-                                <button onClick={() => { setAppointmentToCancel(selectedAppointment); setSelectedAppointment(null); }} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold">Hủy lịch</button>
+                                <button onClick={() => { setAppointmentToCancel(selectedAppointment); setSelectedAppointment(null); setSelectedAppointmentDetail(null); }} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold">Hủy lịch</button>
                             )}
-                            <button onClick={() => setSelectedAppointment(null)} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-semibold">Đóng</button>
+                            <button onClick={() => { setSelectedAppointment(null); setSelectedAppointmentDetail(null); }} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-semibold">Đóng</button>
                         </div>
                     </div>
                 </div>
@@ -1611,7 +1807,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                             className="relative w-full min-h-[42px] border border-gray-300 rounded-md bg-white"
                                             onClick={(e) => {
                                                 if (!newAppointmentForm.selectedCustomerId) {
-                                                    setShowCustomerDropdown(!showCustomerDropdown);
+                                                    setShowAddModalCustomerDropdown(!showAddModalCustomerDropdown);
                                                 }
                                             }}
                                         >
@@ -1638,7 +1834,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                                 customerEmail: '',
                                                                 customerSearch: '',
                                                             }));
-                                                            setShowCustomerDropdown(false);
+                                                            setShowAddModalCustomerDropdown(false);
                                                         }}
                                                         className="ml-auto text-gray-400 hover:text-gray-600"
                                                     >
@@ -1652,9 +1848,9 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                         value={newAppointmentForm.customerSearch}
                                                         onChange={(e) => {
                                                             setNewAppointmentForm(prev => ({ ...prev, customerSearch: e.target.value }));
-                                                            setShowCustomerDropdown(true);
+                                                            setShowAddModalCustomerDropdown(true);
                                                         }}
-                                                        onFocus={() => setShowCustomerDropdown(true)}
+                                                        onFocus={() => setShowAddModalCustomerDropdown(true)}
                                                         className="w-full p-2 pr-8 border-0 rounded-md focus:ring-0 focus:outline-none bg-transparent"
                                                         placeholder="Chọn khách hàng..."
                                                     />
@@ -1664,10 +1860,10 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                 </>
                                             )}
                                         </div>
-                                        {showCustomerDropdown && !newAppointmentForm.selectedCustomerId && (
+                                        {showAddModalCustomerDropdown && !newAppointmentForm.selectedCustomerId && (
                                             <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                                                {filteredCustomersForDropdown.length > 0 ? (
-                                                    filteredCustomersForDropdown.map(customer => (
+                                                {filteredCustomersForModalDropdown.length > 0 ? (
+                                                    filteredCustomersForModalDropdown.map(customer => (
                                                         <div
                                                             key={customer.id}
                                                             onClick={() => {
@@ -1679,7 +1875,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                                     customerEmail: customer.email || '',
                                                                     customerSearch: customer.name || '',
                                                                 }));
-                                                                setShowCustomerDropdown(false);
+                                                                setShowAddModalCustomerDropdown(false);
                                                             }}
                                                             className="p-3 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
                                                         >
@@ -2040,7 +2236,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                             <button
                                 onClick={() => {
                                     setShowAddModal(false);
-                                    setShowCustomerDropdown(false);
+                                    setShowAddModalCustomerDropdown(false);
                                     setShowQuickAddCustomer(false);
                                     setSelectedServices([]);
                                     setNewAppointmentForm({
@@ -2126,7 +2322,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                         <>
                             {/* Filters */}
                             <div className="bg-gray-50 p-4 rounded-lg mb-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                                     <input
                                         type="text"
                                         placeholder="Tìm kiếm..."
@@ -2134,16 +2330,206 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                         onChange={e => setSearchTerm(e.target.value)}
                                         className="w-full p-2 border rounded-md"
                                     />
-                                    <select
-                                        value={filterStaff}
-                                        onChange={e => setFilterStaff(e.target.value)}
-                                        className="w-full p-2 border rounded-md bg-white"
-                                    >
-                                        <option value="all">Tất cả nhân viên</option>
-                                        {allUsers.filter(u => u.role === 'Staff' || u.role === 'Admin').map(t => (
-                                            <option key={t.id} value={t.id}>{t.name}</option>
-                                        ))}
-                                    </select>
+                                    
+                                    {/* Staff Filter Dropdown */}
+                                    <div className="relative staff-dropdown-container">
+                                        <div
+                                            className="relative w-full min-h-[42px] border border-gray-300 rounded-md bg-white cursor-pointer"
+                                            onClick={() => setShowStaffDropdown(!showStaffDropdown)}
+                                        >
+                                            {filterStaff !== 'all' ? (
+                                                <div className="flex items-center gap-2 p-2 flex-wrap">
+                                                    {(() => {
+                                                        const selectedStaff = staffMembers.find(s => s.id === filterStaff);
+                                                        if (!selectedStaff) return null;
+                                                        return (
+                                                            <>
+                                                                <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-sm">
+                                                                    <ProfileIcon className="w-4 h-4" />
+                                                                    <span>{selectedStaff.name}</span>
+                                                                </div>
+                                                                {selectedStaff.phone && (
+                                                                    <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-sm">
+                                                                        <PhoneIcon className="w-4 h-4" />
+                                                                        <span>{selectedStaff.phone}</span>
+                                                                    </div>
+                                                                )}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setFilterStaff('all');
+                                                                        setShowStaffDropdown(false);
+                                                                    }}
+                                                                    className="ml-auto text-gray-400 hover:text-gray-600"
+                                                                >
+                                                                    <CloseIcon className="w-4 h-4" />
+                                                                </button>
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <input
+                                                        type="text"
+                                                        value={staffSearch}
+                                                        onChange={(e) => {
+                                                            setStaffSearch(e.target.value);
+                                                            setShowStaffDropdown(true);
+                                                        }}
+                                                        onFocus={() => setShowStaffDropdown(true)}
+                                                        className="w-full p-2 pr-8 border-0 rounded-md focus:ring-0 focus:outline-none bg-transparent"
+                                                        placeholder="Chọn nhân viên..."
+                                                    />
+                                                    <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                                                        <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                        {showStaffDropdown && filterStaff === 'all' && (
+                                            <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                                <div
+                                                    onClick={() => {
+                                                        setFilterStaff('all');
+                                                        setStaffSearch('');
+                                                        setShowStaffDropdown(false);
+                                                    }}
+                                                    className="p-3 hover:bg-gray-100 cursor-pointer border-b font-medium text-gray-700 bg-gray-50"
+                                                >
+                                                    Tất cả nhân viên
+                                                </div>
+                                                {filteredStaffForDropdown.length > 0 ? (
+                                                    filteredStaffForDropdown.map(staff => (
+                                                        <div
+                                                            key={staff.id}
+                                                            onClick={() => {
+                                                                setFilterStaff(staff.id);
+                                                                setStaffSearch(staff.name || '');
+                                                                setShowStaffDropdown(false);
+                                                            }}
+                                                            className="p-3 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-xs">
+                                                                    <ProfileIcon className="w-3 h-3" />
+                                                                    <span className="font-medium">{staff.name}</span>
+                                                                </div>
+                                                                {staff.phone && (
+                                                                    <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs">
+                                                                        <PhoneIcon className="w-3 h-3" />
+                                                                        <span>{staff.phone}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <div className="p-3 text-sm text-gray-500 text-center">
+                                                        {staffSearch ? 'Không tìm thấy nhân viên' : 'Nhập tên hoặc số điện thoại để tìm kiếm'}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Customer Filter Dropdown */}
+                                    <div className="relative customer-dropdown-container">
+                                        <div
+                                            className="relative w-full min-h-[42px] border border-gray-300 rounded-md bg-white cursor-pointer"
+                                            onClick={() => setShowCustomerDropdown(!showCustomerDropdown)}
+                                        >
+                                            {filterCustomer !== 'all' ? (
+                                                <div className="flex items-center gap-2 p-2 flex-wrap">
+                                                    {(() => {
+                                                        const selectedCustomer = allCustomers.find(c => c.id === filterCustomer);
+                                                        if (!selectedCustomer) return null;
+                                                        return (
+                                                            <>
+                                                                <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-sm">
+                                                                    <ProfileIcon className="w-4 h-4" />
+                                                                    <span>{selectedCustomer.name}</span>
+                                                                </div>
+                                                                {selectedCustomer.phone && (
+                                                                    <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-sm">
+                                                                        <PhoneIcon className="w-4 h-4" />
+                                                                        <span>{selectedCustomer.phone}</span>
+                                                                    </div>
+                                                                )}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleCustomerSelect('all');
+                                                                    }}
+                                                                    className="ml-auto text-gray-400 hover:text-gray-600"
+                                                                >
+                                                                    <CloseIcon className="w-4 h-4" />
+                                                                </button>
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <input
+                                                        type="text"
+                                                        value={customerSearch}
+                                                        onChange={(e) => {
+                                                            setCustomerSearch(e.target.value);
+                                                            setShowCustomerDropdown(true);
+                                                        }}
+                                                        onFocus={() => setShowCustomerDropdown(true)}
+                                                        className="w-full p-2 pr-8 border-0 rounded-md focus:ring-0 focus:outline-none bg-transparent"
+                                                        placeholder="Chọn khách hàng..."
+                                                    />
+                                                    <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                                                        <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                        {showCustomerDropdown && filterCustomer === 'all' && (
+                                            <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                                <div
+                                                    onClick={() => {
+                                                        handleCustomerSelect('all');
+                                                    }}
+                                                    className="p-3 hover:bg-gray-100 cursor-pointer border-b font-medium text-gray-700 bg-gray-50"
+                                                >
+                                                    Tất cả khách hàng
+                                                </div>
+                                                {filteredCustomersForDropdown.length > 0 ? (
+                                                    filteredCustomersForDropdown.map(customer => (
+                                                        <div
+                                                            key={customer.id}
+                                                            onClick={() => {
+                                                                handleCustomerSelect(customer.id);
+                                                            }}
+                                                            className="p-3 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-xs">
+                                                                    <ProfileIcon className="w-3 h-3" />
+                                                                    <span className="font-medium">{customer.name}</span>
+                                                                </div>
+                                                                {customer.phone && (
+                                                                    <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs">
+                                                                        <PhoneIcon className="w-3 h-3" />
+                                                                        <span>{customer.phone}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <div className="p-3 text-sm text-gray-500 text-center">
+                                                        {customerSearch ? 'Không tìm thấy khách hàng' : 'Nhập tên hoặc số điện thoại để tìm kiếm'}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <select
                                         value={filterService}
                                         onChange={e => setFilterService(e.target.value)}

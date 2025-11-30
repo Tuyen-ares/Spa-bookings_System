@@ -78,7 +78,7 @@ const StaffCustomerInteractionPage: React.FC<StaffCustomerInteractionPageProps> 
                         return (
                             <div key={client.id} className="bg-white p-6 rounded-lg shadow-md flex items-center justify-between">
                                 <div className="flex items-center gap-4">
-                                    <img src={client.profilePictureUrl} alt={client.name} className="w-16 h-16 rounded-full object-cover" />
+                                    <img src={client.profilePictureUrl?.startsWith('http') ? client.profilePictureUrl : `http://localhost:3001${client.profilePictureUrl}`} alt={client.name} className="w-16 h-16 rounded-full object-cover" />
                                     <div>
                                         <p className="font-bold text-lg text-gray-800">{client.name}</p>
                                         <p className="text-sm text-gray-600">{client.email}</p>

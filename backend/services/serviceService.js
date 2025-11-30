@@ -200,6 +200,68 @@ class ServiceService {
             );
         }
     }
+
+    /**
+     * Get most booked services
+     */
+    async getMostBookedServices(limit = 4) {
+        const { Sequelize } = require('sequelize');
+        
+        // Query to count completed appointments for each service
+        const serviceBookingCounts = await db.Appointment.findAll({
+            attributes: [
+                'serviceId',
+                [Sequelize.fn('COUNT', Sequelize.col('Appointment.id')), 'bookingCount']
+            ],
+            where: {
+                status: 'completed'  // Changed from 'Completed' to match model enum
+            },
+            group: ['serviceId'],
+            order: [[Sequelize.literal('bookingCount'), 'DESC']],
+            limit: limit,
+            raw: true
+        });
+
+        // Get service IDs with their booking counts
+        const serviceIds = serviceBookingCounts.map(item => item.serviceId);
+        
+        if (serviceIds.length === 0) {
+            // If no completed bookings, return top-rated active services
+            return await db.Service.findAll({
+                where: { isActive: true },
+                include: [{
+                    model: db.ServiceCategory,
+                    attributes: ['id', 'name', 'description']
+                }],
+                order: [['rating', 'DESC']],
+                limit: limit
+            });
+        }
+
+        // Fetch full service details
+        const services = await db.Service.findAll({
+            where: {
+                id: serviceIds,
+                isActive: true
+            },
+            include: [{
+                model: db.ServiceCategory,
+                attributes: ['id', 'name', 'description']
+            }]
+        });
+
+        // Sort services by booking count
+        const bookingCountMap = {};
+        serviceBookingCounts.forEach(item => {
+            bookingCountMap[item.serviceId] = parseInt(item.bookingCount);
+        });
+
+        services.sort((a, b) => {
+            return (bookingCountMap[b.id] || 0) - (bookingCountMap[a.id] || 0);
+        });
+
+        return services;
+    }
 }
 
 module.exports = new ServiceService();

@@ -145,19 +145,18 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
         return today.getMonth() === birthDate.getMonth() && today.getDate() === birthDate.getDate();
     }, [currentUser]);
     
-    // Check if user is truly a new client (no successful bookings at all)
-    const isNewClient = useMemo(() => {
-        if (!currentUser || !allAppointments) return true; // Assume new if no data
-        // User is NEW CLIENT only if they have NO completed/paid appointments AND NO upcoming/scheduled paid appointments
-        const hasAnySuccessfulBooking = allAppointments.some(app => 
-            app.status !== 'cancelled' && 
-            (app.paymentStatus === 'Paid' || 
-             (app.status === 'completed' || app.status === 'upcoming' || app.status === 'scheduled'))
+    // Check if user has used a service (for New Clients vouchers)
+    const hasUsedService = useMemo(() => {
+        if (!currentUser || allAppointments.length === 0) return false;
+        // Check if user has any completed/paid appointments
+        return allAppointments.some(app =>
+            (app.status === 'completed' || app.status === 'upcoming' || app.status === 'scheduled') &&
+            app.paymentStatus === 'Paid'
         );
-        return !hasAnySuccessfulBooking;
     }, [currentUser, allAppointments]);
     
     // Get available vouchers for "Ưu đãi của tôi" tab
+    // QUAN TRỌNG: Chỉ hiển thị voucher Birthday và New Clients, KHÔNG hiển thị voucher public khác
     const myAvailableVouchers = useMemo(() => {
         if (!currentUser) return [];
         const today = new Date();
@@ -171,39 +170,25 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
             if (today > expiryDate) return false;
             if (promo.stock !== null && promo.stock <= 0) return false;
             
-            // Birthday vouchers: Only show if TODAY is birthday (not before, not after)
-            if (promo.targetAudience === 'Birthday') {
-                // Must be exactly today
-                if (!isBirthdayToday) return false;
-                
-                // Check if user already used birthday voucher (check redeemedVouchers or promotions usage)
-                // Birthday voucher can only be used ONCE per year, on the birthday
-                const hasUsedBirthdayVoucher = redeemedVouchers.some(rv => 
-                    rv.targetAudience === 'Birthday' && rv.redeemedCount > 0
-                );
-                
-                if (hasUsedBirthdayVoucher) return false;
-                
+            // CHỈ hiển thị voucher với targetAudience là Birthday hoặc New Clients
+            // KHÔNG hiển thị voucher public thông thường (targetAudience === 'All' hoặc null)
+            if (promo.targetAudience !== 'Birthday' && promo.targetAudience !== 'New Clients') {
+                return false; // Loại bỏ tất cả voucher khác (bao gồm voucher public thông thường)
+            }
+            
+            // Show birthday vouchers if today is birthday
+            if (promo.targetAudience === 'Birthday' && isBirthdayToday) {
                 return true;
             }
             
-            // New client vouchers: Only show if user is truly NEW (no successful bookings)
-            if (promo.targetAudience === 'New Clients') {
-                if (!isNewClient) return false;
-                
-                // Check if user already redeemed or used "New Clients" voucher
-                const hasUsedNewClientVoucher = redeemedVouchers.some(rv => 
-                    rv.targetAudience === 'New Clients' && rv.redeemedCount > 0
-                );
-                
-                if (hasUsedNewClientVoucher) return false;
-                
+            // Show new client vouchers if user hasn't used any service
+            if (promo.targetAudience === 'New Clients' && !hasUsedService) {
                 return true;
             }
             
             return false;
         });
-    }, [currentUser, promotions, isBirthdayToday, isNewClient, redeemedVouchers]);
+    }, [currentUser, promotions, isBirthdayToday, hasUsedService]);
     
     // Get all public promotions for "Ưu đãi chung" tab
     const generalPromotions = useMemo(() => {
@@ -364,11 +349,20 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                         </div>
                     )} */}
                     {/* My Vouchers - Display redeemed vouchers (vouchers đã đổi bằng điểm) */}
+                    {/* QUAN TRỌNG: CHỈ hiển thị voucher đổi điểm (isPublic = false), KHÔNG hiển thị voucher public */}
                     <div>
                         <h2 className="text-2xl font-serif font-bold text-gray-800 mb-4">Voucher của tôi</h2>
-                        {redeemedVouchers.filter((v: any) => v.redeemedCount > 0).length > 0 ? (
+                        {redeemedVouchers.filter((v: any) => {
+                            // CHỈ hiển thị voucher đổi điểm (isPublic = false)
+                            const isPublic = v.isPublic === true || v.isPublic === 1 || v.isPublic === '1';
+                            return !isPublic && v.redeemedCount > 0;
+                        }).length > 0 ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {redeemedVouchers.filter((v: any) => v.redeemedCount > 0).map((voucher: any) => (
+                                {redeemedVouchers.filter((v: any) => {
+                                    // CHỈ hiển thị voucher đổi điểm (isPublic = false)
+                                    const isPublic = v.isPublic === true || v.isPublic === 1 || v.isPublic === '1';
+                                    return !isPublic && v.redeemedCount > 0;
+                                }).map((voucher: any) => (
                                     <div key={voucher.id} className="bg-white rounded-lg shadow-md overflow-hidden flex flex-col transition-all hover:shadow-xl border-2 border-brand-primary/50">
                                         <div className="p-5 flex flex-col flex-grow">
                                             <div className="flex items-center justify-between mb-2">

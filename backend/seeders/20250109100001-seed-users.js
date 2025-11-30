@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 module.exports = {
   async up(queryInterface, Sequelize) {
     const hashedPassword = await bcrypt.hash('password123', 10);
+    const hashedPassword123456 = await bcrypt.hash('123456', 10);
 
     const users = [
       // Admin & Manager
@@ -170,6 +171,22 @@ module.exports = {
         isEmailVerified: true,
         emailVerificationToken: null,
         lastLogin: new Date(),
+      },
+      {
+        id: 'user-client-hoantuyen',
+        name: 'Hoàn Tuyền',
+        email: 'hoantuyen04@gmail.com',
+        password: hashedPassword123456,
+        phone: '0900000000',
+        profilePictureUrl: 'https://picsum.photos/seed/C006/200',
+        joinDate: new Date().toISOString().split('T')[0],
+        birthday: null,
+        gender: null,
+        role: 'Client',
+        status: 'Active',
+        isEmailVerified: true,
+        emailVerificationToken: null,
+        lastLogin: null,
       },
     ];
 

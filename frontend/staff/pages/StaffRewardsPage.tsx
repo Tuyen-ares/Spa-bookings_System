@@ -138,7 +138,7 @@ const StaffRewardsPage: React.FC<StaffRewardsPageProps> = ({ currentUser, allSer
                             <li key={staff.id} className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <span className="font-bold text-lg text-gray-700">{index + 1}.</span>
-                                    <img src={staff.profilePictureUrl} alt={staff.name} className="w-8 h-8 rounded-full object-cover" />
+                                    <img src={staff.profilePictureUrl?.startsWith('http') ? staff.profilePictureUrl : `http://localhost:3001${staff.profilePictureUrl}`} alt={staff.name} className="w-8 h-8 rounded-full object-cover" />
                                     <span className="font-medium text-gray-800">{staff.name}</span>
                                 </div>
                                 <div className="flex items-center gap-2 text-sm text-gray-600">

@@ -125,7 +125,7 @@ export const StaffUpsellingPage: React.FC<StaffUpsellingPageProps> = ({ currentU
                                     onClick={() => handleClientSelect(client)}
                                     className={`p-4 border rounded-lg cursor-pointer flex items-center gap-4 transition-all ${selectedClient?.id === client.id ? 'border-brand-primary ring-2 ring-brand-primary shadow-lg' : 'border-gray-200 hover:shadow-md'}`}
                                 >
-                                    <img src={client.profilePictureUrl} alt={client.name} className="w-12 h-12 rounded-full object-cover" />
+                                    <img src={client.profilePictureUrl?.startsWith('http') ? client.profilePictureUrl : `http://localhost:3001${client.profilePictureUrl}`} alt={client.name} className="w-12 h-12 rounded-full object-cover" />
                                     <div>
                                         <p className="font-semibold text-gray-800">{client.name}</p>
                                         <p className="text-sm text-gray-500">{client.email}</p>

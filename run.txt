@@ -1,0 +1,115 @@
+# ============================================
+# HƯỚNG DẪN CHẠY MIGRATION VÀ SEED
+# Dự án: Anh Thơ Spa - Backend
+# ============================================
+
+# ============================================
+# BƯỚC 1: DI CHUYỂN VÀO THƯ MỤC BACKEND
+# ============================================
+cd backend
+
+# ============================================
+# BƯỚC 2: CHẠY MIGRATION (TẠO CÁC BẢNG TRONG DATABASE)
+# ============================================
+
+# Cách 1: Sử dụng npm script (Khuyến nghị)
+npm run db:migrate
+
+# Cách 2: Sử dụng npx sequelize-cli trực tiếp
+# npx sequelize-cli db:migrate
+
+# ============================================
+# BƯỚC 3: CHẠY SEED (THÊM DỮ LIỆU MẪU)
+# ============================================
+
+# Chạy tất cả seeders
+npx sequelize-cli db:seed:all
+
+# Hoặc chạy từng seeder cụ thể (nếu cần)
+# npx sequelize-cli db:seed --seed 20250109100001-seed-users.js
+# npx sequelize-cli db:seed --seed 20250109100002-seed-wallets.js
+# npx sequelize-cli db:seed --seed 20250109100003-seed-service-categories.js
+# npx sequelize-cli db:seed --seed 20250109100004-seed-services.js
+# npx sequelize-cli db:seed --seed 20250109100005-seed-appointments.js
+# npx sequelize-cli db:seed --seed 20250109100006-seed-payments.js
+# npx sequelize-cli db:seed --seed 20250109100007-seed-promotions.js
+# npx sequelize-cli db:seed --seed 20250109100008-seed-reviews.js
+
+# ============================================
+# CÁC LỆNH HỮU ÍCH KHÁC
+# ============================================
+
+# Kiểm tra trạng thái migrations
+npm run db:migrate:status
+# hoặc
+# npx sequelize-cli db:migrate:status
+
+# Rollback migration cuối cùng (nếu cần)
+npm run db:migrate:undo
+# hoặc
+# npx sequelize-cli db:migrate:undo
+
+# Rollback tất cả migrations (nếu cần)
+npm run db:migrate:undo:all
+# hoặc
+# npx sequelize-cli db:migrate:undo:all
+
+# Undo seeder (nếu cần)
+# npx sequelize-cli db:seed:undo
+# npx sequelize-cli db:seed:undo:all
+
+# ============================================
+# LƯU Ý QUAN TRỌNG
+# ============================================
+
+# 1. Đảm bảo MySQL server đang chạy
+# 2. Đảm bảo file .env đã được cấu hình đúng trong thư mục backend/
+# 3. Đảm bảo database đã được tạo:
+#    CREATE DATABASE IF NOT EXISTS anhthospa_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+# 4. Chạy migration TRƯỚC khi chạy seed
+# 5. Backup database trước khi chạy migration trên production
+
+# ============================================
+# QUY TRÌNH CHẠY ĐẦY ĐỦ
+# ============================================
+
+# Bước 1: Cài đặt dependencies (nếu chưa cài)
+# npm install
+
+# Bước 2: Tạo database (nếu chưa có)
+# mysql -u root -p
+# CREATE DATABASE IF NOT EXISTS anhthospa_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+# EXIT;
+
+# Bước 3: Cấu hình file .env trong thư mục backend/
+# Copy file env.example thành .env và điền thông tin
+
+# Bước 4: Chạy migration
+# npm run db:migrate
+
+# Bước 5: Chạy seed (nếu cần dữ liệu mẫu)
+# npx sequelize-cli db:seed:all
+
+# Bước 6: Khởi động server
+# npm start
+
+# ============================================
+# TROUBLESHOOTING
+# ============================================
+
+# Lỗi: "Database does not exist"
+# Giải pháp: Tạo database trước khi chạy migration
+
+# Lỗi: "Table already exists"
+# Giải pháp: Rollback migrations trước: npm run db:migrate:undo:all
+
+# Lỗi: "Access denied for user"
+# Giải pháp: Kiểm tra username/password trong file .env
+
+# Lỗi: "ECONNREFUSED"
+# Giải pháp: Kiểm tra MySQL server đang chạy và port trong .env đúng
+
+# ============================================
+# END OF FILE
+# ============================================
+
