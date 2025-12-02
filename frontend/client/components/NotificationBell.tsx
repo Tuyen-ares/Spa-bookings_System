@@ -129,8 +129,17 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
     };
 
     // Helper to get style configuration based on notification type
-    const getTypeConfig = (type: string) => {
-        switch (type) {
+    const getTypeConfig = (notif: InternalNotification) => {
+        // Check if it's a birthday notification by title
+        if (notif.title && notif.title.includes('🎉 Chúc mừng sinh nhật')) {
+            return { icon: <GiftIcon className="w-5 h-5" />, color: 'text-purple-600', bg: 'bg-purple-100' };
+        }
+        // Check if it's a new client notification by title
+        if (notif.title && notif.title.includes('🎁 Chào mừng khách hàng mới')) {
+            return { icon: <GiftIcon className="w-5 h-5" />, color: 'text-purple-600', bg: 'bg-purple-100' };
+        }
+        
+        switch (notif.type) {
             case 'appointment_new':
             case 'appointment_confirmed':
                 return { icon: <CheckCircleIcon className="w-5 h-5" />, color: 'text-green-600', bg: 'bg-green-100' };
@@ -157,8 +166,17 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
         }
     };
 
-    const getNotificationTitle = (type: string) => {
-        switch (type) {
+    const getNotificationTitle = (notif: InternalNotification) => {
+        // Check if it's a birthday notification by title or relatedId
+        if (notif.title && notif.title.includes('🎉 Chúc mừng sinh nhật')) {
+            return '🎉 Chúc mừng sinh nhật!';
+        }
+        // Check if it's a new client notification by title
+        if (notif.title && notif.title.includes('🎁 Chào mừng khách hàng mới')) {
+            return '🎁 Chào mừng khách hàng mới!';
+        }
+        
+        switch (notif.type) {
             case 'appointment_confirmed': return 'Lịch hẹn đã xác nhận';
             case 'appointment_new': return 'Lịch hẹn mới';
             case 'appointment_cancelled': return 'Lịch hẹn bị hủy';
@@ -243,7 +261,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
                         ) : (
                             <div className="divide-y divide-gray-50">
                                 {notifications.map((notif) => {
-                                    const style = getTypeConfig(notif.type);
+                                    const style = getTypeConfig(notif);
                                     return (
                                         <div
                                             key={notif.id}
@@ -261,7 +279,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex justify-between items-start gap-2 mb-1">
                                                     <h4 className={`text-sm ${!notif.isRead ? 'font-bold text-gray-900' : 'font-medium text-gray-700'}`}>
-                                                        {getNotificationTitle(notif.type)}
+                                                        {getNotificationTitle(notif)}
                                                     </h4>
                                                     <span className="text-[10px] text-gray-400 flex-shrink-0 whitespace-nowrap">
                                                         {formatTime(notif.date)}

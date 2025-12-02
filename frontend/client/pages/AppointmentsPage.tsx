@@ -79,10 +79,7 @@ const HistoryAppointmentCard: React.FC<{
                 <div className="flex items-center gap-3">
                     <button onClick={() => onViewDetail(appointment)} className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Xem Chi Tiết</button>
                     {appointment.status === 'completed' && (
-                        <>
-                            <button onClick={() => navigate(`/service/${appointment.serviceId}`)} className="text-sm font-semibold text-green-600 hover:underline">Đánh giá</button>
-                            <button onClick={() => navigate(`/booking?serviceId=${appointment.serviceId}`)} className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Đặt lại</button>
-                        </>
+                        <button onClick={() => navigate(`/booking?serviceId=${appointment.serviceId}`)} className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Đặt lại</button>
                     )}
                 </div>
             </div>
@@ -384,6 +381,8 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
     const [upcomingSort, setUpcomingSort] = useState('date-asc');
     const [upcomingFilterService, setUpcomingFilterService] = useState('all');
     const [upcomingFilterTime, setUpcomingFilterTime] = useState<'all' | 'today' | 'this-week' | 'this-month'>('all');
+    const [upcomingFilterType, setUpcomingFilterType] = useState<'all' | 'day' | 'week' | 'month'>('all');
+    const [upcomingSelectedDate, setUpcomingSelectedDate] = useState<string>('');
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [dateRangeStart, setDateRangeStart] = useState<string>('');
     const [dateRangeEnd, setDateRangeEnd] = useState<string>('');
@@ -402,6 +401,10 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
     const [historyFilterService, setHistoryFilterService] = useState('all');
     const [historyFilterTime, setHistoryFilterTime] = useState('all');
     const [historyFilterStatus, setHistoryFilterStatus] = useState('all');
+    
+    // Pagination states for history
+    const [historyCurrentPage, setHistoryCurrentPage] = useState(1);
+    const [historyItemsPerPage, setHistoryItemsPerPage] = useState(10);
     
     // Treatment Courses Filter States
     const [coursesFilterStatus, setCoursesFilterStatus] = useState<'active' | 'completed'>('active');
@@ -601,7 +604,50 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
         return { today, startOfWeek, endOfWeek, startOfMonth, endOfMonth };
     };
 
-    const filterByTime = (apps: (Appointment & { dateTime: Date })[], timeFilter: string) => {
+    const filterByTime = (apps: (Appointment & { dateTime: Date })[], timeFilter: string, filterType?: string, selectedDate?: string): (Appointment & { dateTime: Date })[] => {
+        // Xử lý filter type mới (day, week, month)
+        if (filterType && filterType !== 'all') {
+            if (filterType === 'day' && selectedDate) {
+                // Lọc theo ngày cụ thể
+                const filterDate = new Date(selectedDate);
+                filterDate.setHours(0, 0, 0, 0);
+                const filterTime = filterDate.getTime();
+                
+                return apps.filter(app => {
+                    const appDate = new Date(app.dateTime);
+                    appDate.setHours(0, 0, 0, 0);
+                    return appDate.getTime() === filterTime;
+                });
+            } else if (filterType === 'week' && selectedDate) {
+                // Lọc theo tuần chứa ngày được chọn
+                const selected = new Date(selectedDate);
+                const weekStart = getStartOfWeek(selected);
+                weekStart.setHours(0, 0, 0, 0);
+                const weekEnd = new Date(weekStart);
+                weekEnd.setDate(weekStart.getDate() + 6);
+                weekEnd.setHours(23, 59, 59, 999);
+                
+                return apps.filter(app => {
+                    const appDateTime = app.dateTime.getTime();
+                    return appDateTime >= weekStart.getTime() && appDateTime <= weekEnd.getTime();
+                });
+            } else if (filterType === 'month' && selectedDate) {
+                // Lọc theo tháng chứa ngày được chọn
+                const selected = new Date(selectedDate);
+                const monthStart = new Date(selected.getFullYear(), selected.getMonth(), 1);
+                monthStart.setHours(0, 0, 0, 0);
+                const monthEnd = new Date(selected.getFullYear(), selected.getMonth() + 1, 0);
+                monthEnd.setHours(23, 59, 59, 999);
+                
+                return apps.filter(app => {
+                    const appDateTime = app.dateTime.getTime();
+                    return appDateTime >= monthStart.getTime() && appDateTime <= monthEnd.getTime();
+                });
+            }
+            // Nếu filterType không match hoặc không có selectedDate, fallback về logic cũ
+        }
+        
+        // Giữ lại logic cũ cho dateRange (backward compatibility)
         if (dateRangeStart || dateRangeEnd) {
             return apps.filter(app => {
                 const appDate = new Date(app.dateTime);
@@ -660,10 +706,40 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
     
     const filterCoursesByStatus = (courses: TreatmentCourse[], statusFilter: 'active' | 'completed') => {
         if (statusFilter === 'active') {
-            return courses.filter(course => 
-                course.status === 'active' || course.status === 'pending'
-            );
+            // CHỈ hiển thị courses có ít nhất một appointment đã được admin chấp nhận
+            // (status là 'confirmed', 'scheduled', 'upcoming', 'in-progress')
+            // KHÔNG hiển thị courses chỉ có appointments với status 'pending' hoặc tất cả đều 'cancelled'
+            return courses.filter(course => {
+                // Kiểm tra course status
+                if (course.status !== 'active' && course.status !== 'pending') {
+                    return false;
+                }
+
+                // Tìm appointments liên quan đến course này qua bookingGroupId
+                const courseBookingGroupId = `group-${course.id}`;
+                const relatedAppointments = localAppointments.filter(app => 
+                    app.bookingGroupId === courseBookingGroupId
+                );
+
+                // Nếu không có appointment nào, không hiển thị (chưa được chấp nhận)
+                if (relatedAppointments.length === 0) {
+                    return false;
+                }
+
+                // Kiểm tra xem có ít nhất một appointment đã được admin chấp nhận không
+                // Status được chấp nhận (admin đã chấp nhận): 'scheduled', 'upcoming', 'in-progress'
+                // Status chưa được chấp nhận: 'pending' (chờ xác nhận), 'cancelled' (đã hủy)
+                const hasAcceptedAppointment = relatedAppointments.some(app => 
+                    app.status === 'scheduled' || 
+                    app.status === 'upcoming' || 
+                    app.status === 'in-progress'
+                );
+
+                // CHỈ hiển thị nếu có ít nhất một appointment đã được chấp nhận
+                return hasAcceptedAppointment;
+            });
         } else {
+            // Tab "Liệu trình đã xong" - giữ nguyên logic cũ
             return courses.filter(course => {
                 const totalSessions = course.totalSessions ?? (Array.isArray(course.sessions) ? course.sessions.length : (Array.isArray((course as any).TreatmentSessions) ? (course as any).TreatmentSessions.length : 0));
                 let completedSessions = course.completedSessions ?? 0;
@@ -687,15 +763,28 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
         }
     };
 
+    // Tự động cập nhật currentMonth khi chọn filter date
+    useEffect(() => {
+        if (upcomingSelectedDate && (upcomingFilterType === 'day' || upcomingFilterType === 'week' || upcomingFilterType === 'month')) {
+            const selectedDate = new Date(upcomingSelectedDate);
+            setCurrentMonth(selectedDate);
+        }
+    }, [upcomingSelectedDate, upcomingFilterType]);
+
     const displayUpcoming = useMemo(() => {
         let filtered = [...myUpcomingAppointments];
         if (upcomingFilterService !== 'all') {
             filtered = filtered.filter(app => app.serviceId === upcomingFilterService);
         }
-        filtered = filterByTime(filtered, upcomingFilterTime);
+        // Ưu tiên filter type mới, nếu không có thì dùng filter time cũ
+        if (upcomingFilterType !== 'all') {
+            filtered = filterByTime(filtered, upcomingFilterTime, upcomingFilterType, upcomingSelectedDate);
+        } else {
+            filtered = filterByTime(filtered, upcomingFilterTime);
+        }
         filtered.sort((a, b) => upcomingSort === 'date-asc' ? a.dateTime.getTime() - b.dateTime.getTime() : b.dateTime.getTime() - a.dateTime.getTime());
         return filtered;
-    }, [myUpcomingAppointments, upcomingSort, upcomingFilterService, upcomingFilterTime, dateRangeStart, dateRangeEnd]);
+    }, [myUpcomingAppointments, upcomingSort, upcomingFilterService, upcomingFilterTime, upcomingFilterType, upcomingSelectedDate, dateRangeStart, dateRangeEnd]);
     
     const displayHistory = useMemo(() => {
         let filtered = [...myHistoryAppointments];
@@ -709,6 +798,19 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
         filtered.sort((a, b) => historySort === 'date-desc' ? b.dateTime.getTime() - a.dateTime.getTime() : a.dateTime.getTime() - b.dateTime.getTime());
         return filtered;
     }, [myHistoryAppointments, historySort, historyFilterService, historyFilterTime, historyFilterStatus]);
+
+    // Pagination for history
+    const historyTotalPages = Math.ceil(displayHistory.length / historyItemsPerPage);
+    const historyPaginatedData = useMemo(() => {
+        const startIndex = (historyCurrentPage - 1) * historyItemsPerPage;
+        const endIndex = startIndex + historyItemsPerPage;
+        return displayHistory.slice(startIndex, endIndex);
+    }, [displayHistory, historyCurrentPage, historyItemsPerPage]);
+
+    // Reset to page 1 when filters change
+    useEffect(() => {
+        setHistoryCurrentPage(1);
+    }, [historySort, historyFilterService, historyFilterTime, historyFilterStatus]);
 
     const uniqueServiceIds = useMemo(() => [...new Set(myUpcomingAppointments.map(a => a.serviceId).concat(myHistoryAppointments.map(a => a.serviceId)))], [myUpcomingAppointments, myHistoryAppointments]);
     const serviceFilterOptions = allServices.filter(s => uniqueServiceIds.includes(s.id));
@@ -779,31 +881,55 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                             <div className="bg-white p-4 rounded-lg shadow-md">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                                     <div className="flex flex-col gap-2">
-                                        <label className="text-sm font-medium text-gray-700">Chọn khoảng thời gian</label>
+                                        <label className="text-sm font-medium text-gray-700">Lọc theo thời gian</label>
                                         <div className="flex gap-2 items-center">
-                                            <input 
-                                                type="date" 
-                                                value={dateRangeStart}
-                                                className="flex-1 p-2 border rounded-md bg-white"
+                                            <select 
+                                                value={upcomingFilterType}
                                                 onChange={(e) => {
-                                                    setDateRangeStart(e.target.value);
+                                                    const newType = e.target.value as 'all' | 'day' | 'week' | 'month';
+                                                    setUpcomingFilterType(newType);
                                                     setUpcomingFilterTime('all');
-                                                    if (dateRangeEnd && e.target.value && e.target.value > dateRangeEnd) {
-                                                        setDateRangeEnd('');
+                                                    setDateRangeStart('');
+                                                    setDateRangeEnd('');
+                                                    if (newType === 'all') {
+                                                        setUpcomingSelectedDate('');
+                                                    } else {
+                                                        // Tự động set ngày mặc định là hôm nay nếu chưa có ngày được chọn
+                                                        if (!upcomingSelectedDate) {
+                                                            const today = new Date();
+                                                            const todayStr = today.toISOString().split('T')[0];
+                                                            setUpcomingSelectedDate(todayStr);
+                                                            setCurrentMonth(today);
+                                                        } else {
+                                                            // Nếu đã có ngày được chọn, tự động cập nhật calendar
+                                                            const selectedDate = new Date(upcomingSelectedDate);
+                                                            setCurrentMonth(selectedDate);
+                                                        }
                                                     }
                                                 }}
-                                            />
-                                            <span className="text-gray-500">đến</span>
-                                            <input 
-                                                type="date" 
-                                                value={dateRangeEnd}
-                                                min={dateRangeStart || undefined}
                                                 className="flex-1 p-2 border rounded-md bg-white"
-                                                onChange={(e) => {
-                                                    setDateRangeEnd(e.target.value);
-                                                    setUpcomingFilterTime('all');
-                                                }}
-                                            />
+                                            >
+                                                <option value="all">Tất cả</option>
+                                                <option value="day">Ngày</option>
+                                                <option value="week">Tuần</option>
+                                                <option value="month">Tháng</option>
+                                            </select>
+                                            {(upcomingFilterType === 'day' || upcomingFilterType === 'week' || upcomingFilterType === 'month') && (
+                                                <input 
+                                                    type="date" 
+                                                    value={upcomingSelectedDate || new Date().toISOString().split('T')[0]}
+                                                    className="flex-1 p-2 border rounded-md bg-white"
+                                                    onChange={(e) => {
+                                                        const selectedDate = e.target.value;
+                                                        setUpcomingSelectedDate(selectedDate);
+                                                        // Tự động cập nhật currentMonth để calendar hiển thị đúng tháng
+                                                        if (selectedDate) {
+                                                            const date = new Date(selectedDate);
+                                                            setCurrentMonth(date);
+                                                        }
+                                                    }}
+                                                />
+                                            )}
                                         </div>
                                     </div>
                                     <select value={upcomingFilterService} onChange={e => setUpcomingFilterService(e.target.value)} className="w-full p-2 border rounded-md bg-white">
@@ -846,75 +972,143 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                 </div>
                             ) : (
                                 (() => {
-                                    const targetMonth = upcomingFilterTime === 'this-month' || dateRangeStart || dateRangeEnd
-                                        ? (dateRangeStart ? new Date(dateRangeStart) : (dateRangeEnd ? new Date(dateRangeEnd) : currentMonth))
-                                        : currentMonth;
-                                    
                                     const appointmentsByDate = groupAppsByDate(displayUpcoming);
-                                    const days = getCalendarDays(targetMonth);
                                     
-                                    return (
-                                        <div className="bg-white p-6 rounded-lg shadow-md">
-                                            <div className="flex items-center justify-between mb-6">
-                                                <button
-                                                    onClick={() => {
-                                                        const prevMonth = new Date(targetMonth);
-                                                        prevMonth.setMonth(prevMonth.getMonth() - 1);
-                                                        setCurrentMonth(prevMonth);
-                                                        const firstDay = new Date(prevMonth.getFullYear(), prevMonth.getMonth(), 1);
-                                                        const lastDay = new Date(prevMonth.getFullYear(), prevMonth.getMonth() + 1, 0);
-                                                        setDateRangeStart(firstDay.toISOString().split('T')[0]);
-                                                        setDateRangeEnd(lastDay.toISOString().split('T')[0]);
-                                                        setUpcomingFilterTime('this-month');
-                                                    }}
-                                                    className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
-                                                >
-                                                    ‹ Tháng trước
-                                                </button>
-                                                <h2 className="text-xl font-bold text-gray-800">
-                                                    tháng {targetMonth.getMonth() + 1} năm {targetMonth.getFullYear()}
-                                                </h2>
-                                                <button
-                                                    onClick={() => {
-                                                        const nextMonth = new Date(targetMonth);
-                                                        nextMonth.setMonth(nextMonth.getMonth() + 1);
-                                                        setCurrentMonth(nextMonth);
-                                                        const firstDay = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), 1);
-                                                        const lastDay = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0);
-                                                        setDateRangeStart(firstDay.toISOString().split('T')[0]);
-                                                        setDateRangeEnd(lastDay.toISOString().split('T')[0]);
-                                                        setUpcomingFilterTime('this-month');
-                                                    }}
-                                                    className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
-                                                >
-                                                    Tháng sau ›
-                                                </button>
-                                            </div>
-                                            
-                                            <div className="grid grid-cols-7 gap-2">
-                                                {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'].map(day => (
-                                                    <div key={day} className="p-2 text-center font-semibold text-gray-700 bg-gray-50 rounded">
-                                                        {day}
+                                    // Hiển thị view theo filter type
+                                    // Nếu chọn filter type nhưng chưa có ngày, dùng ngày hôm nay làm mặc định
+                                    let displayDate = upcomingSelectedDate;
+                                    if ((upcomingFilterType === 'day' || upcomingFilterType === 'week' || upcomingFilterType === 'month') && !displayDate) {
+                                        const today = new Date();
+                                        displayDate = today.toISOString().split('T')[0];
+                                    }
+                                    
+                                    if (upcomingFilterType === 'day' && displayDate) {
+                                        // View dạng ngày - hiển thị list appointments của 1 ngày
+                                        const selectedDate = new Date(displayDate);
+                                        const dateKey = displayDate.split('T')[0];
+                                        const dayAppointments = appointmentsByDate.get(dateKey) || [];
+                                        
+                                        return (
+                                            <div className="bg-white p-6 rounded-lg shadow-md">
+                                                <div className="flex items-center justify-between mb-6">
+                                                    <h2 className="text-xl font-bold text-gray-800">
+                                                        {selectedDate.toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                                                    </h2>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                const prevDay = new Date(selectedDate);
+                                                                prevDay.setDate(prevDay.getDate() - 1);
+                                                                setUpcomingSelectedDate(prevDay.toISOString().split('T')[0]);
+                                                                setCurrentMonth(prevDay);
+                                                            }}
+                                                            className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+                                                        >
+                                                            ‹ Ngày trước
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                const nextDay = new Date(selectedDate);
+                                                                nextDay.setDate(nextDay.getDate() + 1);
+                                                                setUpcomingSelectedDate(nextDay.toISOString().split('T')[0]);
+                                                                setCurrentMonth(nextDay);
+                                                            }}
+                                                            className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+                                                        >
+                                                            Ngày sau ›
+                                                        </button>
                                                     </div>
-                                                ))}
+                                                </div>
+                                                <div className="space-y-4">
+                                                    {dayAppointments.length > 0 ? (
+                                                        dayAppointments.map(app => (
+                                                            <UpcomingAppointmentCard
+                                                                key={app.id}
+                                                                appointment={app}
+                                                                onViewDetail={setViewingAppointment}
+                                                                onCancel={setAppointmentToCancel}
+                                                            />
+                                                        ))
+                                                    ) : (
+                                                        <div className="text-center py-10 text-gray-500">
+                                                            Không có lịch hẹn nào trong ngày này
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    } else if (upcomingFilterType === 'week' && displayDate) {
+                                        // View dạng tuần - hiển thị 7 ngày của tuần
+                                        const selectedDate = new Date(displayDate);
+                                        const weekStart = getStartOfWeek(selectedDate);
+                                        const weekDays: Date[] = [];
+                                        for (let i = 0; i < 7; i++) {
+                                            const day = new Date(weekStart);
+                                            day.setDate(weekStart.getDate() + i);
+                                            weekDays.push(day);
+                                        }
+                                        
+                                        return (
+                                            <div className="bg-white p-6 rounded-lg shadow-md">
+                                                <div className="flex items-center justify-between mb-6">
+                                                    <h2 className="text-xl font-bold text-gray-800">
+                                                        Tuần từ {weekDays[0].toLocaleDateString('vi-VN', { day: 'numeric', month: 'numeric' })} đến {weekDays[6].toLocaleDateString('vi-VN', { day: 'numeric', month: 'numeric', year: 'numeric' })}
+                                                    </h2>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                const prevWeek = new Date(weekStart);
+                                                                prevWeek.setDate(prevWeek.getDate() - 7);
+                                                                setUpcomingSelectedDate(prevWeek.toISOString().split('T')[0]);
+                                                                setCurrentMonth(prevWeek);
+                                                            }}
+                                                            className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+                                                        >
+                                                            ‹ Tuần trước
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                const nextWeek = new Date(weekStart);
+                                                                nextWeek.setDate(nextWeek.getDate() + 7);
+                                                                setUpcomingSelectedDate(nextWeek.toISOString().split('T')[0]);
+                                                                setCurrentMonth(nextWeek);
+                                                            }}
+                                                            className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+                                                        >
+                                                            Tuần sau ›
+                                                        </button>
+                                                    </div>
+                                                </div>
                                                 
-                                                {days.map((date, index) => {
-                                                    if (!date) return <div key={`empty-${index}`} className="p-2 min-h-[100px] border border-gray-200 rounded bg-gray-50"></div>;
+                                                <div className="grid grid-cols-7 gap-2">
+                                                    {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'].map(day => (
+                                                        <div key={day} className="p-2 text-center font-semibold text-gray-700 bg-gray-50 rounded">
+                                                            {day}
+                                                        </div>
+                                                    ))}
                                                     
-                                                    const year = date.getFullYear();
-                                                    const month = String(date.getMonth() + 1).padStart(2, '0');
-                                                    const day = String(date.getDate()).padStart(2, '0');
-                                                    const dateKey = `${year}-${month}-${day}`;
-                                                    const dayAppointments = appointmentsByDate.get(dateKey) || [];
-                                                    const isToday = date.toDateString() === new Date().toDateString();
-                                                    
-                                                    return (
-                                                        <div key={dateKey} className={`p-2 min-h-[100px] border rounded ${isToday ? 'border-brand-primary bg-brand-secondary' : 'border-gray-200 bg-white'} hover:bg-gray-50 transition-colors`}>
-                                                            <div className={`text-sm font-semibold mb-1 ${isToday ? 'text-brand-primary' : 'text-gray-800'}`}>
-                                                                {date.getDate()}
-                                                            </div>
-                                                            <div className="space-y-1">
-                                                                {dayAppointments.map(app => {
+                                                    {weekDays.map((date) => {
+                                                        const year = date.getFullYear();
+                                                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                                                        const day = String(date.getDate()).padStart(2, '0');
+                                                        const dateKey = `${year}-${month}-${day}`;
+                                                        const dayAppointments = appointmentsByDate.get(dateKey) || [];
+                                                        const isToday = date.toDateString() === new Date().toDateString();
+                                                        
+                                                        return (
+                                                            <div 
+                                                                key={dateKey} 
+                                                                className={`p-2 min-h-[150px] border rounded ${
+                                                                    isToday ? 'border-brand-primary bg-brand-secondary' : 'border-gray-200 bg-white'
+                                                                } hover:bg-gray-50 transition-colors`}
+                                                            >
+                                                                <div className={`text-sm font-semibold mb-1 ${
+                                                                    isToday ? 'text-brand-primary' : 'text-gray-800'
+                                                                }`}>
+                                                                    {date.getDate()}
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    {dayAppointments.map(app => {
                                                                     const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
                                                                                         app.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
                                                                                         app.status === 'in-progress' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800';
@@ -937,6 +1131,181 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                             </div>
                                         </div>
                                     );
+                                    } else if (upcomingFilterType === 'month' && displayDate) {
+                                        // View dạng tháng - hiển thị toàn bộ tháng
+                                        const targetMonth = new Date(displayDate);
+                                        const days = getCalendarDays(targetMonth);
+                                        
+                                        return (
+                                            <div className="bg-white p-6 rounded-lg shadow-md">
+                                                <div className="flex items-center justify-between mb-6">
+                                                    <button
+                                                        onClick={() => {
+                                                            const prevMonth = new Date(targetMonth);
+                                                            prevMonth.setMonth(prevMonth.getMonth() - 1);
+                                                            setUpcomingSelectedDate(prevMonth.toISOString().split('T')[0]);
+                                                            setCurrentMonth(prevMonth);
+                                                        }}
+                                                        className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+                                                    >
+                                                        ‹ Tháng trước
+                                                    </button>
+                                                    <h2 className="text-xl font-bold text-gray-800">
+                                                        tháng {targetMonth.getMonth() + 1} năm {targetMonth.getFullYear()}
+                                                    </h2>
+                                                    <button
+                                                        onClick={() => {
+                                                            const nextMonth = new Date(targetMonth);
+                                                            nextMonth.setMonth(nextMonth.getMonth() + 1);
+                                                            setUpcomingSelectedDate(nextMonth.toISOString().split('T')[0]);
+                                                            setCurrentMonth(nextMonth);
+                                                        }}
+                                                        className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+                                                    >
+                                                        Tháng sau ›
+                                                    </button>
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-7 gap-2">
+                                                    {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'].map(day => (
+                                                        <div key={day} className="p-2 text-center font-semibold text-gray-700 bg-gray-50 rounded">
+                                                            {day}
+                                                        </div>
+                                                    ))}
+                                                    
+                                                    {days.map((date, index) => {
+                                                        if (!date) return <div key={`empty-${index}`} className="p-2 min-h-[100px] border border-gray-200 rounded bg-gray-50"></div>;
+                                                        
+                                                        const year = date.getFullYear();
+                                                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                                                        const day = String(date.getDate()).padStart(2, '0');
+                                                        const dateKey = `${year}-${month}-${day}`;
+                                                        const dayAppointments = appointmentsByDate.get(dateKey) || [];
+                                                        const isToday = date.toDateString() === new Date().toDateString();
+                                                        
+                                                        return (
+                                                            <div 
+                                                                key={dateKey} 
+                                                                className={`p-2 min-h-[100px] border rounded ${
+                                                                    isToday ? 'border-brand-primary bg-brand-secondary' : 'border-gray-200 bg-white'
+                                                                } hover:bg-gray-50 transition-colors`}
+                                                            >
+                                                                <div className={`text-sm font-semibold mb-1 ${
+                                                                    isToday ? 'text-brand-primary' : 'text-gray-800'
+                                                                }`}>
+                                                                    {date.getDate()}
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    {dayAppointments.map(app => {
+                                                                        const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
+                                                                                            app.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
+                                                                                            app.status === 'in-progress' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800';
+                                                                        return (
+                                                                            <div
+                                                                                key={app.id}
+                                                                                onClick={() => setViewingAppointment(app)}
+                                                                                className={`text-xs p-1.5 rounded cursor-pointer transition-shadow hover:shadow-md ${statusColor}`}
+                                                                                title={`${app.time} - ${app.serviceName}`}
+                                                                            >
+                                                                                <div className="font-semibold truncate">{app.time}</div>
+                                                                                <div className="truncate font-medium">{app.serviceName}</div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    } else {
+                                        // View mặc định - hiển thị tháng hiện tại (filter "Tất cả" hoặc chưa chọn filter)
+                                        const targetMonth = currentMonth;
+                                        const days = getCalendarDays(targetMonth);
+                                        
+                                        return (
+                                            <div className="bg-white p-6 rounded-lg shadow-md">
+                                                <div className="flex items-center justify-between mb-6">
+                                                    <button
+                                                        onClick={() => {
+                                                            const prevMonth = new Date(targetMonth);
+                                                            prevMonth.setMonth(prevMonth.getMonth() - 1);
+                                                            setCurrentMonth(prevMonth);
+                                                        }}
+                                                        className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+                                                    >
+                                                        ‹ Tháng trước
+                                                    </button>
+                                                    <h2 className="text-xl font-bold text-gray-800">
+                                                        tháng {targetMonth.getMonth() + 1} năm {targetMonth.getFullYear()}
+                                                    </h2>
+                                                    <button
+                                                        onClick={() => {
+                                                            const nextMonth = new Date(targetMonth);
+                                                            nextMonth.setMonth(nextMonth.getMonth() + 1);
+                                                            setCurrentMonth(nextMonth);
+                                                        }}
+                                                        className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+                                                    >
+                                                        Tháng sau ›
+                                                    </button>
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-7 gap-2">
+                                                    {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'].map(day => (
+                                                        <div key={day} className="p-2 text-center font-semibold text-gray-700 bg-gray-50 rounded">
+                                                            {day}
+                                                        </div>
+                                                    ))}
+                                                    
+                                                    {days.map((date, index) => {
+                                                        if (!date) return <div key={`empty-${index}`} className="p-2 min-h-[100px] border border-gray-200 rounded bg-gray-50"></div>;
+                                                        
+                                                        const year = date.getFullYear();
+                                                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                                                        const day = String(date.getDate()).padStart(2, '0');
+                                                        const dateKey = `${year}-${month}-${day}`;
+                                                        const dayAppointments = appointmentsByDate.get(dateKey) || [];
+                                                        const isToday = date.toDateString() === new Date().toDateString();
+                                                        
+                                                        return (
+                                                            <div 
+                                                                key={dateKey} 
+                                                                className={`p-2 min-h-[100px] border rounded ${
+                                                                    isToday ? 'border-brand-primary bg-brand-secondary' : 'border-gray-200 bg-white'
+                                                                } hover:bg-gray-50 transition-colors`}
+                                                            >
+                                                                <div className={`text-sm font-semibold mb-1 ${
+                                                                    isToday ? 'text-brand-primary' : 'text-gray-800'
+                                                                }`}>
+                                                                    {date.getDate()}
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    {dayAppointments.map(app => {
+                                                                        const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
+                                                                                            app.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
+                                                                                            app.status === 'in-progress' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800';
+                                                                        return (
+                                                                            <div
+                                                                                key={app.id}
+                                                                                onClick={() => setViewingAppointment(app)}
+                                                                                className={`text-xs p-1.5 rounded cursor-pointer transition-shadow hover:shadow-md ${statusColor}`}
+                                                                                title={`${app.time} - ${app.serviceName}`}
+                                                                            >
+                                                                                <div className="font-semibold truncate">{app.time}</div>
+                                                                                <div className="truncate font-medium">{app.serviceName}</div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
                                 })()
                             )}
                         </div>
@@ -967,17 +1336,108 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                 </div>
                             </div>
 
-                            {displayHistory.length > 0 ? (
-                                displayHistory.map(app => (
-                                    <HistoryAppointmentCard 
-                                        key={app.id} 
-                                        appointment={app} 
-                                        allUsers={allUsers}
-                                        onViewDetail={setViewingAppointment} 
-                                    />
-                                ))
+                            {/* Items per page selector */}
+                            {displayHistory.length > 0 && (
+                                <div className="bg-white p-3 rounded-lg shadow-md flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-sm text-gray-600">Hiển thị:</span>
+                                        <select 
+                                            value={historyItemsPerPage} 
+                                            onChange={(e) => {
+                                                setHistoryItemsPerPage(Number(e.target.value));
+                                                setHistoryCurrentPage(1);
+                                            }}
+                                            className="px-3 py-1.5 border rounded-md bg-white text-sm"
+                                        >
+                                            <option value="5">5</option>
+                                            <option value="10">10</option>
+                                            <option value="20">20</option>
+                                            <option value="50">50</option>
+                                        </select>
+                                        <span className="text-sm text-gray-600">
+                                            / Tổng: {displayHistory.length} lịch hẹn
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {historyPaginatedData.length > 0 ? (
+                                <>
+                                    {historyPaginatedData.map(app => (
+                                        <HistoryAppointmentCard 
+                                            key={app.id} 
+                                            appointment={app} 
+                                            allUsers={allUsers}
+                                            onViewDetail={setViewingAppointment} 
+                                        />
+                                    ))}
+                                    
+                                    {/* Pagination Controls */}
+                                    {historyTotalPages > 1 && (
+                                        <div className="bg-white p-4 rounded-lg shadow-md flex items-center justify-center gap-2">
+                                            <button
+                                                onClick={() => setHistoryCurrentPage(prev => Math.max(1, prev - 1))}
+                                                disabled={historyCurrentPage === 1}
+                                                className={`px-4 py-2 text-sm font-semibold rounded-md ${
+                                                    historyCurrentPage === 1
+                                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                }`}
+                                            >
+                                                ‹ Trước
+                                            </button>
+                                            
+                                            <div className="flex items-center gap-1">
+                                                {Array.from({ length: historyTotalPages }, (_, i) => i + 1)
+                                                    .filter(page => {
+                                                        // Show first page, last page, current page, and pages around current
+                                                        if (page === 1 || page === historyTotalPages) return true;
+                                                        if (Math.abs(page - historyCurrentPage) <= 1) return true;
+                                                        return false;
+                                                    })
+                                                    .map((page, index, array) => {
+                                                        // Add ellipsis if there's a gap
+                                                        const showEllipsisBefore = index > 0 && array[index - 1] !== page - 1;
+                                                        return (
+                                                            <React.Fragment key={page}>
+                                                                {showEllipsisBefore && (
+                                                                    <span className="px-2 text-gray-400">...</span>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => setHistoryCurrentPage(page)}
+                                                                    className={`px-3 py-2 text-sm font-semibold rounded-md ${
+                                                                        historyCurrentPage === page
+                                                                            ? 'bg-brand-primary text-white'
+                                                                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                                    }`}
+                                                                >
+                                                                    {page}
+                                                                </button>
+                                                            </React.Fragment>
+                                                        );
+                                                    })}
+                                            </div>
+                                            
+                                            <button
+                                                onClick={() => setHistoryCurrentPage(prev => Math.min(historyTotalPages, prev + 1))}
+                                                disabled={historyCurrentPage === historyTotalPages}
+                                                className={`px-4 py-2 text-sm font-semibold rounded-md ${
+                                                    historyCurrentPage === historyTotalPages
+                                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                }`}
+                                            >
+                                                Sau ›
+                                            </button>
+                                            
+                                            <span className="text-sm text-gray-600 ml-4">
+                                                Trang {historyCurrentPage} / {historyTotalPages}
+                                            </span>
+                                        </div>
+                                    )}
+                                </>
                             ) : (
-                                <p className="text-center text-gray-500 py-10">Không có lịch sử hẹn nào.</p>
+                                <p className="text-center text-gray-500 py-10 bg-white rounded-lg shadow-md">Không có lịch sử hẹn nào.</p>
                             )}
                         </div>
                     )}

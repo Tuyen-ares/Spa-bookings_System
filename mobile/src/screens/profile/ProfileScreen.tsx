@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,16 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logout, getCurrentUser, getWallet, getUnreadNotificationsCount } from '../../services/apiService';
 import { formatDate, formatCurrency } from '../../utils/formatters';
-import type { User, Wallet } from '../../types';
+import type { User, Wallet, Tier } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
+
+// Define tiers (same as web)
+const TIERS: Tier[] = [
+  { level: 0, name: 'Thành viên', pointsRequired: 0, minSpendingRequired: 0, color: '#A8A29E', textColor: '#FFFFFF' },
+  { level: 1, name: 'Đồng', pointsRequired: 0, minSpendingRequired: 10000000, color: '#CD7F32', textColor: '#FFFFFF' }, // Bronze - 10 triệu
+  { level: 2, name: 'Bạc', pointsRequired: 0, minSpendingRequired: 30000000, color: '#C0C0C0', textColor: '#000000' }, // Silver - 30 triệu
+  { level: 3, name: 'Kim cương', pointsRequired: 0, minSpendingRequired: 50000000, color: '#B9F2FF', textColor: '#000000' }, // Diamond - 50 triệu
+];
 
 export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -45,6 +53,32 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
 
     loadUser();
   }, []);
+
+  // Get tier from wallet.tierLevel (synced from backend), fallback to calculation if not available (same as web)
+  const currentTier = useMemo(() => {
+    if (!wallet) {
+      // Return default tier (Thành viên - level 0)
+      return TIERS.find(t => t.level === 0) || TIERS[0];
+    }
+    
+    // Use tierLevel from wallet if available (synced from backend)
+    if (wallet.tierLevel !== undefined && wallet.tierLevel !== null) {
+      const tier = TIERS.find(t => t.level === wallet.tierLevel);
+      if (tier) return tier;
+    }
+    
+    // Fallback: Calculate tier from totalSpent if tierLevel is not available
+    const totalSpent = parseFloat(wallet.totalSpent?.toString() || '0') || 0;
+    const sortedTiers = [...TIERS].sort((a, b) => (b.minSpendingRequired || 0) - (a.minSpendingRequired || 0));
+    let tierLevel = 0; // Default to tier 0 (Thành viên)
+    for (const tier of sortedTiers) {
+      if (totalSpent >= (tier.minSpendingRequired || 0)) {
+        tierLevel = tier.level;
+        break;
+      }
+    }
+    return TIERS.find(t => t.level === tierLevel) || TIERS.find(t => t.level === 0) || TIERS[0];
+  }, [wallet]);
 
   const handleLogout = async () => {
     Alert.alert('Đăng xuất', 'Bạn có chắc chắn muốn đăng xuất?', [
@@ -107,11 +141,13 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
           <Ionicons name="person-circle" size={80} color="#d62976" />
         </View>
         <Text style={styles.userName}>{user?.name || 'Người dùng'}</Text>
-        <Text style={styles.userRole}>
-          {user?.role === 'Admin' && 'Quản lý'}
-          {user?.role === 'Staff' && 'Nhân viên'}
-          {user?.role === 'Client' && 'Khách hàng'}
-        </Text>
+        <Text style={styles.userEmail}>{user?.email || ''}</Text>
+        {wallet && currentTier && (
+          <View style={[styles.tierBadge, { backgroundColor: `${currentTier.color}20`, borderColor: currentTier.color }]}>
+            <Ionicons name="trophy" size={16} color={currentTier.color} />
+            <Text style={[styles.tierBadgeText, { color: currentTier.color }]}>Hạng {currentTier.name}</Text>
+          </View>
+        )}
       </View>
 
       {/* Rewards Card */}
@@ -277,9 +313,25 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginBottom: 4
   },
-  userRole: {
+  userEmail: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.8)'
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 4,
+  },
+  tierBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 2,
+  },
+  tierBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
   },
   section: {
     backgroundColor: '#fff',

@@ -477,13 +477,9 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
     }, [localServices, allServices]);
 
     const featuredServices = useMemo(() => {
-        // Use mostBookedServices if available, otherwise fallback to top rated
-        if (mostBookedServices && mostBookedServices.length > 0) {
-            return mostBookedServices.slice(0, 4);
-        }
-        
-        // Fallback: show top-rated services
+        // Lọc các dịch vụ về chăm sóc da (không sắp xếp, chỉ lấy 4 dịch vụ đầu tiên)
         if (!servicesToUse || servicesToUse.length === 0) return [];
+        
         const toBoolean = (value: any, defaultValue: boolean = false): boolean => {
             if (value === undefined || value === null) return defaultValue;
             if (typeof value === 'boolean') return value;
@@ -495,15 +491,38 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
             return defaultValue;
         };
         
-        return servicesToUse
-            .filter(s => toBoolean(s.isActive, true))
-            .sort((a, b) => {
-                const ratingA = typeof a.rating === 'string' ? parseFloat(a.rating) : (a.rating || 0);
-                const ratingB = typeof b.rating === 'string' ? parseFloat(b.rating) : (b.rating || 0);
-                return ratingB - ratingA;
-            })
-            .slice(0, 4);
-    }, [mostBookedServices, servicesToUse]);
+        // Lọc dịch vụ chăm sóc da
+        const skinCareServices = servicesToUse.filter(s => {
+            if (!toBoolean(s.isActive, true)) return false;
+            
+            const name = s.name ? String(s.name).toLowerCase() : "";
+            const description = s.description ? String(s.description).toLowerCase() : "";
+            const categoryName = s.categoryId ? String(s.categoryId).toLowerCase() : "";
+            
+            // Từ khóa liên quan đến chăm sóc da
+            const skinCareKeywords = [
+                'chăm sóc da', 'cham soc da', 'da mặt', 'da mat',
+                'facial', 'skin care', 'skincare', 'treatment',
+                'mặt nạ', 'mat na', 'mask', 'peel', 'exfoliate',
+                'dưỡng da', 'duong da', 'serum', 'toner', 'moisturizer',
+                'trị mụn', 'tri mun', 'acne', 'whitening', 'làm trắng',
+                'chống lão hóa', 'chong lao hoa', 'anti-aging', 'collagen'
+            ];
+            
+            // Kiểm tra tên, mô tả hoặc category
+            const hasSkinCareKeyword = skinCareKeywords.some(keyword => 
+                name.includes(keyword) || 
+                description.includes(keyword) ||
+                categoryName.includes('chăm sóc da') ||
+                categoryName.includes('skin care')
+            );
+            
+            return hasSkinCareKeyword;
+        });
+        
+        // Chỉ lấy 4 dịch vụ đầu tiên (không sắp xếp)
+        return skinCareServices.slice(0, 4);
+    }, [servicesToUse]);
     
     const comboServices = useMemo(() => {
         if (!servicesToUse || servicesToUse.length === 0) return [];
@@ -645,7 +664,7 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
             <section className="py-12 bg-white relative">
                 <div className="container mx-auto px-4 relative z-10">
                     <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
-                        <SectionHeader title="Dịch Vụ Cốt Lõi" subtitle="4 dịch vụ được đặt nhiều nhất." badgeText="Most Booked" />
+                        <SectionHeader title="Dịch Vụ Về Chăm Sóc Da" subtitle="Các dịch vụ chăm sóc da được yêu thích nhất." badgeText="Skin Care" />
                         
                         {featuredServices.length > serviceCarousel.itemsPerView && (
                              <div className="hidden md:flex gap-2 mb-4">

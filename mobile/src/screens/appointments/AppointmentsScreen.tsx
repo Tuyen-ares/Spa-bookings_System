@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,10 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   RefreshControl,
-  Alert
+  Alert,
+  Modal,
+  Platform,
+  ScrollView
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -15,13 +18,21 @@ import { getUserAppointments, getCurrentUser } from '../../services/apiService';
 import { formatDate, formatCurrency, getStatusLabel, getStatusColor } from '../../utils/formatters';
 import type { Appointment } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 type Props = NativeStackScreenProps<any, 'AppointmentsList'>;
+
+type FilterType = 'all' | 'today' | 'thisWeek' | 'thisMonth' | 'custom';
 
 export const AppointmentsScreen: React.FC<Props> = ({ navigation }) => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [filterType, setFilterType] = useState<FilterType>('all');
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const loadAppointments = async () => {
     try {
@@ -55,6 +66,104 @@ export const AppointmentsScreen: React.FC<Props> = ({ navigation }) => {
     loadAppointments();
     return unsubscribe;
   }, [navigation]);
+
+  // Filter appointments based on filter type
+  const filteredAppointments = useMemo(() => {
+    if (filterType === 'all') {
+      return appointments;
+    }
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    return appointments.filter((app) => {
+      try {
+        // Handle both string and Date object for app.date
+        let appDate: Date;
+        if (!app.date) {
+          return false; // Skip appointments without date
+        }
+        
+        if (typeof app.date === 'string') {
+          // If date is string like "2025-12-02" or "2025-12-02T00:00:00.000Z"
+          const dateStr = app.date.split('T')[0]; // Get YYYY-MM-DD part
+          const [year, month, day] = dateStr.split('-').map(Number);
+          if (isNaN(year) || isNaN(month) || isNaN(day)) {
+            return false; // Skip invalid dates
+          }
+          appDate = new Date(year, month - 1, day);
+        } else {
+          appDate = new Date(app.date);
+        }
+        
+        if (isNaN(appDate.getTime())) {
+          return false; // Skip invalid dates
+        }
+        
+        appDate.setHours(0, 0, 0, 0);
+
+        switch (filterType) {
+          case 'today':
+            return appDate.getTime() === now.getTime();
+
+          case 'thisWeek': {
+            const startOfWeek = new Date(now);
+            const dayOfWeek = startOfWeek.getDay();
+            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            startOfWeek.setDate(now.getDate() - daysToMonday);
+            startOfWeek.setHours(0, 0, 0, 0);
+
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 6);
+            endOfWeek.setHours(23, 59, 59, 999);
+
+            return appDate >= startOfWeek && appDate <= endOfWeek;
+          }
+
+          case 'thisMonth': {
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+            return appDate >= startOfMonth && appDate <= endOfMonth;
+          }
+
+          case 'custom': {
+            const customDate = new Date(selectedDate);
+            customDate.setHours(0, 0, 0, 0);
+            return appDate.getTime() === customDate.getTime();
+          }
+
+          default:
+            return true;
+        }
+      } catch (error) {
+        console.error('Error filtering appointment:', error, app);
+        return false; // Skip appointments that cause errors
+      }
+    });
+  }, [appointments, filterType, selectedDate]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredAppointments.length / itemsPerPage);
+  const paginatedAppointments = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredAppointments.slice(startIndex, endIndex);
+  }, [filteredAppointments, currentPage, itemsPerPage]);
+
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterType, selectedDate]);
+
+  const handleDateChange = (event: any, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    if (date) {
+      setSelectedDate(date);
+      setFilterType('custom');
+    }
+  };
 
   if (loading) {
     return (
@@ -117,22 +226,173 @@ export const AppointmentsScreen: React.FC<Props> = ({ navigation }) => {
         <Text style={styles.headerTitle}>Lịch hẹn của tôi</Text>
       </View>
 
-      {appointments.length === 0 ? (
+      {/* Filter Section */}
+      <View style={styles.filterContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterScroll}
+        >
+          <TouchableOpacity
+            style={[styles.filterButton, filterType === 'all' && styles.filterButtonActive]}
+            onPress={() => setFilterType('all')}
+          >
+            <Text style={[styles.filterButtonText, filterType === 'all' && styles.filterButtonTextActive]}>
+              Tất cả
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, filterType === 'today' && styles.filterButtonActive]}
+            onPress={() => setFilterType('today')}
+          >
+            <Text style={[styles.filterButtonText, filterType === 'today' && styles.filterButtonTextActive]}>
+              Hôm nay
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, filterType === 'thisWeek' && styles.filterButtonActive]}
+            onPress={() => setFilterType('thisWeek')}
+          >
+            <Text style={[styles.filterButtonText, filterType === 'thisWeek' && styles.filterButtonTextActive]}>
+              Tuần này
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, filterType === 'thisMonth' && styles.filterButtonActive]}
+            onPress={() => setFilterType('thisMonth')}
+          >
+            <Text style={[styles.filterButtonText, filterType === 'thisMonth' && styles.filterButtonTextActive]}>
+              Tháng này
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, filterType === 'custom' && styles.filterButtonActive]}
+            onPress={() => {
+              if (Platform.OS === 'ios') {
+                setShowDatePicker(true);
+              } else {
+                setShowDatePicker(true);
+              }
+            }}
+          >
+            <Ionicons name="calendar-outline" size={16} color={filterType === 'custom' ? '#fff' : '#666'} />
+            <Text style={[styles.filterButtonText, filterType === 'custom' && styles.filterButtonTextActive]}>
+              Chọn ngày
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* Date Picker Modal */}
+      {Platform.OS === 'ios' && showDatePicker && (
+        <Modal
+          transparent={true}
+          animationType="slide"
+          visible={showDatePicker}
+          onRequestClose={() => setShowDatePicker(false)}
+        >
+          <View style={styles.datePickerModal}>
+            <View style={styles.datePickerContainer}>
+              <View style={styles.datePickerHeader}>
+                <Text style={styles.datePickerTitle}>Chọn ngày</Text>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Ionicons name="close" size={24} color="#333" />
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={selectedDate}
+                mode="date"
+                display="spinner"
+                onChange={handleDateChange}
+              />
+              <TouchableOpacity
+                style={styles.datePickerConfirm}
+                onPress={() => {
+                  setFilterType('custom');
+                  setShowDatePicker(false);
+                }}
+              >
+                <Text style={styles.datePickerConfirmText}>Xác nhận</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Android Date Picker */}
+      {Platform.OS === 'android' && showDatePicker && (
+        <DateTimePicker
+          value={selectedDate}
+          mode="date"
+          display="default"
+          onChange={handleDateChange}
+        />
+      )}
+
+      {/* Results Count */}
+      {filteredAppointments.length > 0 && (
+        <View style={styles.resultsContainer}>
+          <Text style={styles.resultsText}>
+            Hiển thị {paginatedAppointments.length} / {filteredAppointments.length} lịch hẹn
+          </Text>
+        </View>
+      )}
+
+      {filteredAppointments.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="calendar-outline" size={64} color="#ccc" />
-          <Text style={styles.emptyText}>Không có lịch hẹn nào</Text>
+          <Text style={styles.emptyText}>
+            {filterType === 'all' ? 'Không có lịch hẹn nào' : 'Không có lịch hẹn trong khoảng thời gian này'}
+          </Text>
         </View>
       ) : (
-        <FlatList
-          data={appointments}
-          renderItem={renderAppointmentCard}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          scrollEventThrottle={16}
-        />
+        <>
+          <FlatList
+            data={paginatedAppointments}
+            renderItem={renderAppointmentCard}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.list}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+            scrollEventThrottle={16}
+          />
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <View style={styles.paginationContainer}>
+              <TouchableOpacity
+                style={[styles.paginationButton, currentPage === 1 && styles.paginationButtonDisabled]}
+                onPress={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+              >
+                <Ionicons name="chevron-back" size={20} color={currentPage === 1 ? '#ccc' : '#8b5cf6'} />
+                <Text style={[styles.paginationButtonText, currentPage === 1 && styles.paginationButtonTextDisabled]}>
+                  Trước
+                </Text>
+              </TouchableOpacity>
+
+              <Text style={styles.paginationText}>
+                Trang {currentPage} / {totalPages}
+              </Text>
+
+              <TouchableOpacity
+                style={[styles.paginationButton, currentPage === totalPages && styles.paginationButtonDisabled]}
+                onPress={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+              >
+                <Text style={[styles.paginationButtonText, currentPage === totalPages && styles.paginationButtonTextDisabled]}>
+                  Sau
+                </Text>
+                <Ionicons name="chevron-forward" size={20} color={currentPage === totalPages ? '#ccc' : '#8b5cf6'} />
+              </TouchableOpacity>
+            </View>
+          )}
+        </>
       )}
     </View>
   );
@@ -238,5 +498,114 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600'
+  },
+  filterContainer: {
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0'
+  },
+  filterScroll: {
+    paddingHorizontal: 16,
+    gap: 8
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f5f5f5',
+    marginRight: 8,
+    gap: 6
+  },
+  filterButtonActive: {
+    backgroundColor: '#8b5cf6'
+  },
+  filterButtonText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500'
+  },
+  filterButtonTextActive: {
+    color: '#fff',
+    fontWeight: '600'
+  },
+  resultsContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#f8f9fa'
+  },
+  resultsText: {
+    fontSize: 12,
+    color: '#666'
+  },
+  datePickerModal: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)'
+  },
+  datePickerContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16
+  },
+  datePickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333'
+  },
+  datePickerConfirm: {
+    backgroundColor: '#8b5cf6',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 16
+  },
+  datePickerConfirmText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600'
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0'
+  },
+  paginationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 4
+  },
+  paginationButtonDisabled: {
+    opacity: 0.5
+  },
+  paginationButtonText: {
+    fontSize: 14,
+    color: '#8b5cf6',
+    fontWeight: '600'
+  },
+  paginationButtonTextDisabled: {
+    color: '#ccc'
+  },
+  paginationText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500'
   }
 });

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Promotion, Service, Appointment, User, PromotionTargetAudience, Tier, Review } from '../../types';
+import type { Promotion, Service, Appointment, User, PromotionTargetAudience, Tier, Review, ServiceCategory } from '../../types';
 import AddEditPromotionModal from '../components/AddEditPromotionModal';
+import TierVouchersManagement from '../components/TierVouchersManagement';
 import { PlusIcon, EditIcon, TrashIcon, GridIcon, ListIcon, TimerIcon } from '../../shared/icons';
 import * as apiService from '../../client/services/apiService'; // Import API service
 // FIX: Remove mock data imports that are no longer available.
@@ -64,12 +65,13 @@ interface AdminPromotionsPageProps {
 export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allServices, allTiers, allUsers, allAppointments, allReviews }) => {
     const [promotions, setPromotions] = useState<Promotion[]>([]);
     const [wallets, setWallets] = useState<Record<string, { points: number }>>({});
+    const [categories, setCategories] = useState<ServiceCategory[]>([]);
 
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     // Promotion Management States
-    const [activeTab, setActiveTab] = useState<'vouchers' | 'redeemable'>('vouchers'); // Tab state: vouchers (public) or redeemable (private)
+    const [activeTab, setActiveTab] = useState<'vouchers' | 'redeemable' | 'tier'>('vouchers'); // Tab state: vouchers (public), redeemable (private), or tier (VIP tier vouchers)
     const [isPromotionModalOpen, setIsPromotionModalOpen] = useState(false);
     const [editingPromotion, setEditingPromotion] = useState<Promotion | null>(null);
     const [promoSearchTerm, setPromoSearchTerm] = useState('');
@@ -85,6 +87,9 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
             try {
                 setIsLoading(true);
                 setError(null);
+                // Fetch categories for category name lookup
+                const fetchedCategories = await apiService.getServiceCategories();
+                setCategories(fetchedCategories);
                 // Fetch all promotions (including private) for admin
                 const fetchedPromotions = await apiService.getPromotions({ all: true });
                 console.log('=== FETCHED FROM API ===');
@@ -157,15 +162,16 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
 
     // --- Promotions Tab Logic ---
     const allServiceCategories = useMemo(() => {
-        const categories = new Set(allServices.map(s => {
-            // Handle both string category and potential object
-            const cat = s.category;
-            if (typeof cat === 'string') return cat;
-            if (cat && typeof cat === 'object' && 'name' in cat) return (cat as any).name;
-            return String(cat || '');
+        const categoryNames = new Set(allServices.map(s => {
+            // Lookup category name from categoryId
+            if (s.categoryId) {
+                const category = categories.find(c => c.id === s.categoryId);
+                return category?.name || '';
+            }
+            return '';
         }).filter(Boolean));
-        return ['All', ...Array.from(categories).sort()];
-    }, [allServices]);
+        return ['All', ...Array.from(categoryNames).sort()];
+    }, [allServices, categories]);
 
     const filteredPromotions = useMemo(() => {
         console.log('[FILTER] Starting filter with promotions:', promotions.length);
@@ -175,7 +181,7 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
         const normalizedPromotions = promotions.map(promo => {
             // Normalize isPublic: convert 0/1/'0'/'1'/true/false to boolean
             let normalizedIsPublic: boolean;
-            const rawIsPublic = promo.isPublic;
+            const rawIsPublic = promo.isPublic as any; // API may return number/string from DB
             
             // Check if it's already a boolean
             if (typeof rawIsPublic === 'boolean') {
@@ -217,20 +223,37 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
             // HƯỚNG ĐI MỚI: Sử dụng pointsRequired để phân biệt
             // - pointsRequired > 0 → Voucher đổi thưởng (tab "Voucher đổi thưởng")
             // - pointsRequired = 0 hoặc NULL → Voucher thông thường (tab "Voucher")
+            // QUAN TRỌNG: Loại trừ voucher VIP (targetAudience = "Tier Level X") khỏi tab "vouchers" và "redeemable"
             .filter(promo => {
+                // Kiểm tra xem có phải voucher VIP không
+                const isVIPTierVoucher = promo.targetAudience && 
+                    typeof promo.targetAudience === 'string' && 
+                    promo.targetAudience.startsWith('Tier Level');
+                
+                // Voucher VIP chỉ hiển thị trong tab "tier", không hiển thị ở tab khác
+                if (isVIPTierVoucher && activeTab !== 'tier') {
+                    return false;
+                }
+                
+                // Nếu đang ở tab "tier", chỉ hiển thị voucher VIP
+                if (activeTab === 'tier') {
+                    return isVIPTierVoucher;
+                }
+                
                 if (activeTab === 'vouchers') {
-                    // Tab "Voucher": chỉ hiển thị voucher public (isPublic = true)
-                    const isPublic = promo.isPublic === true || promo.isPublic === 1 || promo.isPublic === '1' || String(promo.isPublic).toLowerCase() === 'true';
-                    return isPublic;
+                    // Tab "Voucher": chỉ hiển thị voucher public (isPublic = true) và KHÔNG phải voucher VIP
+                    const isPublicValue = promo.isPublic as any; // API may return number/string from DB
+                    const isPublic = isPublicValue === true || isPublicValue === 1 || isPublicValue === '1' || String(isPublicValue).toLowerCase() === 'true';
+                    return isPublic && !isVIPTierVoucher;
                 } else {
-                    // Tab "Voucher đổi thưởng": hiển thị voucher đổi điểm (pointsRequired > 0)
+                    // Tab "Voucher đổi thưởng": hiển thị voucher đổi điểm (pointsRequired > 0) và KHÔNG phải voucher VIP
                     const pointsValue = promo.pointsRequired;
                     const isRedeemable = pointsValue !== null && pointsValue !== undefined && !isNaN(Number(pointsValue)) && Number(pointsValue) > 0;
                     
                     // Always log when checking for redeemable tab
-                    console.log(`[REDEEMABLE TAB] Checking: ${promo.id} "${promo.title.substring(0, 30)}" | pointsRequired: ${promo.pointsRequired} (${typeof promo.pointsRequired}) | isRedeemable: ${isRedeemable} | Result: ${isRedeemable}`);
+                    console.log(`[REDEEMABLE TAB] Checking: ${promo.id} "${promo.title.substring(0, 30)}" | pointsRequired: ${promo.pointsRequired} (${typeof promo.pointsRequired}) | isRedeemable: ${isRedeemable} | isVIPTierVoucher: ${isVIPTierVoucher} | Result: ${isRedeemable && !isVIPTierVoucher}`);
                     
-                    return isRedeemable;
+                    return isRedeemable && !isVIPTierVoucher;
                 }
             })
             // Apply search filter
@@ -254,7 +277,12 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
             .filter(promo => {
                 if (promoFilterCategory === 'All') return true;
                 const applicableIds = promo.applicableServiceIds || [];
-                const matchesCategory = applicableIds.some(id => allServices.find(s => s.id === id)?.category === promoFilterCategory);
+                const matchesCategory = applicableIds.some(id => {
+                    const service = allServices.find(s => s.id === id);
+                    if (!service || !service.categoryId) return false;
+                    const category = categories.find(c => c.id === service.categoryId);
+                    return category?.name === promoFilterCategory;
+                });
                 if (!matchesCategory && activeTab === 'redeemable') {
                     console.log(`[CATEGORY FILTER] Excluding: ${promo.id} "${promo.title.substring(0, 30)}" - doesn't match category: "${promoFilterCategory}"`);
                 }
@@ -300,26 +328,42 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
         try {
             let savedPromo: Promotion;
             if (promoData.id) {
+                // Get old promotion to check if isPublic changed
+                const oldPromo = promotions.find(p => p.id === promoData.id);
+                const oldIsPublicValue = oldPromo?.isPublic as any;
+                const oldIsPublic = oldIsPublicValue === true || oldIsPublicValue === 1 || oldIsPublicValue === '1' || String(oldIsPublicValue).toLowerCase() === 'true';
+                const newIsPublicValue = promoData.isPublic as any;
+                const newIsPublic = newIsPublicValue === true || newIsPublicValue === 1 || newIsPublicValue === '1' || String(newIsPublicValue).toLowerCase() === 'true';
+                
                 savedPromo = await apiService.updatePromotion(promoData.id, promoData);
                 // Normalize the saved promotion data before updating state
+                const isPublicValue = savedPromo.isPublic as any; // API may return number/string from DB
                 const normalizedSavedPromo = {
                     ...savedPromo,
-                    isPublic: savedPromo.isPublic === true || 
-                             savedPromo.isPublic === 1 || 
-                             savedPromo.isPublic === '1' ||
-                             String(savedPromo.isPublic).toLowerCase() === 'true',
+                    isPublic: isPublicValue === true || 
+                             isPublicValue === 1 || 
+                             isPublicValue === '1' ||
+                             String(isPublicValue).toLowerCase() === 'true',
                     pointsRequired: savedPromo.pointsRequired ? Number(savedPromo.pointsRequired) : null
                 };
                 setPromotions(prev => prev.map(p => p.id === normalizedSavedPromo.id ? normalizedSavedPromo : p));
+                
+                // If changed from public to private or vice versa, refetch all promotions to ensure consistency
+                if (oldIsPublic !== newIsPublic) {
+                    console.log('🔄 [PROMOTION UPDATE] isPublic changed, refetching all promotions...');
+                    const refetchedPromotions = await apiService.getPromotions({ all: true });
+                    setPromotions(refetchedPromotions);
+                }
             } else {
                 savedPromo = await apiService.createPromotion(promoData);
                 // Normalize the saved promotion data before updating state
+                const isPublicValue = savedPromo.isPublic as any; // API may return number/string from DB
                 const normalizedSavedPromo = {
                     ...savedPromo,
-                    isPublic: savedPromo.isPublic === true || 
-                             savedPromo.isPublic === 1 || 
-                             savedPromo.isPublic === '1' ||
-                             String(savedPromo.isPublic).toLowerCase() === 'true',
+                    isPublic: isPublicValue === true || 
+                             isPublicValue === 1 || 
+                             isPublicValue === '1' ||
+                             String(isPublicValue).toLowerCase() === 'true',
                     pointsRequired: savedPromo.pointsRequired ? Number(savedPromo.pointsRequired) : null
                 };
                 setPromotions(prev => [normalizedSavedPromo, ...prev]);
@@ -422,6 +466,16 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
                 >
                     Voucher đổi thưởng
                 </button>
+                <button
+                    onClick={() => setActiveTab('tier')}
+                    className={`px-6 py-3 font-medium text-lg transition-colors ${
+                        activeTab === 'tier'
+                            ? 'border-b-2 border-brand-primary text-brand-dark'
+                            : 'text-gray-500 hover:text-brand-dark'
+                    }`}
+                >
+                    Voucher VIP
+                </button>
             </div>
             
             {isLoading ? (
@@ -432,6 +486,24 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
                 <div className="text-center py-10 bg-white rounded-lg shadow-md">
                     <p className="text-lg text-red-500">Lỗi: {error}</p>
                 </div>
+            ) : activeTab === 'tier' ? (
+                <TierVouchersManagement
+                    allPromotions={promotions}
+                    allTiers={allTiers}
+                    allServices={allServices}
+                    onPromotionChange={() => {
+                        // Refetch promotions when a promotion is changed
+                        const fetchPromoData = async () => {
+                            try {
+                                const fetchedPromotions = await apiService.getPromotions({ all: true });
+                                setPromotions(fetchedPromotions);
+                            } catch (err: any) {
+                                console.error("Error refetching promotions:", err);
+                            }
+                        };
+                        fetchPromoData();
+                    }}
+                />
             ) : (
                 <div>
                     <div className="mb-6 flex flex-col md:flex-row gap-4">
@@ -488,13 +560,15 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
                                                 {/* Hiển thị số lượng còn lại */}
                                                 <div className="mt-2 text-sm">
                                                     {(() => {
-                                                        // Ưu tiên sử dụng remainingQuantity từ backend
+                                                        // Ưu tiên sử dụng remainingQuantity từ backend (có thể có trong response nhưng chưa có trong type)
                                                         // Nếu không có, fallback về stock (cho tương thích ngược)
-                                                        const remainingQty = promo.remainingQuantity !== undefined ? promo.remainingQuantity : (promo.stock !== null && promo.stock !== undefined ? promo.stock : null);
+                                                        const promoAny = promo as any; // Backend may return additional fields
+                                                        const remainingQty = promoAny.remainingQuantity !== undefined ? promoAny.remainingQuantity : (promo.stock !== null && promo.stock !== undefined ? promo.stock : null);
                                                         const isRedeemable = promo.pointsRequired && Number(promo.pointsRequired) > 0;
                                                         
                                                         // Chỉ hiển thị "Không giới hạn" nếu stock = null và không phải voucher đổi điểm
-                                                        if (!isRedeemable && (promo.stock === null || promo.stock === undefined || promo.stock === '')) {
+                                                        const stockValue = promo.stock as any; // May be number, null, or string from API
+                                                        if (!isRedeemable && (stockValue === null || stockValue === undefined || stockValue === '')) {
                                                             return <span className="text-gray-500">Không giới hạn</span>;
                                                         }
                                                         
@@ -511,9 +585,9 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
                                                                     <span className={displayQty <= 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
                                                                         Còn {displayQty} voucher
                                                                     </span>
-                                                                    {promo.totalRedeemed !== undefined && (
+                                                                    {promoAny.totalRedeemed !== undefined && (
                                                                         <span className="text-xs text-gray-500">
-                                                                            (Đã đổi: {promo.totalRedeemed}, Đã dùng: {promo.usedCount || 0})
+                                                                            (Đã đổi: {promoAny.totalRedeemed}, Đã dùng: {promoAny.usedCount || 0})
                                                                         </span>
                                                                     )}
                                                                 </div>
@@ -524,9 +598,9 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
                                                                     <span className={displayQty <= 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
                                                                         Còn {displayQty} lượt
                                                                     </span>
-                                                                    {promo.usedCount !== undefined && promo.stock !== null && (
+                                                                    {promoAny.usedCount !== undefined && promo.stock !== null && (
                                                                         <span className="text-xs text-gray-500">
-                                                                            (Tổng: {Number(promo.stock) + Number(promo.usedCount || 0)}, Đã dùng: {promo.usedCount || 0})
+                                                                            (Tổng: {Number(promo.stock) + Number(promoAny.usedCount || 0)}, Đã dùng: {promoAny.usedCount || 0})
                                                                         </span>
                                                                     )}
                                                                 </div>
@@ -586,13 +660,15 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
                                                 </td>
                                                 <td className="p-4 text-sm">
                                                     {(() => {
-                                                        // Ưu tiên sử dụng remainingQuantity từ backend
+                                                        // Ưu tiên sử dụng remainingQuantity từ backend (có thể có trong response nhưng chưa có trong type)
                                                         // Nếu không có, fallback về stock (cho tương thích ngược)
-                                                        const remainingQty = promo.remainingQuantity !== undefined ? promo.remainingQuantity : (promo.stock !== null && promo.stock !== undefined ? promo.stock : null);
+                                                        const promoAny = promo as any; // Backend may return additional fields
+                                                        const remainingQty = promoAny.remainingQuantity !== undefined ? promoAny.remainingQuantity : (promo.stock !== null && promo.stock !== undefined ? promo.stock : null);
                                                         const isRedeemable = promo.pointsRequired && Number(promo.pointsRequired) > 0;
                                                         
                                                         // Chỉ hiển thị "Không giới hạn" nếu stock = null và không phải voucher đổi điểm
-                                                        if (!isRedeemable && (promo.stock === null || promo.stock === undefined || promo.stock === '')) {
+                                                        const stockValue = promo.stock as any; // May be number, null, or string from API
+                                                        if (!isRedeemable && (stockValue === null || stockValue === undefined || stockValue === '')) {
                                                             return <span className="text-gray-500">Không giới hạn</span>;
                                                         }
                                                         
@@ -610,9 +686,9 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
                                                                     <span className={displayQty <= 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
                                                                         Còn {displayQty} voucher
                                                                     </span>
-                                                                    {promo.totalRedeemed !== undefined && (
+                                                                    {promoAny.totalRedeemed !== undefined && (
                                                                         <span className="text-xs text-gray-500">
-                                                                            (Đã đổi: {promo.totalRedeemed}, Đã dùng: {promo.usedCount || 0})
+                                                                            (Đã đổi: {promoAny.totalRedeemed}, Đã dùng: {promoAny.usedCount || 0})
                                                                         </span>
                                                                     )}
                                                                 </div>
@@ -624,9 +700,9 @@ export const AdminPromotionsPage: React.FC<AdminPromotionsPageProps> = ({ allSer
                                                                     <span className={displayQty <= 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
                                                                         Còn {displayQty} lượt
                                                                     </span>
-                                                                    {promo.usedCount !== undefined && promo.stock !== null && (
+                                                                    {promoAny.usedCount !== undefined && promo.stock !== null && (
                                                                         <span className="text-xs text-gray-500">
-                                                                            (Tổng: {Number(promo.stock) + Number(promo.usedCount || 0)}, Đã dùng: {promo.usedCount || 0})
+                                                                            (Tổng: {Number(promo.stock) + Number(promoAny.usedCount || 0)}, Đã dùng: {promoAny.usedCount || 0})
                                                                         </span>
                                                                     )}
                                                                 </div>

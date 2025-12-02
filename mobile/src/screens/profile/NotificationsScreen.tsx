@@ -79,37 +79,104 @@ export const NotificationsScreen: React.FC<{ navigation: any }> = ({ navigation 
     }
   };
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
+  const getNotificationIcon = (notification: Notification) => {
+    // Check for birthday notification
+    if (notification.title && notification.title.includes('🎉 Chúc mừng sinh nhật')) {
+      return 'gift';
+    }
+    // Check for new client notification
+    if (notification.title && notification.title.includes('🎁 Chào mừng khách hàng mới')) {
+      return 'gift';
+    }
+    // Check for tier voucher notification
+    if (notification.title && (notification.title.includes('Voucher hạng') || notification.title.includes('Voucher VIP'))) {
+      return 'gift';
+    }
+    
+    switch (notification.type) {
       case 'booking_confirmed':
+      case 'appointment_confirmed':
         return 'checkmark-circle';
       case 'booking_reminder':
+      case 'appointment_reminder':
         return 'alarm';
       case 'booking_cancelled':
+      case 'appointment_cancelled':
         return 'close-circle';
       case 'payment_success':
+      case 'payment_received':
         return 'card';
       case 'promotion':
-        return 'pricetag';
+      case 'promo_alert':
+      case 'birthday_gift':
+        return 'gift';
       default:
         return 'notifications';
     }
   };
 
-  const getNotificationColor = (type: string) => {
-    switch (type) {
+  const getNotificationColor = (notification: Notification) => {
+    // Check for birthday notification
+    if (notification.title && notification.title.includes('🎉 Chúc mừng sinh nhật')) {
+      return { icon: '#9333ea', bg: '#f3e8ff' }; // Purple
+    }
+    // Check for new client notification
+    if (notification.title && notification.title.includes('🎁 Chào mừng khách hàng mới')) {
+      return { icon: '#9333ea', bg: '#f3e8ff' }; // Purple
+    }
+    // Check for tier voucher notification
+    if (notification.title && (notification.title.includes('Voucher hạng') || notification.title.includes('Voucher VIP'))) {
+      return { icon: '#9333ea', bg: '#f3e8ff' }; // Purple
+    }
+    
+    switch (notification.type) {
       case 'booking_confirmed':
-        return '#10b981';
+      case 'appointment_confirmed':
+        return { icon: '#10b981', bg: '#d1fae5' }; // Green
       case 'booking_reminder':
-        return '#f59e0b';
+      case 'appointment_reminder':
+        return { icon: '#f59e0b', bg: '#fef3c7' }; // Amber
       case 'booking_cancelled':
-        return '#ef4444';
+      case 'appointment_cancelled':
+        return { icon: '#ef4444', bg: '#fee2e2' }; // Red
       case 'payment_success':
-        return '#3b82f6';
+      case 'payment_received':
+        return { icon: '#3b82f6', bg: '#dbeafe' }; // Blue
       case 'promotion':
-        return '#d62976';
+      case 'promo_alert':
+      case 'birthday_gift':
+        return { icon: '#9333ea', bg: '#f3e8ff' }; // Purple
       default:
-        return '#6b7280';
+        return { icon: '#6b7280', bg: '#f3f4f6' }; // Gray
+    }
+  };
+
+  const getNotificationTitle = (notification: Notification) => {
+    // Return title as-is if it already has emoji or special formatting
+    if (notification.title && (notification.title.includes('🎉') || notification.title.includes('🎁'))) {
+      return notification.title;
+    }
+    
+    switch (notification.type) {
+      case 'booking_confirmed':
+      case 'appointment_confirmed':
+        return 'Lịch hẹn đã được xác nhận';
+      case 'booking_cancelled':
+      case 'appointment_cancelled':
+        return 'Lịch hẹn đã hủy';
+      case 'booking_reminder':
+      case 'appointment_reminder':
+        return 'Nhắc nhở lịch hẹn';
+      case 'payment_success':
+      case 'payment_received':
+        return 'Thanh toán thành công';
+      case 'promotion':
+      case 'promo_alert':
+        return '🎁 Ưu đãi mới';
+      case 'birthday_gift':
+        return '🎉 Chúc mừng sinh nhật!';
+      default:
+        return notification.title || 'Thông báo';
     }
   };
 
@@ -128,32 +195,51 @@ export const NotificationsScreen: React.FC<{ navigation: any }> = ({ navigation 
     return date.toLocaleDateString('vi-VN');
   };
 
-  const renderNotification = ({ item }: { item: Notification }) => (
-    <TouchableOpacity
-      style={[styles.notificationCard, !item.isRead && styles.unreadCard]}
-      onPress={() => handleNotificationPress(item)}
-    >
-      <View style={[styles.iconContainer, { backgroundColor: `${getNotificationColor(item.type)}20` }]}>
-        <Ionicons 
-          name={getNotificationIcon(item.type) as any} 
-          size={24} 
-          color={getNotificationColor(item.type)} 
-        />
-      </View>
-      <View style={styles.notificationContent}>
-        <View style={styles.notificationHeader}>
-          <Text style={[styles.notificationTitle, !item.isRead && styles.unreadTitle]}>
-            {item.title}
-          </Text>
-          {!item.isRead && <View style={styles.unreadDot} />}
+  const renderNotification = ({ item }: { item: Notification }) => {
+    const colorConfig = getNotificationColor(item);
+    const iconName = getNotificationIcon(item);
+    const displayTitle = getNotificationTitle(item);
+    
+    // Check if message contains cancellation reason
+    const hasCancellationReason = item.type === 'booking_cancelled' || item.type === 'appointment_cancelled';
+    const reasonMatch = item.message && item.message.includes('Lý do:');
+    const messageParts = reasonMatch ? item.message.split('Lý do:') : [item.message];
+    const mainMessage = messageParts[0]?.trim() || item.message;
+    const cancellationReason = reasonMatch ? messageParts[1]?.trim() : null;
+
+    return (
+      <TouchableOpacity
+        style={[styles.notificationCard, !item.isRead && styles.unreadCard]}
+        onPress={() => handleNotificationPress(item)}
+      >
+        <View style={[styles.iconContainer, { backgroundColor: colorConfig.bg }]}>
+          <Ionicons 
+            name={iconName as any} 
+            size={24} 
+            color={colorConfig.icon} 
+          />
         </View>
-        <Text style={styles.notificationMessage} numberOfLines={2}>
-          {item.message}
-        </Text>
-        <Text style={styles.notificationTime}>{formatDate(item.createdAt)}</Text>
-      </View>
-    </TouchableOpacity>
-  );
+        <View style={styles.notificationContent}>
+          <View style={styles.notificationHeader}>
+            <Text style={[styles.notificationTitle, !item.isRead && styles.unreadTitle]}>
+              {displayTitle}
+            </Text>
+            {!item.isRead && <View style={styles.unreadDot} />}
+          </View>
+          <Text style={styles.notificationMessage} numberOfLines={reasonMatch ? 3 : 2}>
+            {mainMessage}
+          </Text>
+          {cancellationReason && (
+            <View style={styles.cancellationReasonBox}>
+              <Text style={styles.cancellationReasonLabel}>Lý do hủy:</Text>
+              <Text style={styles.cancellationReasonText}>{cancellationReason}</Text>
+            </View>
+          )}
+          <Text style={styles.notificationTime}>{formatDate(item.createdAt)}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   if (loading) {
     return <LoadingSpinner />;
@@ -307,6 +393,27 @@ const styles = StyleSheet.create({
   },
   notificationTime: {
     fontSize: 12,
-    color: '#999'
+    color: '#999',
+    marginTop: 4
+  },
+  cancellationReasonBox: {
+    backgroundColor: '#fef2f2',
+    borderLeftWidth: 4,
+    borderLeftColor: '#ef4444',
+    borderRadius: 6,
+    padding: 10,
+    marginTop: 8,
+    marginBottom: 4
+  },
+  cancellationReasonLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#991b1b',
+    marginBottom: 4
+  },
+  cancellationReasonText: {
+    fontSize: 13,
+    color: '#b91c1c',
+    lineHeight: 18
   }
 });

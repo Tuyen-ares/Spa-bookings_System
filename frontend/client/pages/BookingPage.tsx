@@ -1278,15 +1278,47 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
     const loadInitialData = async () => {
         try {
-            const [servicesData, categoriesData, usersData, promotionsData, coursesData, reviewsData, appointmentsData] = await Promise.all([
-                apiService.getServices(),
-                apiService.getServiceCategories(),
-                apiService.getUsers(),
-                apiService.getPromotions(),
-                apiService.getTreatmentCourses(),
-                apiService.getReviews(),
-                apiService.getAppointments()
+            // Load critical data first (services and categories)
+            // Use Promise.allSettled to prevent one failure from blocking others
+            const results = await Promise.allSettled([
+                apiService.getServices().catch(err => {
+                    console.error('Error loading services:', err);
+                    return [];
+                }),
+                apiService.getServiceCategories().catch(err => {
+                    console.error('Error loading categories:', err);
+                    return [];
+                }),
+                apiService.getUsers().catch(err => {
+                    console.error('Error loading users:', err);
+                    return [];
+                }),
+                apiService.getPromotions().catch(err => {
+                    console.error('Error loading promotions:', err);
+                    return [];
+                }),
+                apiService.getTreatmentCourses().catch(err => {
+                    console.error('Error loading treatment courses:', err);
+                    return [];
+                }),
+                apiService.getReviews().catch(err => {
+                    console.error('Error loading reviews:', err);
+                    return [];
+                }),
+                apiService.getAppointments().catch(err => {
+                    console.error('Error loading appointments:', err);
+                    return [];
+                })
             ]);
+
+            // Extract data from results, using empty array as fallback
+            const servicesData = results[0].status === 'fulfilled' ? results[0].value : [];
+            const categoriesData = results[1].status === 'fulfilled' ? results[1].value : [];
+            const usersData = results[2].status === 'fulfilled' ? results[2].value : [];
+            const promotionsData = results[3].status === 'fulfilled' ? results[3].value : [];
+            const coursesData = results[4].status === 'fulfilled' ? results[4].value : [];
+            const reviewsData = results[5].status === 'fulfilled' ? results[5].value : [];
+            const appointmentsData = results[6].status === 'fulfilled' ? results[6].value : [];
 
             const activeServices = servicesData.filter(s => s.isActive === true || s.isActive === undefined || s.isActive === null);
             
@@ -1454,6 +1486,35 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 invalidReason = 'Mã khuyến mãi không áp dụng cho dịch vụ đã chọn';
             }
         }
+        
+        // Check minimum sessions (số buổi tối thiểu) - parse from termsAndConditions
+        else if (selectedPromotion.termsAndConditions) {
+            try {
+                const termsObj = JSON.parse(selectedPromotion.termsAndConditions);
+                if (termsObj && typeof termsObj.minSessions === 'number' && termsObj.minSessions > 0) {
+                    // Calculate total quantity of applicable services
+                    let totalQuantity = 0;
+                    if (selectedPromotion.applicableServiceIds && selectedPromotion.applicableServiceIds.length > 0) {
+                        // Voucher chỉ áp dụng cho các services cụ thể - tính tổng quantity của các services đó
+                        const applicableServiceIdsArray = Array.isArray(selectedPromotion.applicableServiceIds) 
+                            ? selectedPromotion.applicableServiceIds 
+                            : (typeof selectedPromotion.applicableServiceIds === 'string' ? JSON.parse(selectedPromotion.applicableServiceIds) : []);
+                        totalQuantity = selectedServices
+                            .filter(({ service }) => applicableServiceIdsArray.includes(service.id))
+                            .reduce((sum, { quantity }) => sum + quantity, 0);
+                    } else {
+                        // Voucher áp dụng cho tất cả services - tính tổng quantity của tất cả
+                        totalQuantity = selectedServices.reduce((sum, { quantity }) => sum + quantity, 0);
+                    }
+                    if (totalQuantity < termsObj.minSessions) {
+                        isStillValid = false;
+                        invalidReason = `Voucher chỉ áp dụng khi đặt từ ${termsObj.minSessions} buổi trở lên (hiện tại: ${totalQuantity} buổi)`;
+                    }
+                }
+            } catch (e) {
+                // Not JSON or parse error, ignore (treat as regular text)
+            }
+        }
 
         // Reset voucher if no longer valid (silently, backend will validate when booking)
         if (!isStillValid) {
@@ -1497,6 +1558,32 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             if (!hasMatch) return false;
         }
         // If applicableServiceIds is empty/null, voucher applies to all services
+        
+        // 6.5. Check minimum sessions (số buổi tối thiểu) - parse from termsAndConditions
+        if (promo.termsAndConditions) {
+            try {
+                const termsObj = JSON.parse(promo.termsAndConditions);
+                if (termsObj && typeof termsObj.minSessions === 'number' && termsObj.minSessions > 0) {
+                    // Calculate total quantity of applicable services
+                    let totalQuantity = 0;
+                    if (promo.applicableServiceIds && promo.applicableServiceIds.length > 0) {
+                        // Voucher chỉ áp dụng cho các services cụ thể - tính tổng quantity của các services đó
+                        const applicableServiceIdsArray = Array.isArray(promo.applicableServiceIds) 
+                            ? promo.applicableServiceIds 
+                            : (typeof promo.applicableServiceIds === 'string' ? JSON.parse(promo.applicableServiceIds) : []);
+                        totalQuantity = selectedServices
+                            .filter(({ service }) => applicableServiceIdsArray.includes(service.id))
+                            .reduce((sum, { quantity }) => sum + quantity, 0);
+                    } else {
+                        // Voucher áp dụng cho tất cả services - tính tổng quantity của tất cả
+                        totalQuantity = selectedServices.reduce((sum, { quantity }) => sum + quantity, 0);
+                    }
+                    if (totalQuantity < termsObj.minSessions) return false;
+                }
+            } catch (e) {
+                // Not JSON or parse error, ignore (treat as regular text)
+            }
+        }
         
         // ✅ 7. Check if user has already used this voucher
         if (promo.targetAudience === 'Birthday') {
@@ -1596,20 +1683,17 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         });
     };
 
-    // Check if a time slot meets the minimum 1-hour gap requirement from existing appointments
-    // Logic: Nếu khách đã đặt lịch ở 13:00, chỉ được đặt lịch mới cách ít nhất 1 giờ (tròn giờ)
-    // Ví dụ: Đã đặt 13:00 (60 phút = 13:00-14:00) → có thể đặt 12:00 (12:00-13:00, cách 0 phút = không hợp lệ? Không, đây là tiếp giáp)
-    // Thực ra: Nếu đã đặt 13:00-14:00, có thể đặt 12:00-13:00 (tiếp giáp) hoặc 14:00-15:00 (tiếp giáp)
-    // Nhưng theo yêu cầu: "chỉ được đặt cách lịch hiện tại 1 tiếng" → nghĩa là phải cách nhau ít nhất 1 giờ
-    // Ví dụ: Đã đặt 13:00 → có thể đặt 12:00 (12:00-13:00 kết thúc, 13:00-14:00 bắt đầu = cách nhau 0 phút) → KHÔNG hợp lệ
-    // Đã đặt 13:00 → có thể đặt 11:00 (11:00-12:00 kết thúc, 13:00-14:00 bắt đầu = cách nhau 60 phút = 1 giờ) → HỢP LỆ
-    // Đã đặt 13:00 → có thể đặt 14:00 (13:00-14:00 kết thúc, 14:00-15:00 bắt đầu = cách nhau 0 phút) → KHÔNG hợp lệ
-    // Đã đặt 13:00 → có thể đặt 15:00 (13:00-14:00 kết thúc, 15:00-16:00 bắt đầu = cách nhau 60 phút = 1 giờ) → HỢP LỆ
+    // Check if a time slot is valid based on existing appointments
+    // Logic đúng theo yêu cầu:
+    // 1. Nếu đặt lịch SAU một appointment đã có: Phải sau khi appointment đó kết thúc (newStart >= existingEnd)
+    //    - Không cần gap, chỉ cần không overlap
+    // 2. Nếu đặt lịch TRƯỚC một appointment đã có: Phải trước khi appointment đó bắt đầu ít nhất bằng duration của dịch vụ mới
+    //    - Ví dụ: Appointment cũ bắt đầu lúc 13:00, dịch vụ mới có duration 30 phút
+    //    - Thì dịch vụ mới phải kết thúc trước 13:00, tức là phải bắt đầu trước 12:30 (13:00 - 30 phút)
+    //    - newStart + selectedServiceDuration <= existingStart
+    //    - newStart <= existingStart - selectedServiceDuration
     const isTimeSlotValidForMinimumGap = (time: string): boolean => {
         if (!selectedDate || selectedServices.length === 0) return true;
-        
-        // PHẢI là giờ tròn (00 phút) - chỉ cho phép XX:00, không cho XX:30, XX:45
-        if (!isRoundHour(time)) return false;
 
         // Lấy duration của dịch vụ đang được chọn
         const selectedService = selectedServices[0].service;
@@ -1635,30 +1719,32 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             const existingStartTimeInMinutes = timeToMinutes(apt.time);
             const existingEndTimeInMinutes = existingStartTimeInMinutes + service.duration;
 
-            // Tính khoảng cách giữa 2 appointments (theo phút)
-            // Khoảng cách = khoảng trống giữa chúng (không tính overlap)
-            let gapInMinutes = 0;
-            
-            // Nếu appointment mới đứng trước appointment đã đặt (newEnd <= existingStart)
-            // Khoảng cách = existingStart - newEnd (khoảng trống giữa newEnd và existingStart)
-            if (newEndTimeInMinutes <= existingStartTimeInMinutes) {
-                gapInMinutes = existingStartTimeInMinutes - newEndTimeInMinutes;
-            }
-            // Nếu appointment mới đứng sau appointment đã đặt (newStart >= existingEnd)
-            // Khoảng cách = newStart - existingEnd (khoảng trống giữa existingEnd và newStart)
-            else if (newStartTimeInMinutes >= existingEndTimeInMinutes) {
-                gapInMinutes = newStartTimeInMinutes - existingEndTimeInMinutes;
-            }
-            else {
-                // Có overlap (đã được kiểm tra bởi isTimeSlotBlocked)
+            // Kiểm tra overlap (đã được kiểm tra bởi isTimeSlotBlocked, nhưng kiểm tra lại để chắc chắn)
+            if (newStartTimeInMinutes < existingEndTimeInMinutes && newEndTimeInMinutes > existingStartTimeInMinutes) {
+                // Có overlap → không hợp lệ
                 return false;
             }
 
-            // PHẢI cách nhau ít nhất 1 giờ (60 phút)
-            // Nếu gapInMinutes = 0, nghĩa là tiếp giáp nhau → không hợp lệ
-            // Nếu gapInMinutes > 0 và < 60, nghĩa là có khoảng trống nhưng chưa đủ 1 giờ → không hợp lệ
-            // Chỉ hợp lệ nếu gapInMinutes >= 60
-            return gapInMinutes >= 60;
+            // Nếu appointment mới đứng SAU appointment đã đặt (newStart >= existingEnd)
+            // → Chỉ cần không overlap, không cần gap
+            if (newStartTimeInMinutes >= existingEndTimeInMinutes) {
+                return true; // Hợp lệ: đặt sau, không overlap
+            }
+
+            // Nếu appointment mới đứng TRƯỚC appointment đã đặt (newEnd <= existingStart)
+            // → Phải đảm bảo có đủ thời gian cho dịch vụ mới trước khi appointment cũ bắt đầu
+            // newStart + selectedServiceDuration <= existingStart
+            // newStart <= existingStart - selectedServiceDuration
+            if (newEndTimeInMinutes <= existingStartTimeInMinutes) {
+                // Kiểm tra: dịch vụ mới phải kết thúc trước khi appointment cũ bắt đầu
+                // newEnd <= existingStart (đã đúng vì đang ở trong if này)
+                // Nhưng cần đảm bảo có đủ thời gian: newStart <= existingStart - selectedServiceDuration
+                const requiredStartTime = existingStartTimeInMinutes - selectedService.duration;
+                return newStartTimeInMinutes <= requiredStartTime;
+            }
+
+            // Không nên đến đây, nhưng để an toàn
+            return false;
         });
     };
 
@@ -1688,13 +1774,65 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         setIsPaymentModalOpen(true);
     };
 
+    // Helper: Kiểm tra xem user có liệu trình chưa hoàn tất cho service này không
+    const checkActiveTreatmentCourse = (serviceId: string): TreatmentCourse | null => {
+        if (!currentUser || !treatmentCourses || treatmentCourses.length === 0) {
+            return null;
+        }
+        
+        const activeCourse = treatmentCourses.find(course => {
+            // Kiểm tra xem course này thuộc về user hiện tại
+            if (course.clientId !== currentUser.id) return false;
+            
+            // Kiểm tra xem course này có cùng serviceId không
+            const courseServiceId = course.services?.[0]?.serviceId || course.Service?.id || (course as any).serviceId;
+            if (courseServiceId !== serviceId) return false;
+            
+            // Kiểm tra xem course này chưa hoàn tất (status không phải 'completed' hoặc 'cancelled')
+            const status = course.status;
+            if (status === 'completed' || status === 'cancelled') return false;
+            
+            return true;
+        });
+        
+        return activeCourse || null;
+    };
+
     const handleProcessPayment = async () => {
         try {
+            // Kiểm tra xem user có liệu trình chưa hoàn tất cho các dịch vụ đang đặt không
+            for (const { service, quantity } of selectedServices) {
+                if (quantity >= 1) { // Chỉ kiểm tra nếu đặt với quantity >= 1 (tức là tạo treatment course)
+                    const activeCourse = checkActiveTreatmentCourse(service.id);
+                    if (activeCourse) {
+                        const serviceName = activeCourse.services?.[0]?.serviceName || activeCourse.Service?.name || (activeCourse as any).serviceName || service.name;
+                        const completedSessions = activeCourse.completedSessions || 0;
+                        const totalSessions = activeCourse.totalSessions || 0;
+                        const progress = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0;
+                        
+                        console.warn(`⚠️ [DUPLICATE SERVICE BOOKING] User ${currentUser?.id} đang cố đặt lại dịch vụ ${service.id}`);
+                        console.warn(`   Đã tìm thấy liệu trình chưa hoàn tất:`, {
+                            courseId: activeCourse.id,
+                            serviceName: serviceName,
+                            status: activeCourse.status,
+                            progress: `${completedSessions}/${totalSessions} buổi (${progress}%)`
+                        });
+                        
+                        alert(`Bạn đang có liệu trình "${serviceName}" chưa hoàn tất (đã hoàn thành ${completedSessions}/${totalSessions} buổi - ${progress}%).\n\nVui lòng hoàn tất liệu trình hiện tại trước khi đặt lại dịch vụ này.`);
+                        setIsPaymentModalOpen(false);
+                        return;
+                    }
+                }
+            }
+
             const bookingGroupId = uuidv4();
 
             if (selectedPromotion) {
-                // Normalize isPublic to boolean
-                const normalizedIsPublic = selectedPromotion.isPublic === true || selectedPromotion.isPublic === 1 || selectedPromotion.isPublic === '1';
+                // Normalize isPublic to boolean (handle cases where backend returns number/string)
+                const isPublicValue: any = selectedPromotion.isPublic;
+                const normalizedIsPublic = isPublicValue === true || 
+                                         isPublicValue === 1 || 
+                                         (typeof isPublicValue === 'string' && isPublicValue === '1');
                 const isRedeemedVoucher = !normalizedIsPublic;
                 
                 console.log('🔍 [PRE-BOOKING VALIDATION] Checking voucher:', {
@@ -2150,7 +2288,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                 } else if (isBlocked) {
                                     disabledReason = 'Trùng với lịch đã đặt';
                                 } else if (!isValidGap) {
-                                    disabledReason = 'Phải cách lịch đã đặt ít nhất 1 giờ (chỉ giờ tròn)';
+                                    disabledReason = 'Không đủ thời gian trước/sau lịch đã đặt';
                                 }
                                 
                                 return (
@@ -2307,11 +2445,15 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                         ) || applicablePromotions.find(p => 
                                             p.code && code && 
                                             p.code.toUpperCase().trim() === code.toUpperCase().trim()
-                                        ) || promotions.find(p => 
-                                            p.code && code && 
-                                            p.code.toUpperCase().trim() === code.toUpperCase().trim() &&
-                                            (p.isPublic === true || p.isPublic === 1 || p.isPublic === '1')
-                                        );
+                                        ) || promotions.find(p => {
+                                            const isPublicValue: any = p.isPublic;
+                                            const isPublic = isPublicValue === true || 
+                                                           isPublicValue === 1 || 
+                                                           (typeof isPublicValue === 'string' && isPublicValue === '1');
+                                            return p.code && code && 
+                                                   p.code.toUpperCase().trim() === code.toUpperCase().trim() &&
+                                                   isPublic;
+                                        });
                                         console.log('🎫 Voucher selected:', { code, found: !!promo, promo });
                                         
                                         if (promo) {
@@ -2372,7 +2514,10 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                         // Filter public promotions - SỬ DỤNG ĐẦY ĐỦ ĐIỀU KIỆN
                                         // Hàm isPromotionApplicable đã kiểm tra: isActive, expiryDate, stock, minOrderValue, applicableServiceIds, targetAudience
                                         const filteredPromotions = promotions.filter(p => {
-                                            const isPublic = p.isPublic === true || p.isPublic === 1 || p.isPublic === '1';
+                                            const isPublicValue: any = p.isPublic;
+                                            const isPublic = isPublicValue === true || 
+                                                           isPublicValue === 1 || 
+                                                           (typeof isPublicValue === 'string' && isPublicValue === '1');
                                             if (!isPublic) return false;
                                             
                                             // Sử dụng hàm isPromotionApplicable để kiểm tra đầy đủ điều kiện (bao gồm minOrderValue)
@@ -2382,7 +2527,10 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                         // Filter applicable promotions - SỬ DỤNG ĐẦY ĐỦ ĐIỀU KIỆN
                                         // Hàm isPromotionApplicable đã kiểm tra: isActive, expiryDate, stock, minOrderValue, applicableServiceIds, targetAudience
                                         const filteredApplicablePromotions = applicablePromotions.filter(p => {
-                                            const isPublic = p.isPublic === true || p.isPublic === 1 || p.isPublic === '1';
+                                            const isPublicValue: any = p.isPublic;
+                                            const isPublic = isPublicValue === true || 
+                                                           isPublicValue === 1 || 
+                                                           (typeof isPublicValue === 'string' && isPublicValue === '1');
                                             if (!isPublic) return false;
                                             
                                             // Sử dụng hàm isPromotionApplicable để kiểm tra đầy đủ điều kiện (bao gồm minOrderValue)
@@ -2393,7 +2541,10 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                         // QUAN TRỌNG: CHỈ lấy voucher đổi điểm (isPublic = false), KHÔNG lấy voucher public
                                         const filteredRedeemedVouchers = redeemedVouchers.filter((v: any) => {
                                             // CHỈ lấy voucher đổi điểm (isPublic = false)
-                                            const isPublicNormalized = v.isPublic === true || v.isPublic === 1 || v.isPublic === '1';
+                                            const isPublicValue: any = v.isPublic;
+                                            const isPublicNormalized = isPublicValue === true || 
+                                                                     isPublicValue === 1 || 
+                                                                     (typeof isPublicValue === 'string' && isPublicValue === '1');
                                             if (isPublicNormalized) {
                                                 // Loại bỏ voucher public (voucher public không bao giờ xuất hiện trong dropdown này)
                                                 return false;
@@ -2468,7 +2619,10 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
                                         return uniquePromotions.map((promo: any) => {
                                             // CHỈ hiển thị "[Voucher đã đổi]" cho voucher đổi điểm (isPublic = false)
-                                            const isPublicNormalized = promo.isPublic === true || promo.isPublic === 1 || promo.isPublic === '1';
+                                            const isPublicValue = promo.isPublic;
+                                            const isPublicNormalized = isPublicValue === true || 
+                                                                     isPublicValue === 1 || 
+                                                                     (typeof isPublicValue === 'string' && isPublicValue === '1');
                                             const isRedeemedVoucher = !isPublicNormalized;
                                             
                                             // Chỉ hiển thị text "[Voucher đã đổi]" cho voucher đổi điểm có redeemedCount
@@ -2481,6 +2635,19 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                                         ? ` (Giảm ${promo.discountValue}%)` 
                                                         : ` (Giảm ${formatPrice(promo.discountValue)})`}
                                                     {promo.minOrderValue ? ` (Đơn tối thiểu: ${formatPrice(promo.minOrderValue)})` : ''}
+                                                    {(() => {
+                                                        try {
+                                                            if (promo.termsAndConditions) {
+                                                                const termsObj = JSON.parse(promo.termsAndConditions);
+                                                                if (termsObj && typeof termsObj.minSessions === 'number' && termsObj.minSessions > 0) {
+                                                                    return ` (Tối thiểu ${termsObj.minSessions} buổi)`;
+                                                                }
+                                                            }
+                                                        } catch (e) {
+                                                            // Not JSON, ignore
+                                                        }
+                                                        return '';
+                                                    })()}
                                                     {showRedeemedText && promo.redeemedCount > 1 ? ` [Bạn có ${promo.redeemedCount} voucher]` : showRedeemedText ? ' [Voucher đã đổi]' : ''}
                                                 </option>
                                             );

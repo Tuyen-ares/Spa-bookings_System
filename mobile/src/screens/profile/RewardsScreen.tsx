@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,9 +17,17 @@ import {
   redeemVoucher,
   getCurrentUser 
 } from '../../services/apiService';
-import { Wallet, RedeemableVoucher } from '../../types';
+import { Wallet, RedeemableVoucher, Tier } from '../../types';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency } from '../../utils/formatters';
+
+// Define tiers (same as web)
+const TIERS: Tier[] = [
+  { level: 0, name: 'Thành viên', pointsRequired: 0, minSpendingRequired: 0, color: '#A8A29E', textColor: '#FFFFFF' },
+  { level: 1, name: 'Đồng', pointsRequired: 0, minSpendingRequired: 10000000, color: '#CD7F32', textColor: '#FFFFFF' }, // Bronze - 10 triệu
+  { level: 2, name: 'Bạc', pointsRequired: 0, minSpendingRequired: 30000000, color: '#C0C0C0', textColor: '#000000' }, // Silver - 30 triệu
+  { level: 3, name: 'Kim cương', pointsRequired: 0, minSpendingRequired: 50000000, color: '#B9F2FF', textColor: '#000000' }, // Diamond - 50 triệu
+];
 
 export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [wallet, setWallet] = useState<Wallet | null>(null);
@@ -55,6 +63,32 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
       setRefreshing(false);
     }
   };
+
+  // Get tier from wallet.tierLevel (synced from backend), fallback to calculation if not available (same as web)
+  const currentTier = useMemo(() => {
+    if (!wallet) {
+      // Return default tier (Thành viên - level 0)
+      return TIERS.find(t => t.level === 0) || TIERS[0];
+    }
+    
+    // Use tierLevel from wallet if available (synced from backend)
+    if (wallet.tierLevel !== undefined && wallet.tierLevel !== null) {
+      const tier = TIERS.find(t => t.level === wallet.tierLevel);
+      if (tier) return tier;
+    }
+    
+    // Fallback: Calculate tier from totalSpent if tierLevel is not available
+    const totalSpent = parseFloat(wallet.totalSpent?.toString() || '0') || 0;
+    const sortedTiers = [...TIERS].sort((a, b) => (b.minSpendingRequired || 0) - (a.minSpendingRequired || 0));
+    let tierLevel = 0; // Default to tier 0 (Thành viên)
+    for (const tier of sortedTiers) {
+      if (totalSpent >= (tier.minSpendingRequired || 0)) {
+        tierLevel = tier.level;
+        break;
+      }
+    }
+    return TIERS.find(t => t.level === tierLevel) || TIERS.find(t => t.level === 0) || TIERS[0];
+  }, [wallet]);
 
   const handleRedeemVoucher = async (voucher: RedeemableVoucher) => {
     if (!wallet || !voucher.pointsRequired) return;
@@ -190,7 +224,7 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>Hạng thành viên</Text>
-              <Text style={styles.statValue}>{wallet?.tier || 'Đồng'}</Text>
+              <Text style={[styles.statValue, { color: currentTier.color }]}>{currentTier.name}</Text>
             </View>
           </View>
           <Text style={styles.pointsNote}>

@@ -48,6 +48,7 @@ export interface Promotion {
   minOrderValue?: number;
   stock?: number | null;
   isActive?: boolean;
+  isPublic?: boolean | number | string; // Can be boolean, 0/1, or '0'/'1'
 }
 
 export interface Review {
@@ -156,7 +157,7 @@ export interface RegisterData {
 export interface Notification {
   id: string;
   userId: string;
-  type: 'booking_confirmed' | 'booking_reminder' | 'booking_cancelled' | 'payment_success' | 'promotion' | 'other';
+  type: 'booking_confirmed' | 'booking_reminder' | 'booking_cancelled' | 'payment_success' | 'promotion' | 'appointment_confirmed' | 'appointment_cancelled' | 'appointment_reminder' | 'appointment_new' | 'promo_alert' | 'birthday_gift' | 'payment_received' | 'treatment_course_reminder' | 'other';
   title: string;
   message: string;
   isRead: boolean;
@@ -164,12 +165,22 @@ export interface Notification {
   createdAt: string;
 }
 
+export interface Tier {
+  level: number;
+  name: string;
+  pointsRequired: number;
+  minSpendingRequired: number;
+  color: string;
+  textColor: string;
+}
+
 export interface Wallet {
   id: string;
   userId: string;
   points: number;
   totalSpent: number;
-  tier?: string;
+  tierLevel?: number; // Hạng thành viên (0=Thành viên, 1=Đồng, 2=Bạc, 3=Kim cương)
+  tier?: string; // Deprecated - use tierLevel instead
 }
 
 export interface RedeemableVoucher extends Promotion {

@@ -72,8 +72,29 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
     const [qrModalData, setQrModalData] = useState<{ code: string; title: string } | null>(null);
     const [detailModalData, setDetailModalData] = useState<Promotion | null>(null);
     const [activeTab, setActiveTab] = useState<'my_offers' | 'general' | 'history' | 'redeem'>('my_offers');
+    const [lastFetchTime, setLastFetchTime] = useState<number>(Date.now());
+    
+    // Pagination states for redeem vouchers
+    const [redeemCurrentPage, setRedeemCurrentPage] = useState(1);
+    const [redeemItemsPerPage, setRedeemItemsPerPage] = useState(6);
     
     // (Lucky wheel removed)
+
+    // Refetch redeemable vouchers when tab changes to 'redeem'
+    useEffect(() => {
+        if (activeTab === 'redeem') {
+            const fetchRedeemable = async () => {
+                try {
+                    const fetchedRedeemable = await apiService.getRedeemableVouchers();
+                    console.log('🔄 [TAB CHANGE] Refetched redeemable vouchers:', fetchedRedeemable?.length || 0);
+                    setRedeemableVouchers(fetchedRedeemable || []);
+                } catch (error) {
+                    console.error('Error refetching redeemable vouchers:', error);
+                }
+            };
+            fetchRedeemable();
+        }
+    }, [activeTab]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -85,11 +106,20 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                     currentUser ? apiService.getUserAppointments(currentUser.id) : Promise.resolve([]),
                 ]);
 
-                console.log('Fetched redeemable vouchers:', fetchedRedeemable);
+                console.log('\n📥 [CLIENT] Fetched redeemable vouchers:', fetchedRedeemable);
+                console.log(`📊 [CLIENT] Total: ${fetchedRedeemable?.length || 0} vouchers`);
+                if (fetchedRedeemable && fetchedRedeemable.length > 0) {
+                    fetchedRedeemable.forEach((v: any) => {
+                        console.log(`   ✅ ${v.id}: ${v.title}, isPublic: ${v.isPublic} (${typeof v.isPublic}), pointsRequired: ${v.pointsRequired} (${typeof v.pointsRequired})`);
+                    });
+                } else {
+                    console.log('   ⚠️ [CLIENT] No redeemable vouchers found!');
+                }
                 setPromotions(fetchedPromotions);
                 setRedeemableVouchers(fetchedRedeemable || []);
                 setAllServices(fetchedServices);
                 setAllAppointments(userAppointments);
+                setLastFetchTime(Date.now());
 
                 if (currentUser) {
                     const [fetchedPointsHistory, fetchedWallet, fetchedRedeemed] = await Promise.all([
@@ -213,6 +243,21 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
         // The API already filters for isPublic: false, pointsRequired > 0, isActive: true, not expired, and has stock
         return redeemableVouchers || [];
     }, [redeemableVouchers]);
+
+    // Pagination for redeem vouchers
+    const redeemTotalPages = Math.ceil(redeemablePrivateVouchers.length / redeemItemsPerPage);
+    const paginatedRedeemVouchers = useMemo(() => {
+        const startIndex = (redeemCurrentPage - 1) * redeemItemsPerPage;
+        const endIndex = startIndex + redeemItemsPerPage;
+        return redeemablePrivateVouchers.slice(startIndex, endIndex);
+    }, [redeemablePrivateVouchers, redeemCurrentPage, redeemItemsPerPage]);
+
+    // Reset to page 1 when tab changes
+    useEffect(() => {
+        if (activeTab === 'redeem') {
+            setRedeemCurrentPage(1);
+        }
+    }, [activeTab]);
     
     const handleOpenBirthdayGift = () => {
         setIsBirthdayGiftOpened(true);
@@ -465,10 +510,33 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                         </div>
                     )}
                     
+                    <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-serif font-bold text-gray-800">Voucher có thể đổi bằng điểm</h2>
+                        {redeemablePrivateVouchers.length > 0 && (
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm text-gray-600">
+                                    Hiển thị {Math.min((redeemCurrentPage - 1) * redeemItemsPerPage + 1, redeemablePrivateVouchers.length)} - {Math.min(redeemCurrentPage * redeemItemsPerPage, redeemablePrivateVouchers.length)} / {redeemablePrivateVouchers.length} voucher
+                                </span>
+                                <select
+                                    value={redeemItemsPerPage}
+                                    onChange={(e) => {
+                                        setRedeemItemsPerPage(Number(e.target.value));
+                                        setRedeemCurrentPage(1);
+                                    }}
+                                    className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-brand-primary focus:border-brand-primary"
+                                >
+                                    <option value={6}>6 voucher/trang</option>
+                                    <option value={9}>9 voucher/trang</option>
+                                    <option value={12}>12 voucher/trang</option>
+                                    <option value={18}>18 voucher/trang</option>
+                                </select>
+                            </div>
+                        )}
+                    </div>
                     {redeemablePrivateVouchers.length > 0 ? (
+                        <>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {redeemablePrivateVouchers.map(promo => {
+                                {paginatedRedeemVouchers.map(promo => {
                                 const p: any = promo as any;
                                 const discountDisplay = p.discountType === 'percentage' 
                                     ? `${p.discountValue}%` 
@@ -521,6 +589,75 @@ export const PromotionsPage: React.FC<PromotionsPageProps> = ({ currentUser, wal
                                 );
                             })}
                         </div>
+                            
+                            {/* Pagination Controls */}
+                            {redeemTotalPages > 1 && (
+                                <div className="mt-8 flex justify-center items-center gap-2">
+                                    <button
+                                        onClick={() => setRedeemCurrentPage(prev => Math.max(1, prev - 1))}
+                                        disabled={redeemCurrentPage === 1}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                            redeemCurrentPage === 1
+                                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        Trước
+                                    </button>
+                                    
+                                    <div className="flex gap-1">
+                                        {Array.from({ length: redeemTotalPages }, (_, i) => i + 1).map(page => {
+                                            // Show first page, last page, current page, and pages around current
+                                            if (
+                                                page === 1 ||
+                                                page === redeemTotalPages ||
+                                                (page >= redeemCurrentPage - 1 && page <= redeemCurrentPage + 1)
+                                            ) {
+                                                return (
+                                                    <button
+                                                        key={page}
+                                                        onClick={() => setRedeemCurrentPage(page)}
+                                                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                                            redeemCurrentPage === page
+                                                                ? 'bg-brand-primary text-white'
+                                                                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                                                        }`}
+                                                    >
+                                                        {page}
+                                                    </button>
+                                                );
+                                            } else if (
+                                                page === redeemCurrentPage - 2 ||
+                                                page === redeemCurrentPage + 2
+                                            ) {
+                                                return (
+                                                    <span key={page} className="px-2 py-2 text-gray-500">
+                                                        ...
+                                                    </span>
+                                                );
+                                            }
+                                            return null;
+                                        })}
+                                    </div>
+                                    
+                                    <button
+                                        onClick={() => setRedeemCurrentPage(prev => Math.min(redeemTotalPages, prev + 1))}
+                                        disabled={redeemCurrentPage === redeemTotalPages}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                            redeemCurrentPage === redeemTotalPages
+                                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        Sau
+                                    </button>
+                                    
+                                    <span className="text-sm text-gray-600 ml-4">
+                                        Trang {redeemCurrentPage} / {redeemTotalPages}
+                                    </span>
+                                </div>
+                            )}
+                        </>
                     ) : (
                         <div className="text-center text-gray-500 py-6">
                             <p>Hiện tại không có voucher nào có thể đổi bằng điểm.</p>

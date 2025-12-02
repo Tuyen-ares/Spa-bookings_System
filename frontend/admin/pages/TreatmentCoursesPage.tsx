@@ -127,17 +127,26 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
 
         // Service filter
         if (serviceFilter !== 'all') {
-            filtered = filtered.filter(c => c.serviceId === serviceFilter);
+            filtered = filtered.filter(c => {
+                // Check if any service in the services array matches the filter
+                return c.services?.some(s => s.serviceId === serviceFilter) || 
+                       c.Service?.id === serviceFilter;
+            });
         }
 
         // Search term
         if (searchTerm) {
             filtered = filtered.filter(c => {
                 const client = allUsers.find(u => u.id === c.clientId);
-                const service = allServices.find(s => s.id === c.serviceId);
+                // Get serviceId from first service in array or Service association
+                const serviceId = c.services?.[0]?.serviceId || c.Service?.id;
+                const service = serviceId ? allServices.find(s => s.id === serviceId) : null;
+                // Get service name from services array or Service association
+                const serviceName = c.services?.[0]?.serviceName || c.Service?.name || service?.name;
                 
                 return (
-                    c.serviceName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    c.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    serviceName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                     client?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                     client?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                     service?.name?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -183,8 +192,10 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
 
     const getNextSessionReminder = (course: TreatmentCourse) => {
         // Find next scheduled session
+        // Get serviceId from first service in array or Service association
+        const courseServiceId = course.services?.[0]?.serviceId || (course as any).Service?.id;
         const courseAppointments = appointments.filter(
-            apt => apt.serviceId === course.serviceId && apt.userId === course.clientId
+            apt => apt.serviceId === courseServiceId && apt.userId === course.clientId
         );
         
         if (courseAppointments.length === 0) return null;
@@ -370,7 +381,9 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                                 paginatedCourses.map((course) => {
                                     // Try to get client from course.Client (from backend association) first, then fallback to allUsers
                                     const client = (course as any).Client || allUsers.find(u => u.id === course.clientId);
-                                    const service = allServices.find(s => s.id === course.serviceId);
+                                    // Get serviceId from first service in array or Service association
+                                    const courseServiceId = course.services?.[0]?.serviceId || (course as any).Service?.id;
+                                    const service = courseServiceId ? allServices.find(s => s.id === courseServiceId) : null;
                                     const progress = getProgressPercentage(course);
                                     const daysUntilExpiry = course.expiryDate ? getDaysUntilExpiry(course.expiryDate) : null;
 
@@ -388,7 +401,7 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                                                 )}
                                             </td>
                                             <td className="px-4 py-3">
-                                                <div className="text-sm text-gray-900">{course.serviceName || service?.name || 'N/A'}</div>
+                                                <div className="text-sm text-gray-900">{course.services?.[0]?.serviceName || (course as any).Service?.name || service?.name || 'N/A'}</div>
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="text-sm font-medium text-gray-900">

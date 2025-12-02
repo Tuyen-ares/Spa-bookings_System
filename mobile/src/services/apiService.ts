@@ -23,7 +23,18 @@ const getApiBaseUrl = () => {
   // backend server (Express) which runs on port 3001 by default in this project.
   // Note: port 8081 is used by the Metro/Expo bundler (exp://...) and is NOT the
   // backend API port. Use your machine LAN IP + backend port (3001).
-  return 'http://192.168.1.16:3001/api';
+  // IMPORTANT: Update this IP to match your computer's IP address
+  // Find your IP: ipconfig (Windows) or ifconfig (Mac/Linux)
+  // Look for "IPv4 Address" in Wi-Fi adapter
+  // For Android emulator, use 10.0.2.2 instead of localhost
+  // For physical device, use your computer's LAN IP (e.g., 192.168.1.7)
+  if (Platform.OS === 'android') {
+    // Check if running on emulator (can't detect perfectly, but try common emulator IP)
+    // For Android emulator, use 10.0.2.2 to access host machine's localhost
+    return 'http://10.0.2.2:3001/api';
+  }
+  // For iOS simulator or physical device, use LAN IP
+  return 'http://192.168.1.7:3001/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -173,8 +184,14 @@ export const getServiceCategories = async (): Promise<ServiceCategory[]> => {
 };
 
 // --- PROMOTIONS ---
-export const getPromotions = async (): Promise<Promotion[]> => {
-  const response = await apiClient.get('/promotions');
+export const getPromotions = async (params?: { userId?: string }): Promise<Promotion[]> => {
+  const queryParams = new URLSearchParams();
+  if (params?.userId) {
+    queryParams.append('userId', params.userId);
+  }
+  const queryString = queryParams.toString();
+  const url = `/promotions${queryString ? `?${queryString}` : ''}`;
+  const response = await apiClient.get(url);
   return response.data;
 };
 
@@ -317,3 +334,6 @@ export const getRedeemedVouchers = async (userId: string) => {
   const response = await apiClient.get(`/promotions/my-redeemed/${userId}`);
   return response.data;
 };
+
+// Alias for consistency with web
+export const getMyRedeemedVouchers = getRedeemedVouchers;

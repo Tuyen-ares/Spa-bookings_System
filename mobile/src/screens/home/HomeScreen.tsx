@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,8 @@ import { getImageUrl } from '../../services/apiService';
 import { Service, Promotion, Review } from '../../types';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency } from '../../utils/formatters';
+import { getCurrentUser, getUnreadNotificationsCount } from '../../services/apiService';
+import { notificationPolling } from '../../services/notificationPollingService';
 
 type Props = NativeStackScreenProps<any, 'HomeMain'>;
 
@@ -47,11 +49,37 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     loadData();
+    loadUnreadCount();
+    
+    // Subscribe to notification count updates
+    const unsubscribe = notificationPolling.subscribe((count) => {
+      setUnreadCount(count);
+    });
+    
+    // Start polling if not already started
+    notificationPolling.start();
+    
+    return () => {
+      unsubscribe();
+    };
   }, []);
+
+  const loadUnreadCount = async () => {
+    try {
+      const user = await getCurrentUser();
+      if (user) {
+        const count = await getUnreadNotificationsCount(user.id);
+        setUnreadCount(count);
+      }
+    } catch (error) {
+      console.error('Error loading unread count:', error);
+    }
+  };
 
   // Auto-slide hero
   useEffect(() => {
@@ -68,6 +96,27 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
       animated: true,
     });
   }, [currentSlide]);
+
+  // Set header notification button
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Notifications')}
+          style={styles.notificationButton}
+        >
+          <Ionicons name="notifications-outline" size={24} color="#fff" />
+          {unreadCount > 0 && (
+            <View style={styles.notificationBadge}>
+              <Text style={styles.notificationBadgeText}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, unreadCount]);
 
   const loadData = async () => {
     try {
@@ -528,5 +577,26 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
+  },
+  notificationButton: {
+    marginRight: 16,
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#ff4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
 });

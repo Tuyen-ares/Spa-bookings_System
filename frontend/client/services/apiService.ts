@@ -9,7 +9,7 @@ import type {
     TreatmentSession, UserStatus, Notification, TreatmentSessionDetail
 } from '../../types';
 
-export const API_BASE_URL = 'http://localhost:3001/api'; // Point to the backend server
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'; // Point to the backend server
 
 // Helper to get authorization headers
 const getAuthHeaders = () => {
@@ -47,6 +47,15 @@ const handleResponse = async (response: Response) => {
         console.error('Error parsing JSON response:', error);
         throw new Error('Invalid response from server');
     }
+};
+
+// Helper to handle network errors gracefully
+const handleNetworkError = (error: any, endpoint: string) => {
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        console.error(`Network error when calling ${endpoint}:`, error);
+        throw new Error(`Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng và thử lại.`);
+    }
+    throw error;
 };
 
 // --- AUTHENTICATION ---
@@ -398,3 +407,50 @@ export const createTreatmentSession = (data: Partial<TreatmentSessionDetail>) =>
 export const updateTreatmentSessionDetail = (id: string, data: Partial<TreatmentSessionDetail>) => update<TreatmentSessionDetail>(`${API_BASE_URL}/treatment-sessions/${id}`, data);
 export const completeTreatmentSession = (id: string, data: Partial<TreatmentSessionDetail>) => update<TreatmentSessionDetail>(`${API_BASE_URL}/treatment-sessions/${id}/complete`, data);
 export const deleteTreatmentSession = (id: string) => remove(`${API_BASE_URL}/treatment-sessions/${id}`);
+
+// --- MONTHLY VOUCHERS ---
+export const sendMonthlyVouchersToAll = async (): Promise<any> => {
+    const response = await fetch(`${API_BASE_URL}/monthly-vouchers/send`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({})
+    });
+    return handleResponse(response);
+};
+
+export const sendMonthlyVouchersToTier = async (tierLevel: number, month?: string): Promise<any> => {
+    const url = `${API_BASE_URL}/monthly-vouchers/send-tier/${tierLevel}`;
+    console.log(`🌐 [API] Calling: POST ${url}`);
+    console.log(`   tierLevel: ${tierLevel}, month: ${month || 'current'}`);
+    console.log(`   API_BASE_URL: ${API_BASE_URL}`);
+    
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(month ? { month } : {})
+    });
+    
+    console.log(`📡 [API] Response status: ${response.status} ${response.statusText}`);
+    
+    return handleResponse(response);
+};
+
+export const sendMonthlyVoucherToUser = async (userId: string, month?: string): Promise<any> => {
+    const response = await fetch(`${API_BASE_URL}/monthly-vouchers/send/${userId}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(month ? { month } : {})
+    });
+    return handleResponse(response);
+};
+
+export const getMonthlyVoucherStatus = async (month?: string): Promise<any> => {
+    const url = month 
+        ? `${API_BASE_URL}/monthly-vouchers/status?month=${month}`
+        : `${API_BASE_URL}/monthly-vouchers/status`;
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: getAuthHeaders()
+    });
+    return handleResponse(response);
+};

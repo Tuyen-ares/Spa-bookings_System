@@ -433,7 +433,23 @@ const ProfileInfoTab: React.FC<{ currentUser: User; onUpdateUser: (user: User) =
                     <ProfileInfoRow icon={<ProfileIcon className="w-6 h-6"/>} label="Họ và tên" value={currentUser.name} />
                     <ProfileInfoRow icon={<MailIcon className="w-6 h-6"/>} label="Email" value={currentUser.email} />
                     <ProfileInfoRow icon={<PhoneIcon className="w-6 h-6"/>} label="Số điện thoại" value={currentUser.phone || 'Chưa cập nhật'} />
-                    <ProfileInfoRow icon={<CakeIcon className="w-6 h-6"/>} label="Ngày sinh & Giới tính" value={`${currentUser.birthday ? new Date(currentUser.birthday).toLocaleDateString('vi-VN') : 'Chưa cập nhật'} - ${currentUser.gender || 'Chưa cập nhật'}`} />
+                    <ProfileInfoRow icon={<CakeIcon className="w-6 h-6"/>} label="Ngày sinh & Giới tính" value={`${currentUser.birthday ? (() => {
+                        // Format birthday correctly to avoid timezone issues
+                        const birthdayStr = currentUser.birthday;
+                        if (typeof birthdayStr === 'string' && birthdayStr.includes('T')) {
+                            // If it's an ISO string, extract just the date part
+                            const datePart = birthdayStr.split('T')[0];
+                            const [year, month, day] = datePart.split('-');
+                            return `${day}/${month}/${year}`;
+                        } else if (typeof birthdayStr === 'string') {
+                            // If it's already in YYYY-MM-DD format
+                            const [year, month, day] = birthdayStr.split('-');
+                            return `${day}/${month}/${year}`;
+                        } else {
+                            // Fallback to locale string
+                            return new Date(birthdayStr).toLocaleDateString('vi-VN');
+                        }
+                    })() : 'Chưa cập nhật'} - ${currentUser.gender || 'Chưa cập nhật'}`} />
                 </div>
             </div>
 
@@ -593,12 +609,20 @@ const ProfileInfoTab: React.FC<{ currentUser: User; onUpdateUser: (user: User) =
 const MembershipTab: React.FC<{ currentUser: User; wallet: Wallet | null; allTiers: Tier[]; pointsHistory: Array<{date: string; pointsChange: number; type: string; source: string; description: string}>; }> = ({ currentUser, wallet, allTiers, pointsHistory }) => {
     const [showLevelUpModal, setShowLevelUpModal] = useState(false);
 
-    // Calculate tier from wallet totalSpent (money spent), not points
+    // Get tier from wallet.tierLevel (synced from backend), fallback to calculation if not available
     const currentTier = useMemo(() => {
         if (!wallet) {
             // Return default tier (Thành viên - level 0)
             return allTiers.find(t => t.level === 0) || allTiers[0];
         }
+        
+        // Use tierLevel from wallet if available (synced from backend)
+        if (wallet.tierLevel !== undefined && wallet.tierLevel !== null) {
+            const tier = allTiers.find(t => t.level === wallet.tierLevel);
+            if (tier) return tier;
+        }
+        
+        // Fallback: Calculate tier from totalSpent if tierLevel is not available
         const totalSpent = parseFloat(wallet.totalSpent?.toString() || '0') || 0;
         const sortedTiers = [...allTiers].sort((a, b) => (b.minSpendingRequired || 0) - (a.minSpendingRequired || 0));
         let tierLevel = 0; // Default to tier 0 (Thành viên)
@@ -1592,12 +1616,20 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     const [isLoadingHistory, setIsLoadingHistory] = useState(true);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-    // Calculate tier from wallet totalSpent (money spent), not points
+    // Get tier from wallet.tierLevel (synced from backend), fallback to calculation if not available
     const currentTier = useMemo(() => {
         if (!wallet) {
             // Return default tier (Thành viên - level 0)
             return allTiers.find(t => t.level === 0) || allTiers[0];
         }
+        
+        // Use tierLevel from wallet if available (synced from backend)
+        if (wallet.tierLevel !== undefined && wallet.tierLevel !== null) {
+            const tier = allTiers.find(t => t.level === wallet.tierLevel);
+            if (tier) return tier;
+        }
+        
+        // Fallback: Calculate tier from totalSpent if tierLevel is not available
         const totalSpent = parseFloat(wallet.totalSpent?.toString() || '0') || 0;
         const sortedTiers = [...allTiers].sort((a, b) => (b.minSpendingRequired || 0) - (a.minSpendingRequired || 0));
         let tierLevel = 0; // Default to tier 0 (Thành viên)
@@ -1609,6 +1641,23 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
         }
         return allTiers.find(t => t.level === tierLevel) || allTiers.find(t => t.level === 0) || allTiers[0];
     }, [wallet, allTiers]);
+    
+    // Refresh user data when component mounts to get latest data from database
+    useEffect(() => {
+        const refreshUserData = async () => {
+            if (currentUser?.id) {
+                try {
+                    const refreshedUser = await apiService.getUserById(currentUser.id);
+                    onUpdateUser(refreshedUser);
+                    console.log('✅ Đã refresh user data:', refreshedUser);
+                } catch (err) {
+                    console.error("Failed to refresh user data:", err);
+                }
+            }
+        };
+        
+        refreshUserData();
+    }, [currentUser?.id]); // Refresh when user ID changes or component mounts
     
     useEffect(() => {
         const refetchMembershipData = async () => {

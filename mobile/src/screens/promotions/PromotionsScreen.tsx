@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as apiService from '../../services/apiService';
-import { Promotion, RedeemableVoucher } from '../../types';
+import { Promotion, RedeemableVoucher, User, Appointment } from '../../types';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { EmptyState } from '../../components/EmptyState';
 import { formatCurrency } from '../../utils/formatters';
@@ -23,41 +23,156 @@ import { useFocusEffect } from '@react-navigation/native';
 type Props = NativeStackScreenProps<any, 'PromotionsMain'>;
 
 export const PromotionsScreen: React.FC<Props> = ({ navigation }) => {
-  const [vouchers, setVouchers] = useState<RedeemableVoucher[]>([]);
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [redeemedVouchers, setRedeemedVouchers] = useState<Array<Promotion & { redeemedCount: number }>>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [allAppointments, setAllAppointments] = useState<Appointment[]>([]);
+  const [wallet, setWallet] = useState<any>(null); // Wallet to get tierLevel
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<RedeemableVoucher | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'all' | 'redeemed'>('all');
+  const [activeTab, setActiveTab] = useState<'my_offers' | 'general'>('my_offers');
 
   useFocusEffect(
     React.useCallback(() => {
-      loadVouchers();
+      loadData();
     }, [activeTab])
   );
 
-  const loadVouchers = async () => {
+  const loadData = async () => {
     try {
-      if (activeTab === 'all') {
-        const data = await apiService.getPromotions();
-        setVouchers(data.filter((p: Promotion) => p.isActive));
-      } else {
-        const user = await apiService.getCurrentUser();
-        if (!user) return;
-        const data = await apiService.getRedeemedVouchers(user.id);
-        setVouchers(data);
+      setIsLoading(true);
+      const user = await apiService.getCurrentUser();
+      if (!user) {
+        setIsLoading(false);
+        return;
       }
+      
+      setCurrentUser(user);
+      
+      // Load all data in parallel (similar to web)
+      const [fetchedPromotions, fetchedRedeemed, fetchedAppointments, fetchedWallet] = await Promise.all([
+        apiService.getPromotions({ userId: user.id }), // QUAN TRỌNG: Pass userId to get tier vouchers
+        apiService.getMyRedeemedVouchers(user.id),
+        apiService.getUserAppointments(user.id),
+        apiService.getWallet(user.id), // Load wallet to get tierLevel
+      ]);
+      
+      setPromotions(fetchedPromotions || []);
+      setRedeemedVouchers(fetchedRedeemed || []);
+      setAllAppointments(fetchedAppointments || []);
+      setWallet(fetchedWallet);
     } catch (error) {
       console.error('Failed to load vouchers:', error);
+      Alert.alert('Lỗi', 'Không thể tải dữ liệu voucher');
     } finally {
       setIsLoading(false);
       setRefreshing(false);
     }
   };
 
+  // Check if today is user's birthday
+  const isBirthdayToday = useMemo(() => {
+    if (!currentUser?.birthday) return false;
+    const today = new Date();
+    const birthDate = new Date(currentUser.birthday);
+    return today.getMonth() === birthDate.getMonth() && today.getDate() === birthDate.getDate();
+  }, [currentUser]);
+
+  // Check if user has used a service (for New Clients vouchers)
+  const hasUsedService = useMemo(() => {
+    if (!currentUser || allAppointments.length === 0) return false;
+    // Check if user has any completed/paid appointments
+    return allAppointments.some(app =>
+      (app.status === 'completed' || app.status === 'upcoming' || app.status === 'scheduled') &&
+      app.paymentStatus === 'Paid'
+    );
+  }, [currentUser, allAppointments]);
+
+  // Get available vouchers for "Ưu đãi của tôi" tab (similar to web)
+  // QUAN TRỌNG: Chỉ hiển thị voucher Birthday và New Clients, KHÔNG hiển thị tier vouchers
+  // Tier vouchers sẽ được hiển thị trong redeemed vouchers nếu user đã nhận được
+  const myAvailableVouchers = useMemo(() => {
+    if (!currentUser) return [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    return promotions.filter(promo => {
+      // Only show active, non-expired promotions
+      if (!promo.isActive) return false;
+      const expiryDate = new Date(promo.expiryDate);
+      expiryDate.setHours(0, 0, 0, 0);
+      if (today > expiryDate) return false;
+      if (promo.stock !== null && promo.stock <= 0) return false;
+      
+      // CHỈ hiển thị voucher với targetAudience là Birthday hoặc New Clients
+      // KHÔNG hiển thị voucher public thông thường (targetAudience === 'All' hoặc null)
+      // KHÔNG hiển thị tier vouchers (targetAudience starts with "Tier Level")
+      if (promo.targetAudience !== 'Birthday' && promo.targetAudience !== 'New Clients') {
+        return false; // Loại bỏ tất cả voucher khác (bao gồm voucher public thông thường và tier vouchers)
+      }
+      
+      // Show birthday vouchers if today is birthday
+      if (promo.targetAudience === 'Birthday' && isBirthdayToday) {
+        return true;
+      }
+      
+      // Show new client vouchers if user hasn't used any service
+      if (promo.targetAudience === 'New Clients' && !hasUsedService) {
+        return true;
+      }
+      
+      return false;
+    });
+  }, [currentUser, promotions, isBirthdayToday, hasUsedService]);
+
+  // Get all public promotions for "Ưu đãi chung" tab
+  const generalPromotions = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    return promotions.filter(promo => {
+      if (!promo.isActive) return false;
+      const isPublicValue: any = promo.isPublic;
+      const normalizedIsPublic = isPublicValue === true ||
+                               isPublicValue === 1 ||
+                               (typeof isPublicValue === 'string' && isPublicValue === '1');
+      if (!normalizedIsPublic) return false; // Only show public promotions
+      const expiryDate = new Date(promo.expiryDate);
+      expiryDate.setHours(0, 0, 0, 0);
+      if (today > expiryDate) return false;
+      if (promo.stock !== null && promo.stock <= 0) return false;
+      // Exclude tier, birthday, and new client vouchers from general promotions
+      const isTierVoucher = promo.targetAudience && String(promo.targetAudience).startsWith('Tier Level');
+      if (isTierVoucher || promo.targetAudience === 'Birthday' || promo.targetAudience === 'New Clients') {
+        return false;
+      }
+      return true;
+    });
+  }, [promotions]);
+
+  // Get vouchers based on active tab
+  // "Ưu đãi của tôi" = myAvailableVouchers (Birthday + New Clients) + redeemedVouchers (đổi bằng điểm)
+  const vouchers = useMemo(() => {
+    if (activeTab === 'my_offers') {
+      // Combine myAvailableVouchers (Birthday + New Clients) with redeemedVouchers (đổi bằng điểm)
+      // Remove duplicates by id
+      const combined = [...myAvailableVouchers];
+      redeemedVouchers.forEach((rv: any) => {
+        if (!combined.find(v => v.id === rv.id)) {
+          combined.push(rv);
+        }
+      });
+      return combined;
+    } else {
+      return generalPromotions;
+    }
+  }, [activeTab, myAvailableVouchers, generalPromotions, redeemedVouchers]);
+
   const onRefresh = () => {
     setRefreshing(true);
-    loadVouchers();
+    loadData();
   };
 
   const openVoucherDetail = (voucher: RedeemableVoucher) => {
@@ -65,13 +180,18 @@ export const PromotionsScreen: React.FC<Props> = ({ navigation }) => {
     setShowDetailModal(true);
   };
 
-  const renderVoucher = ({ item }: { item: RedeemableVoucher }) => {
+  const renderVoucher = ({ item }: { item: RedeemableVoucher | Promotion }) => {
     const expiry = item.expiryDate || (item as any).endDate;
     const isExpiringSoon =
       new Date(expiry).getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000;
     const isUsed = (item as any).isUsed || false;
-    const isRedeemed = activeTab === 'redeemed';
+    const isRedeemed = false; // Removed redeemed tab
     const redeemedCount = (item as any).redeemedCount || 0;
+    
+    // Check voucher type for display
+    const isTierVoucher = (item as any).targetAudience && String((item as any).targetAudience).startsWith('Tier Level');
+    const isBirthdayVoucher = (item as any).targetAudience === 'Birthday';
+    const isNewClientVoucher = (item as any).targetAudience === 'New Clients';
 
     return (
       <TouchableOpacity 
@@ -103,6 +223,21 @@ export const PromotionsScreen: React.FC<Props> = ({ navigation }) => {
                 <Text style={[styles.availableBadgeText, redeemedCount === 1 && styles.lastOneText]}>
                   {redeemedCount === 1 ? 'Còn 1 lượt' : `Còn ${redeemedCount} lượt`}
                 </Text>
+              </View>
+            ) : isTierVoucher ? (
+              <View style={styles.tierBadge}>
+                <Ionicons name="diamond-outline" size={12} color="#FFD700" />
+                <Text style={styles.tierBadgeText}>VIP</Text>
+              </View>
+            ) : isBirthdayVoucher ? (
+              <View style={styles.birthdayBadge}>
+                <Ionicons name="gift-outline" size={12} color="#E91E63" />
+                <Text style={styles.birthdayBadgeText}>Sinh nhật</Text>
+              </View>
+            ) : isNewClientVoucher ? (
+              <View style={styles.newClientBadge}>
+                <Ionicons name="star-outline" size={12} color="#4CAF50" />
+                <Text style={styles.newClientBadgeText}>Khách mới</Text>
               </View>
             ) : null}
           </View>
@@ -144,19 +279,19 @@ export const PromotionsScreen: React.FC<Props> = ({ navigation }) => {
       {/* Tab Selector */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'all' && styles.activeTab]}
-          onPress={() => setActiveTab('all')}
+          style={[styles.tab, activeTab === 'my_offers' && styles.activeTab]}
+          onPress={() => setActiveTab('my_offers')}
         >
-          <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>
-            Tất cả voucher
+          <Text style={[styles.tabText, activeTab === 'my_offers' && styles.activeTabText]}>
+            Ưu đãi của tôi
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'redeemed' && styles.activeTab]}
-          onPress={() => setActiveTab('redeemed')}
+          style={[styles.tab, activeTab === 'general' && styles.activeTab]}
+          onPress={() => setActiveTab('general')}
         >
-          <Text style={[styles.tabText, activeTab === 'redeemed' && styles.activeTabText]}>
-            Đã đổi
+          <Text style={[styles.tabText, activeTab === 'general' && styles.activeTabText]}>
+            Ưu đãi chung
           </Text>
         </TouchableOpacity>
       </View>
@@ -172,9 +307,9 @@ export const PromotionsScreen: React.FC<Props> = ({ navigation }) => {
             icon="ticket-outline"
             title="Chưa có voucher"
             message={
-              activeTab === 'all'
-                ? "Hiện tại không có voucher nào khả dụng"
-                : "Bạn chưa đổi voucher nào. Hãy tích điểm để đổi voucher nhé!"
+              activeTab === 'my_offers'
+                ? "Bạn chưa có voucher nào. Hãy tích điểm hoặc chờ các ưu đãi đặc biệt!"
+                : "Hiện tại không có voucher chung nào khả dụng"
             }
           />
         }
@@ -182,10 +317,10 @@ export const PromotionsScreen: React.FC<Props> = ({ navigation }) => {
           vouchers.length > 0 ? (
             <View style={styles.header}>
               <Text style={styles.headerTitle}>
-                {activeTab === 'all' ? 'Voucher Khả Dụng' : 'Voucher Đã Đổi'}
+                {activeTab === 'my_offers' ? 'Voucher Của Tôi' : 'Ưu Đãi Chung'}
               </Text>
               <Text style={styles.headerSubtitle}>
-                {vouchers.length} voucher {activeTab === 'all' ? 'có thể sử dụng' : 'đã đổi'}
+                {vouchers.length} voucher {activeTab === 'my_offers' ? 'của bạn' : 'khả dụng'}
               </Text>
             </View>
           ) : null
@@ -435,6 +570,51 @@ const styles = StyleSheet.create({
   },
   lastOneText: {
     color: '#f57c00',
+  },
+  tierBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF9E6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  tierBadgeText: {
+    fontSize: 11,
+    color: '#FFD700',
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  birthdayBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FCE4EC',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  birthdayBadgeText: {
+    fontSize: 11,
+    color: '#E91E63',
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  newClientBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  newClientBadgeText: {
+    fontSize: 11,
+    color: '#4CAF50',
+    fontWeight: '600',
+    marginLeft: 4,
   },
   promoDescription: {
     fontSize: 14,

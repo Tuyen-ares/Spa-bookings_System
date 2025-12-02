@@ -52,6 +52,11 @@ const HomeStack = () => {
         component={BookingScreen}
         options={{ title: 'Đặt lịch' }}
       />
+      <Stack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ title: 'Thông báo' }}
+      />
     </Stack.Navigator>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  Alert
+  Alert,
+  ScrollView
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,10 +23,15 @@ const PAYMENT_COLORS: Record<'Paid' | 'Unpaid', string> = {
 
 type Props = NativeStackScreenProps<any, 'TreatmentCourses'>;
 
+type FilterType = 'all' | 'active' | 'cancelled' | 'completed';
+
 export const TreatmentCoursesScreen: React.FC<Props> = ({ navigation }) => {
   const [courses, setCourses] = useState<TreatmentCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [filterType, setFilterType] = useState<FilterType>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const loadCourses = useCallback(async () => {
     try {
@@ -53,6 +59,39 @@ export const TreatmentCoursesScreen: React.FC<Props> = ({ navigation }) => {
     loadCourses();
     return unsubscribe;
   }, [navigation, loadCourses]);
+
+  // Filter courses by status
+  const filteredCourses = useMemo(() => {
+    if (filterType === 'all') {
+      return courses;
+    }
+
+    return courses.filter((course) => {
+      switch (filterType) {
+        case 'active':
+          return course.status === 'active' || course.status === 'pending';
+        case 'cancelled':
+          return course.status === 'cancelled';
+        case 'completed':
+          return course.status === 'completed';
+        default:
+          return true;
+      }
+    });
+  }, [courses, filterType]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredCourses.length / itemsPerPage);
+  const paginatedCourses = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredCourses.slice(startIndex, endIndex);
+  }, [filteredCourses, currentPage, itemsPerPage]);
+
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterType]);
 
   const renderCourse = ({ item }: { item: TreatmentCourse }) => {
     const progress = item.totalSessions ? (item.completedSessions / item.totalSessions) * 100 : 0;
@@ -149,25 +188,116 @@ export const TreatmentCoursesScreen: React.FC<Props> = ({ navigation }) => {
         </Text>
       </View>
 
-      {courses.length === 0 ? (
+      {/* Filter Section */}
+      <View style={styles.filterContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterScroll}
+        >
+          <TouchableOpacity
+            style={[styles.filterButton, filterType === 'all' && styles.filterButtonActive]}
+            onPress={() => setFilterType('all')}
+          >
+            <Text style={[styles.filterButtonText, filterType === 'all' && styles.filterButtonTextActive]}>
+              Tất cả
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, filterType === 'active' && styles.filterButtonActive]}
+            onPress={() => setFilterType('active')}
+          >
+            <Text style={[styles.filterButtonText, filterType === 'active' && styles.filterButtonTextActive]}>
+              Đang diễn ra
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, filterType === 'completed' && styles.filterButtonActive]}
+            onPress={() => setFilterType('completed')}
+          >
+            <Text style={[styles.filterButtonText, filterType === 'completed' && styles.filterButtonTextActive]}>
+              Hoàn thành
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, filterType === 'cancelled' && styles.filterButtonActive]}
+            onPress={() => setFilterType('cancelled')}
+          >
+            <Text style={[styles.filterButtonText, filterType === 'cancelled' && styles.filterButtonTextActive]}>
+              Đã hủy
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* Results Count */}
+      {filteredCourses.length > 0 && (
+        <View style={styles.resultsContainer}>
+          <Text style={styles.resultsText}>
+            Hiển thị {paginatedCourses.length} / {filteredCourses.length} liệu trình
+          </Text>
+        </View>
+      )}
+
+      {filteredCourses.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="leaf-outline" size={64} color="#d1d5db" />
-          <Text style={styles.emptyTitle}>Chưa có liệu trình nào</Text>
+          <Text style={styles.emptyTitle}>
+            {filterType === 'all' ? 'Chưa có liệu trình nào' : 'Không có liệu trình trong danh mục này'}
+          </Text>
           <Text style={styles.emptySubtitle}>
-            Các liệu trình đã mua sẽ xuất hiện tại đây
+            {filterType === 'all' 
+              ? 'Các liệu trình đã mua sẽ xuất hiện tại đây'
+              : 'Thử chọn bộ lọc khác để xem thêm'}
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={courses}
-          keyExtractor={(item) => item.id}
-          renderItem={renderCourse}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-          }
-          showsVerticalScrollIndicator={false}
-        />
+        <>
+          <FlatList
+            data={paginatedCourses}
+            keyExtractor={(item) => item.id}
+            renderItem={renderCourse}
+            contentContainerStyle={styles.list}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+            }
+            showsVerticalScrollIndicator={false}
+          />
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <View style={styles.paginationContainer}>
+              <TouchableOpacity
+                style={[styles.paginationButton, currentPage === 1 && styles.paginationButtonDisabled]}
+                onPress={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+              >
+                <Ionicons name="chevron-back" size={20} color={currentPage === 1 ? '#ccc' : '#8b5cf6'} />
+                <Text style={[styles.paginationButtonText, currentPage === 1 && styles.paginationButtonTextDisabled]}>
+                  Trước
+                </Text>
+              </TouchableOpacity>
+
+              <Text style={styles.paginationText}>
+                Trang {currentPage} / {totalPages}
+              </Text>
+
+              <TouchableOpacity
+                style={[styles.paginationButton, currentPage === totalPages && styles.paginationButtonDisabled]}
+                onPress={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+              >
+                <Text style={[styles.paginationButtonText, currentPage === totalPages && styles.paginationButtonTextDisabled]}>
+                  Sau
+                </Text>
+                <Ionicons name="chevron-forward" size={20} color={currentPage === totalPages ? '#ccc' : '#8b5cf6'} />
+              </TouchableOpacity>
+            </View>
+          )}
+        </>
       )}
     </View>
   );
@@ -337,5 +467,77 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginTop: 8,
     textAlign: 'center'
+  },
+  filterContainer: {
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0'
+  },
+  filterScroll: {
+    paddingHorizontal: 16,
+    gap: 8
+  },
+  filterButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f5f5f5',
+    marginRight: 8
+  },
+  filterButtonActive: {
+    backgroundColor: '#8b5cf6'
+  },
+  filterButtonText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500'
+  },
+  filterButtonTextActive: {
+    color: '#fff',
+    fontWeight: '600'
+  },
+  resultsContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#f8f9fa'
+  },
+  resultsText: {
+    fontSize: 12,
+    color: '#666'
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0'
+  },
+  paginationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 4
+  },
+  paginationButtonDisabled: {
+    opacity: 0.5
+  },
+  paginationButtonText: {
+    fontSize: 14,
+    color: '#8b5cf6',
+    fontWeight: '600'
+  },
+  paginationButtonTextDisabled: {
+    color: '#ccc'
+  },
+  paginationText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500'
   }
 });

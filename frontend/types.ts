@@ -164,6 +164,7 @@ export interface Review {
 }
 
 export interface Wallet {
+  tierLevel?: number; // Hạng thành viên (0=Thành viên, 1=Đồng, 2=Bạc, 3=Kim cương)
   balance: number;
   points: number;
   totalEarned?: number;
