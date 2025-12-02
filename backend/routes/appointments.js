@@ -708,6 +708,49 @@ router.post('/', async (req, res) => {
         if (!service) return res.status(404).json({ message: 'Service not found' });
 
         // ==========================================
+        // VALIDATION: Kiểm tra xem user đã có liệu trình chưa hoàn tất cho dịch vụ này chưa
+        // ==========================================
+        const bookingQuantity = newAppointmentData.quantity || 1;
+        if (bookingQuantity >= 1 && finalUserId) {
+            // Chỉ kiểm tra nếu đặt với quantity >= 1 (tức là tạo treatment course)
+            const existingActiveCourse = await db.TreatmentCourse.findOne({
+                where: {
+                    clientId: finalUserId,
+                    serviceId: newAppointmentData.serviceId,
+                    status: {
+                        [Op.notIn]: ['completed', 'cancelled'] // Chưa hoàn tất hoặc chưa hủy
+                    }
+                },
+                include: [
+                    {
+                        model: db.Service,
+                        attributes: ['id', 'name']
+                    }
+                ]
+            });
+
+            if (existingActiveCourse) {
+                const serviceName = existingActiveCourse.Service?.name || existingActiveCourse.serviceName || 'dịch vụ này';
+                const completedSessions = existingActiveCourse.completedSessions || 0;
+                const totalSessions = existingActiveCourse.totalSessions || 0;
+                const progress = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0;
+                
+                console.log(`\n⚠️ [DUPLICATE SERVICE BOOKING] ==========================================`);
+                console.log(`   User ${finalUserId} đang cố đặt lại dịch vụ ${newAppointmentData.serviceId}`);
+                console.log(`   Đã tìm thấy liệu trình chưa hoàn tất:`);
+                console.log(`   - Course ID: ${existingActiveCourse.id}`);
+                console.log(`   - Service: ${serviceName}`);
+                console.log(`   - Status: ${existingActiveCourse.status}`);
+                console.log(`   - Tiến độ: ${completedSessions}/${totalSessions} buổi (${progress}%)`);
+                console.log(`⚠️ [DUPLICATE SERVICE BOOKING] ==========================================\n`);
+
+                return res.status(400).json({ 
+                    message: `Bạn đang có liệu trình "${serviceName}" chưa hoàn tất (đã hoàn thành ${completedSessions}/${totalSessions} buổi). Vui lòng hoàn tất liệu trình hiện tại trước khi đặt lại dịch vụ này.` 
+                });
+            }
+        }
+
+        // ==========================================
         // VALIDATION: Kiểm tra overlap (không cho phép trùng lịch)
         // ==========================================
         if (finalUserId && newAppointmentData.date && newAppointmentData.time) {
