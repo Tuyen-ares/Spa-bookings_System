@@ -30,8 +30,8 @@ module.exports = {
     vnp_IpnUrl,
 
     // Helper: Create payment URL using vnpay library
-    // Note: This function is async to handle both sync and async buildPaymentUrl
-    createPaymentUrl: async (orderId, amount, orderDescription, orderType = ProductCode.Other, clientIp = '127.0.0.1') => {
+    // Note: buildPaymentUrl returns string directly (not Promise)
+    createPaymentUrl: (orderId, amount, orderDescription, orderType = ProductCode.Other, clientIp = '127.0.0.1') => {
         try {
             // Đảm bảo IP address là IPv4 format
             let ipAddr = clientIp;
@@ -61,7 +61,8 @@ module.exports = {
             console.log('Amount rounded (VND):', vnp_Amount);
             console.log('=== End Amount Debug ===');
 
-            const vnpayResponse = vnpay.buildPaymentUrl({
+            // Build payment parameters
+            const paymentParams = {
                 vnp_Amount: vnp_Amount, // Truyền VND trực tiếp, thư viện sẽ tự nhân 100
                 vnp_IpAddr: ipAddr,
                 vnp_TxnRef: orderId,
@@ -71,10 +72,25 @@ module.exports = {
                 vnp_Locale: VnpLocale.VN, // 'vn' hoặc 'en'
                 vnp_CreateDate: dateFormat(new Date()), // Tùy chọn, mặc định là hiện tại
                 vnp_ExpireDate: dateFormat(expireDate), // Tùy chọn, 15 phút sau
-            });
+            };
 
-            // Handle both Promise and direct string return
-            const paymentUrl = vnpayResponse instanceof Promise ? await vnpayResponse : vnpayResponse;
+            console.log('=== VNPay Payment Params ===');
+            console.log('Payment Params:', JSON.stringify(paymentParams, null, 2));
+            console.log('Return URL:', vnp_ReturnUrl);
+            console.log('IPN URL:', vnp_IpnUrl);
+            console.log('=== End Payment Params ===');
+
+            // Build payment URL (returns string directly, not Promise)
+            let paymentUrl;
+            try {
+                paymentUrl = vnpay.buildPaymentUrl(paymentParams);
+                console.log('VNPay Response Type:', typeof paymentUrl);
+                console.log('VNPay Response (first 200 chars):', paymentUrl ? paymentUrl.substring(0, 200) : 'NULL');
+            } catch (buildError) {
+                console.error('Error calling buildPaymentUrl:', buildError);
+                console.error('Error stack:', buildError.stack);
+                throw new Error(`Failed to build VNPay payment URL: ${buildError.message}`);
+            }
 
             console.log('=== VNPay Payment URL Debug ===');
             console.log('Order ID:', orderId);
@@ -84,7 +100,25 @@ module.exports = {
             console.log('=== End Debug ===');
 
             // paymentUrl should be a string URL
-            return typeof paymentUrl === 'string' ? paymentUrl : paymentUrl.url || paymentUrl.paymentUrl || String(paymentUrl);
+            if (!paymentUrl) {
+                throw new Error('VNPay returned empty payment URL');
+            }
+
+            // Extract URL from response if it's an object
+            let finalUrl;
+            if (typeof paymentUrl === 'string') {
+                finalUrl = paymentUrl;
+            } else if (paymentUrl && typeof paymentUrl === 'object') {
+                finalUrl = paymentUrl.url || paymentUrl.paymentUrl || paymentUrl.data?.url || String(paymentUrl);
+            } else {
+                finalUrl = String(paymentUrl);
+            }
+
+            if (!finalUrl || finalUrl.length === 0) {
+                throw new Error('VNPay payment URL is empty after processing');
+            }
+
+            return finalUrl;
         } catch (error) {
             console.error('Error creating VNPay payment URL:', error);
             throw error;

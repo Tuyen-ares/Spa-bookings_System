@@ -154,6 +154,37 @@ class AuthService {
             lastLogin: new Date()
         });
 
+        // Tự động kiểm tra và gửi voucher VIP nếu user chưa nhận voucher tháng này (chỉ cho Client)
+        if (user.role === 'Client') {
+            try {
+                const wallet = await db.Wallet.findOne({ where: { userId: user.id } });
+                if (wallet && wallet.tierLevel >= 1) {
+                    // Gửi voucher trong background để không làm chậm login
+                    setImmediate(async () => {
+                        try {
+                            const monthlyVoucherService = require('../services/monthlyVoucherService');
+                            const result = await monthlyVoucherService.sendMonthlyVoucherToUser(
+                                user.id,
+                                wallet.tierLevel,
+                                new Date()
+                            );
+                            
+                            if (result.success) {
+                                console.log(`✅ [LOGIN] Đã tự động gửi voucher cho user ${user.id} (Tier Level ${wallet.tierLevel}) khi đăng nhập`);
+                            } else if (result.message && result.message.includes('đã nhận')) {
+                                console.log(`ℹ️ [LOGIN] User ${user.id} đã nhận voucher tháng này rồi`);
+                            }
+                        } catch (error) {
+                            console.error(`❌ [LOGIN] Lỗi khi tự động gửi voucher cho user ${user.id}:`, error.message);
+                        }
+                    });
+                }
+            } catch (error) {
+                // Không throw error để không ảnh hưởng đến login
+                console.error(`❌ [LOGIN] Lỗi khi kiểm tra wallet cho user ${user.id}:`, error.message);
+            }
+        }
+
         // Check if today is user's birthday and create birthday notification if needed (only for Clients)
         if (user.role === 'Client' && user.birthday) {
             try {
@@ -174,7 +205,8 @@ class AuthService {
                     const existingNotification = await db.Notification.findOne({
                         where: {
                             userId: user.id,
-                            type: 'birthday_gift',
+                            type: 'promotion', // Dùng 'promotion' vì ENUM chưa có 'birthday_gift' trong database
+                            relatedId: birthdayPromotion.id,
                             createdAt: {
                                 [Op.between]: [todayStart, todayEnd]
                             }
@@ -194,7 +226,7 @@ class AuthService {
                             await db.Notification.create({
                                 id: `notif-${uuidv4()}`,
                                 userId: user.id,
-                                type: 'birthday_gift',
+                                type: 'promotion', // Dùng 'promotion' vì ENUM chưa có 'birthday_gift' trong database
                                 title: '🎉 Chúc mừng sinh nhật!',
                                 message: `Chúc mừng sinh nhật bạn! Bạn đã nhận được voucher "${birthdayPromotion.title}". Hãy đến phần Ưu đãi để sử dụng nhé!`,
                                 relatedId: birthdayPromotion.id,
@@ -210,6 +242,102 @@ class AuthService {
             } catch (birthdayError) {
                 console.error('Error creating birthday notification:', birthdayError);
                 // Don't fail login if birthday notification fails
+            }
+        }
+
+        // Check if user is a new client and create new client voucher notification if needed (only for Clients)
+        if (user.role === 'Client') {
+            try {
+                // Check if user has any appointments (excluding cancelled)
+                const hasAppointments = await db.Appointment.findOne({
+                    where: {
+                        userId: user.id,
+                        status: { [Op.ne]: 'cancelled' }
+                    }
+                });
+
+                // Check if user has already used New Clients voucher
+                const hasUsedNewClientVoucher = await db.PromotionUsage.findOne({
+                    where: {
+                        userId: user.id,
+                        appointmentId: { [Op.ne]: null } // Đã được dùng (có appointmentId)
+                    },
+                    include: [{
+                        model: db.Promotion,
+                        where: {
+                            targetAudience: 'New Clients'
+                        },
+                        required: true
+                    }]
+                });
+
+                // User is a new client if they have no appointments and haven't used New Clients voucher
+                const isNewClient = !hasAppointments && !hasUsedNewClientVoucher;
+
+                if (isNewClient) {
+                    // Check if new client notification already exists (check last 7 days)
+                    const sevenDaysAgo = new Date();
+                    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+                    // Find New Clients promotion first
+                    const newClientPromotion = await db.Promotion.findOne({
+                        where: {
+                            targetAudience: 'New Clients',
+                            isActive: true
+                        }
+                    });
+
+                    if (newClientPromotion) {
+                        // Check if notification for this promotion already exists
+                        const existingNotification = await db.Notification.findOne({
+                            where: {
+                                userId: user.id,
+                                type: 'promotion',
+                                relatedId: newClientPromotion.id,
+                                createdAt: {
+                                    [Op.gte]: sevenDaysAgo
+                                }
+                            }
+                        });
+
+                        // If no existing notification, create one
+                        if (!existingNotification) {
+                            // Check if voucher is still valid
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            const expiryDate = new Date(newClientPromotion.expiryDate);
+                            expiryDate.setHours(0, 0, 0, 0);
+
+                            if (today <= expiryDate) {
+                                // Format discount value
+                                let discountText = '';
+                                if (newClientPromotion.discountType === 'percentage') {
+                                    discountText = `Giảm ${newClientPromotion.discountValue}%`;
+                                } else {
+                                    discountText = `Giảm ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(newClientPromotion.discountValue)}`;
+                                }
+
+                                await db.Notification.create({
+                                    id: `notif-${uuidv4()}`,
+                                    userId: user.id,
+                                    type: 'promotion',
+                                    title: '🎁 Chào mừng khách hàng mới!',
+                                    message: `Chào mừng bạn đến với Anh Tho Spa! Bạn đã nhận được voucher khách hàng mới "${newClientPromotion.title}" (${discountText}). Mã voucher: ${newClientPromotion.code}. Hãy đến phần Ưu đãi để sử dụng nhé!`,
+                                    relatedId: newClientPromotion.id,
+                                    sentVia: 'app',
+                                    isRead: false,
+                                    emailSent: false,
+                                    createdAt: new Date(),
+                                });
+                                console.log(`✅ New client notification created for user ${user.name} (${user.id})`);
+                            }
+                        }
+                    }
+                }
+            } catch (newClientError) {
+                console.error('Error creating new client notification:', newClientError);
+                // Don't fail login if new client notification fails
             }
         }
 

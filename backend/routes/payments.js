@@ -415,14 +415,21 @@ router.put('/:id/complete', async (req, res) => {
                     // Note: Points history is derived from Payment records, not stored separately
                     console.log(`✅ User ${payment.userId} earned ${pointsEarned} points from payment`);
 
+                    // Lưu tierLevel cũ để kiểm tra lên hạng
+                    const oldTierLevel = wallet.tierLevel;
+                    
                     // Cập nhật tier level dựa trên totalSpent mới
                     const { calculateTierInfo } = require('../utils/tierUtils');
                     const newTotalSpent = currentTotalSpent + amount;
                     const tierInfo = calculateTierInfo(newTotalSpent);
-                    await wallet.update({ tierLevel: tierInfo.currentTier.level });
+                    const newTierLevel = tierInfo.currentTier.level;
+                    
+                    await wallet.update({ tierLevel: newTierLevel });
 
-                    console.log(`✅ [COMPLETE PAYMENT] Wallet updated: +${pointsEarned} points, total: ${currentPoints + pointsEarned} points, totalSpent: ${newTotalSpent}, tierLevel: ${tierInfo.currentTier.level}`);
+                    console.log(`✅ [COMPLETE PAYMENT] Wallet updated: +${pointsEarned} points, total: ${currentPoints + pointsEarned} points, totalSpent: ${newTotalSpent}, tierLevel: ${oldTierLevel} → ${newTierLevel}`);
                     console.log(`   Payment ID: ${payment.id}, Amount: ${amount} VND, Old Status: ${oldStatus}`);
+                    
+                    // Gửi voucher tự động nếu lên hạng (logic này sẽ được xử lý trong Wallet model hook)
                 }
             } catch (walletError) {
                 console.error('Error updating wallet:', walletError);
@@ -534,20 +541,37 @@ router.post('/process', async (req, res) => {
                 console.log('=== End Payment Process Debug ===');
                 
                 // Create VNPay payment URL using vnpay library
-                const paymentUrl = await vnpayConfig.createPaymentUrl(
-                    orderId,
-                    amount,
-                    serviceName,
-                    vnpayConfig.ProductCode.Other, // Use ProductCode from library
-                    clientIp
-                );
+                console.log('=== Creating VNPay Payment URL ===');
+                console.log('Order ID:', orderId);
+                console.log('Amount:', amount, 'VND');
+                console.log('Service Name:', serviceName);
+                console.log('Client IP:', clientIp);
+                console.log('Return URL:', vnpayConfig.vnp_ReturnUrl);
+                console.log('IPN URL:', vnpayConfig.vnp_IpnUrl);
                 
-                console.log('VNPay Payment URL created for order:', orderId);
-                console.log('Amount sent to VNPay:', amount, 'VND');
-                console.log('Payment URL (first 200 chars):', paymentUrl.substring(0, 200) + '...');
+                let paymentUrl;
+                try {
+                    paymentUrl = vnpayConfig.createPaymentUrl(
+                        orderId,
+                        amount,
+                        serviceName,
+                        vnpayConfig.ProductCode.Other, // Use ProductCode from library
+                        clientIp
+                    );
+                    
+                    console.log('✅ VNPay Payment URL created successfully');
+                    console.log('Payment URL length:', paymentUrl ? paymentUrl.length : 0);
+                    console.log('Payment URL (first 200 chars):', paymentUrl ? paymentUrl.substring(0, 200) + '...' : 'NULL');
+                } catch (createUrlError) {
+                    console.error('❌ Error creating VNPay payment URL:', createUrlError);
+                    console.error('Error message:', createUrlError.message);
+                    console.error('Error stack:', createUrlError.stack);
+                    throw new Error(`Failed to create VNPay payment URL: ${createUrlError.message}`);
+                }
                 
                 if (!paymentUrl || paymentUrl.length === 0) {
-                    throw new Error('Failed to create VNPay payment URL');
+                    console.error('❌ Payment URL is empty or null');
+                    throw new Error('Failed to create VNPay payment URL: URL is empty');
                 }
 
                 // Return payment URL for frontend to redirect
@@ -949,12 +973,19 @@ router.post('/vnpay-ipn', async (req, res) => {
                         const currentPoints = wallet.points || 0;
                         const currentTotalSpent = parseFloat(wallet.totalSpent?.toString() || '0');
                         
+                        const newTotalSpent = currentTotalSpent + amount;
                         await wallet.update({
                             points: currentPoints + pointsEarned,
-                            totalSpent: currentTotalSpent + amount,
+                            totalSpent: newTotalSpent,
                             lastUpdated: new Date()
                         });
-                        console.log(`✅ [VNPay IPN] Wallet updated: +${pointsEarned} points, total: ${currentPoints + pointsEarned} points`);
+
+                        // Cập nhật tier level dựa trên totalSpent mới (hook sẽ tự động sync, nhưng đảm bảo chắc chắn)
+                        const { calculateTierInfo } = require('../utils/tierUtils');
+                        const tierInfo = calculateTierInfo(newTotalSpent);
+                        await wallet.update({ tierLevel: tierInfo.currentTier.level });
+
+                        console.log(`✅ [VNPay IPN] Wallet updated: +${pointsEarned} points, total: ${currentPoints + pointsEarned} points, totalSpent: ${newTotalSpent}, tierLevel: ${tierInfo.currentTier.level}`);
                         console.log(`   Payment ID: ${payment.id}, Amount: ${amount} VND, Old Status: ${oldStatus}`);
                     }
                 } catch (walletError) {

@@ -15,64 +15,128 @@ router.get('/', async (req, res) => {
         if (redeemableOnly === 'true' || redeemableOnly === true) {
             // Fetch all active promotions first, then filter in JavaScript
             // This ensures we get all data and can properly check isPublic and pointsRequired
+            // IMPORTANT: Use raw: false to get Sequelize instances with proper data types
             let allPromotions = await db.Promotion.findAll({
-                where: { isActive: true }
+                where: { isActive: true },
+                raw: false // Get Sequelize instances, not plain objects
             });
 
-            console.log(`Total active promotions: ${allPromotions.length}`);
+            console.log(`\n🔍 [REDEEMABLE FILTER] Total active promotions: ${allPromotions.length}`);
 
             // Filter for private vouchers (isPublic = false/0) with pointsRequired > 0
             let promotions = allPromotions.filter(promo => {
+                // Get raw values from Sequelize instance - try multiple methods
+                let promoData;
+                if (promo.toJSON) {
+                    promoData = promo.toJSON();
+                } else if (promo.dataValues) {
+                    promoData = promo.dataValues;
+                } else {
+                    promoData = promo;
+                }
+                
                 // Check if private: isPublic should be false, 0, or '0'
-                const isPrivate = promo.isPublic === false ||
-                    promo.isPublic === 0 ||
-                    promo.isPublic === '0' ||
-                    String(promo.isPublic).toLowerCase() === 'false';
+                const isPublicRaw = promoData.isPublic;
+                // Also check the Sequelize instance directly
+                const isPublicFromInstance = promo.isPublic !== undefined ? promo.isPublic : isPublicRaw;
+                const isPublicValue = isPublicFromInstance !== undefined ? isPublicFromInstance : isPublicRaw;
+                
+                const isPrivate = isPublicValue === false ||
+                    isPublicValue === 0 ||
+                    isPublicValue === '0' ||
+                    String(isPublicValue).toLowerCase() === 'false';
 
                 // Check if has pointsRequired > 0
-                const pointsRequired = Number(promo.pointsRequired);
+                const pointsRequiredRaw = promoData.pointsRequired;
+                // Also check the Sequelize instance directly
+                const pointsRequiredFromInstance = promo.pointsRequired !== undefined ? promo.pointsRequired : pointsRequiredRaw;
+                const pointsRequiredValue = pointsRequiredFromInstance !== undefined ? pointsRequiredFromInstance : pointsRequiredRaw;
+                
+                const pointsRequired = Number(pointsRequiredValue);
                 const hasPointsRequired = !isNaN(pointsRequired) && pointsRequired > 0;
+
+                // Debug logging for each voucher
+                if (isPrivate && !hasPointsRequired) {
+                    console.log(`   ⚠️ [FILTER OUT] ${promoData.id}: ${promoData.title}`);
+                    console.log(`      - isPublic (raw): ${isPublicRaw} (${typeof isPublicRaw}), (instance): ${isPublicFromInstance} (${typeof isPublicFromInstance})`);
+                    console.log(`      - pointsRequired (raw): ${pointsRequiredRaw} (${typeof pointsRequiredRaw}), (instance): ${pointsRequiredFromInstance} (${typeof pointsRequiredFromInstance})`);
+                    console.log(`      - isPrivate: ${isPrivate}, hasPointsRequired: ${hasPointsRequired}`);
+                }
 
                 if (!isPrivate || !hasPointsRequired) {
                     return false;
                 }
 
+                console.log(`   ✅ [INCLUDED] ${promoData.id}: ${promoData.title} - isPrivate: ${isPrivate}, pointsRequired: ${pointsRequired}`);
                 return true;
             });
 
-            console.log(`Found ${promotions.length} private vouchers with pointsRequired > 0`);
+            console.log(`\n✅ [REDEEMABLE FILTER] Found ${promotions.length} private vouchers with pointsRequired > 0`);
             promotions.forEach(p => {
-                console.log(`- ${p.id}: ${p.title}, isPublic: ${p.isPublic}, pointsRequired: ${p.pointsRequired}`);
+                const pData = p.toJSON ? p.toJSON() : (p.dataValues || p);
+                console.log(`   - ${pData.id}: ${pData.title}, isPublic: ${pData.isPublic}, pointsRequired: ${pData.pointsRequired}`);
             });
 
-            // Filter out expired vouchers and vouchers with no stock
+            // Filter out expired vouchers
+            // IMPORTANT: For redeemable vouchers (private vouchers), do NOT filter by stock
+            // Stock check is not applicable for redeemable vouchers - they are redeemed with points
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             promotions = promotions.filter(promo => {
-                const expiryDate = new Date(promo.expiryDate);
+                // Get promo data
+                let promoData;
+                if (promo.toJSON) {
+                    promoData = promo.toJSON();
+                } else if (promo.dataValues) {
+                    promoData = promo.dataValues;
+                } else {
+                    promoData = promo;
+                }
+                
+                // Check expiry date
+                const expiryDate = new Date(promoData.expiryDate);
                 expiryDate.setHours(0, 0, 0, 0);
                 if (today > expiryDate) {
-                    console.log(`Voucher ${promo.id} expired`);
+                    console.log(`   ⚠️ [FILTER OUT] Voucher ${promoData.id} expired`);
                     return false;
                 }
-                const stock = Number(promo.stock);
-                if (!isNaN(stock) && stock <= 0) {
-                    console.log(`Voucher ${promo.id} out of stock`);
-                    return false;
-                }
+                
+                // IMPORTANT: Do NOT filter by stock for redeemable vouchers (private vouchers)
+                // Redeemable vouchers are redeemed with points, stock is not applicable
+                // Stock check only applies to public vouchers, not redeemable vouchers
+                console.log(`   ✅ [INCLUDED] Voucher ${promoData.id} passed expiry check (stock check skipped for redeemable vouchers)`);
                 return true;
             });
 
-            console.log(`Returning ${promotions.length} redeemable vouchers after filtering`);
+            console.log(`\n📤 [REDEEMABLE FILTER] Returning ${promotions.length} redeemable vouchers after filtering`);
             // Convert to plain objects for JSON response and normalize isPublic
-            return res.json(promotions.map(p => {
-                const promo = p.toJSON ? p.toJSON() : p;
-                // Normalize isPublic to boolean
-                if (promo.isPublic !== undefined) {
-                    promo.isPublic = promo.isPublic === true || promo.isPublic === 1 || promo.isPublic === '1';
+            const responseData = promotions.map(p => {
+                let promo;
+                if (p.toJSON) {
+                    promo = p.toJSON();
+                } else if (p.dataValues) {
+                    promo = p.dataValues;
+                } else {
+                    promo = p;
                 }
+                
+                // Normalize isPublic to boolean (should be false for redeemable vouchers)
+                if (promo.isPublic !== undefined) {
+                    const isPublicValue = promo.isPublic;
+                    promo.isPublic = isPublicValue === true || isPublicValue === 1 || isPublicValue === '1';
+                }
+                
+                // Ensure pointsRequired is a number
+                if (promo.pointsRequired !== undefined && promo.pointsRequired !== null) {
+                    promo.pointsRequired = Number(promo.pointsRequired);
+                }
+                
+                console.log(`   📦 [RESPONSE] ${promo.id}: ${promo.title}, isPublic: ${promo.isPublic}, pointsRequired: ${promo.pointsRequired}`);
                 return promo;
-            }));
+            });
+            
+            console.log(`\n✅ [REDEEMABLE FILTER] Sending ${responseData.length} vouchers to client\n`);
+            return res.json(responseData);
         }
 
         // If no userId provided, only return public promotions (for client pages)
@@ -638,6 +702,41 @@ router.post('/', async (req, res) => {
         }
 
         console.log('Creating promotion with data:', JSON.stringify(newPromotionData, null, 2));
+        
+        // Check if this is a VIP tier voucher (targetAudience starts with "Tier Level")
+        const isVIPTierVoucher = newPromotionData.targetAudience && 
+            String(newPromotionData.targetAudience).startsWith('Tier Level');
+        
+        // If this is a VIP tier voucher, check if there's already a voucher for this tier
+        // VIP tier vouchers: Only 1 voucher allowed per tier (must delete old one before creating new)
+        if (isVIPTierVoucher) {
+            const tierLevel = String(newPromotionData.targetAudience).replace('Tier Level ', '');
+            const targetAudience = `Tier Level ${tierLevel}`;
+            
+            // Check if there's already a voucher for this tier (active or inactive)
+            const existingVoucher = await db.Promotion.findOne({
+                where: {
+                    targetAudience: targetAudience
+                }
+            });
+            
+            if (existingVoucher) {
+                console.log(`❌ [VIP VOUCHER CREATE] Voucher already exists for Tier Level ${tierLevel}: ${existingVoucher.id} - ${existingVoucher.title}`);
+                return res.status(400).json({ 
+                    message: `Đã tồn tại voucher cho hạng ${tierLevel}. Vui lòng xóa voucher cũ trước khi tạo voucher mới.`,
+                    existingVoucherId: existingVoucher.id,
+                    existingVoucherTitle: existingVoucher.title
+                });
+            }
+            
+            // Ensure isActive is set to true for the new voucher (default)
+            if (newPromotionData.isActive === undefined) {
+                newPromotionData.isActive = true;
+            }
+            
+            console.log(`✅ [VIP VOUCHER CREATE] No existing voucher for Tier Level ${tierLevel}, creating new voucher`);
+        }
+        
         const createdPromotion = await db.Promotion.create({
             id: `promo-${uuidv4()}`,
             usageCount: 0,
@@ -676,6 +775,8 @@ router.put('/:id', async (req, res) => {
         }
 
         // Ensure isPublic is properly converted to boolean
+        const oldIsPublic = promotion.isPublic === true || promotion.isPublic === 1 || promotion.isPublic === '1' || String(promotion.isPublic).toLowerCase() === 'true';
+        
         if (updatedPromotionData.isPublic !== undefined) {
             // Convert to boolean: true if explicitly true/1/'true', false otherwise
             if (updatedPromotionData.isPublic === true ||
@@ -688,6 +789,10 @@ router.put('/:id', async (req, res) => {
             }
         }
 
+        const newIsPublic = updatedPromotionData.isPublic !== undefined 
+            ? (updatedPromotionData.isPublic === true || updatedPromotionData.isPublic === 1 || updatedPromotionData.isPublic === '1' || String(updatedPromotionData.isPublic).toLowerCase() === 'true')
+            : oldIsPublic;
+
         // Ensure pointsRequired is properly handled
         if (updatedPromotionData.pointsRequired !== undefined) {
             if (updatedPromotionData.pointsRequired === '' || updatedPromotionData.pointsRequired === null) {
@@ -697,11 +802,81 @@ router.put('/:id', async (req, res) => {
             }
         }
 
-        console.log('Updating promotion with data:', JSON.stringify(updatedPromotionData, null, 2));
+        // IMPORTANT: If changing from public to private, ensure pointsRequired is set
+        // If isPublic changed from true to false and pointsRequired is not set, set a default value
+        if (oldIsPublic && !newIsPublic) {
+            // Changing from public to private
+            console.log(`🔄 [UPDATE PROMOTION] Voucher ${promotion.id} changing from public to private`);
+            console.log(`   - Old isPublic: ${oldIsPublic}, New isPublic: ${newIsPublic}`);
+            console.log(`   - Updated pointsRequired: ${updatedPromotionData.pointsRequired}`);
+            console.log(`   - Existing pointsRequired: ${promotion.pointsRequired}`);
+            
+            if (!updatedPromotionData.pointsRequired || updatedPromotionData.pointsRequired === null || updatedPromotionData.pointsRequired === '') {
+                // If pointsRequired is not provided, check if promotion already has a value
+                const existingPointsRequired = promotion.pointsRequired;
+                if (!existingPointsRequired || existingPointsRequired === null || existingPointsRequired === 0) {
+                    // No existing pointsRequired, set a default (e.g., 100 points)
+                    // Or you can require admin to set it explicitly
+                    console.warn(`⚠️ [UPDATE PROMOTION] Voucher ${promotion.id} changed from public to private but pointsRequired is not set. Setting default: 100 points`);
+                    updatedPromotionData.pointsRequired = 100; // Default value, admin should set this properly
+                } else {
+                    // Keep existing value
+                    console.log(`✅ [UPDATE PROMOTION] Keeping existing pointsRequired: ${existingPointsRequired}`);
+                    updatedPromotionData.pointsRequired = existingPointsRequired;
+                }
+            } else {
+                console.log(`✅ [UPDATE PROMOTION] Using provided pointsRequired: ${updatedPromotionData.pointsRequired}`);
+            }
+        }
+
+        // Check if this is a VIP tier voucher
+        const isVIPTierVoucher = promotion.targetAudience && 
+            String(promotion.targetAudience).startsWith('Tier Level');
+        
+        // If this is a VIP tier voucher and isActive is being set to true,
+        // deactivate all other vouchers for the same tier
+        if (isVIPTierVoucher) {
+            const tierLevel = String(promotion.targetAudience).replace('Tier Level ', '');
+            const targetAudience = `Tier Level ${tierLevel}`;
+            
+            // Check if isActive is being set to true (or not being changed and is currently true)
+            const currentIsActive = promotion.isActive === true || promotion.isActive === 1 || 
+                String(promotion.isActive).toLowerCase() === 'true';
+            const newIsActive = updatedPromotionData.isActive !== undefined 
+                ? (updatedPromotionData.isActive === true || updatedPromotionData.isActive === 1 || 
+                   String(updatedPromotionData.isActive).toLowerCase() === 'true')
+                : currentIsActive;
+            
+            // If the voucher will be active after update, deactivate all other vouchers for this tier
+            if (newIsActive) {
+                const deactivatedCount = await db.Promotion.update(
+                    { isActive: false },
+                    {
+                        where: {
+                            targetAudience: targetAudience,
+                            isActive: true,
+                            id: { [Op.ne]: id } // Exclude the current voucher being updated
+                        }
+                    }
+                );
+                
+                if (deactivatedCount[0] > 0) {
+                    console.log(`🔄 [VIP VOUCHER UPDATE] Deactivated ${deactivatedCount[0]} existing voucher(s) for Tier Level ${tierLevel}`);
+                }
+            }
+        }
+        
+        console.log('\n📝 [UPDATE PROMOTION] Updating promotion with data:', JSON.stringify(updatedPromotionData, null, 2));
         await promotion.update(updatedPromotionData);
 
         // Fetch updated promotion to return (reload from database to ensure correct values)
         const updatedPromotion = await db.Promotion.findByPk(id);
+        
+        // Verify the update
+        const verifyData = updatedPromotion.toJSON ? updatedPromotion.toJSON() : updatedPromotion;
+        console.log(`✅ [UPDATE PROMOTION] Updated promotion ${id}:`);
+        console.log(`   - isPublic: ${verifyData.isPublic} (${typeof verifyData.isPublic})`);
+        console.log(`   - pointsRequired: ${verifyData.pointsRequired} (${typeof verifyData.pointsRequired})`);
 
         // Ensure isPublic and pointsRequired are returned correctly for frontend
         const responseData = updatedPromotion.toJSON ? updatedPromotion.toJSON() : updatedPromotion;

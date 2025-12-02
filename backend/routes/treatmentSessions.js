@@ -394,8 +394,53 @@ router.put('/:id', async (req, res) => {
             }
         }
 
-        // Nếu hoàn thành session, tạo thông báo nhắc buổi tiếp theo
+        // Nếu hoàn thành session, cập nhật Appointment và tạo thông báo nhắc buổi tiếp theo
         if (updates.status === 'completed') {
+            // Update or create Appointment for this treatment session
+            try {
+                if (session.appointmentId) {
+                    // Update existing appointment status to 'completed'
+                    const appointment = await db.Appointment.findByPk(session.appointmentId);
+                    if (appointment) {
+                        await appointment.update({
+                            status: 'completed',
+                        });
+                        console.log(`✅ Updated appointment ${appointment.id} to completed status`);
+                    }
+                } else if (session.sessionDate && session.sessionTime) {
+                    // Create appointment if session has date/time but no appointmentId
+                    const course = await db.TreatmentCourse.findByPk(session.treatmentCourseId, {
+                        include: [
+                            { model: db.Service, as: 'Service' },
+                            { model: db.User, as: 'Client' }
+                        ]
+                    });
+                    
+                    if (course && course.Client && course.Service) {
+                        const appointment = await db.Appointment.create({
+                            id: `apt-${uuidv4()}`,
+                            serviceId: course.serviceId,
+                            serviceName: course.Service.name || course.serviceName,
+                            userId: course.clientId,
+                            date: session.sessionDate,
+                            time: session.sessionTime,
+                            therapistId: session.staffId || null,
+                            status: 'completed', // Already completed
+                            paymentStatus: 'Unpaid', // Default, can be updated later
+                            notesForTherapist: `Buổi ${session.sessionNumber} của liệu trình ${course.Service.name || course.serviceName}`,
+                            bookingGroupId: `group-${course.id}`,
+                        });
+                        
+                        // Link appointment to session
+                        await session.update({ appointmentId: appointment.id });
+                        console.log(`✅ Created and linked appointment ${appointment.id} for completed treatment session ${session.id}`);
+                    }
+                }
+            } catch (appointmentError) {
+                console.error('Error updating/creating appointment for treatment session:', appointmentError);
+                // Don't fail the whole operation if appointment update/create fails
+            }
+
             const course = await db.TreatmentCourse.findByPk(session.treatmentCourseId);
             const nextSession = await db.TreatmentSession.findOne({
                 where: {
@@ -449,6 +494,51 @@ router.put('/:id/complete', async (req, res) => {
             rating,
             updatedAt: new Date(),
         });
+
+        // Update or create Appointment for this treatment session
+        try {
+            if (session.appointmentId) {
+                // Update existing appointment status to 'completed'
+                const appointment = await db.Appointment.findByPk(session.appointmentId);
+                if (appointment) {
+                    await appointment.update({
+                        status: 'completed',
+                    });
+                    console.log(`✅ Updated appointment ${appointment.id} to completed status`);
+                }
+            } else if (session.sessionDate && session.sessionTime) {
+                // Create appointment if session has date/time but no appointmentId
+                const course = await db.TreatmentCourse.findByPk(session.treatmentCourseId, {
+                    include: [
+                        { model: db.Service, as: 'Service' },
+                        { model: db.User, as: 'Client' }
+                    ]
+                });
+                
+                if (course && course.Client && course.Service) {
+                    const appointment = await db.Appointment.create({
+                        id: `apt-${uuidv4()}`,
+                        serviceId: course.serviceId,
+                        serviceName: course.Service.name || course.serviceName,
+                        userId: course.clientId,
+                        date: session.sessionDate,
+                        time: session.sessionTime,
+                        therapistId: session.staffId || null,
+                        status: 'completed', // Already completed
+                        paymentStatus: 'Unpaid', // Default, can be updated later
+                        notesForTherapist: `Buổi ${session.sessionNumber} của liệu trình ${course.Service.name || course.serviceName}`,
+                        bookingGroupId: `group-${course.id}`,
+                    });
+                    
+                    // Link appointment to session
+                    await session.update({ appointmentId: appointment.id });
+                    console.log(`✅ Created and linked appointment ${appointment.id} for completed treatment session ${session.id}`);
+                }
+            }
+        } catch (appointmentError) {
+            console.error('Error updating/creating appointment for treatment session:', appointmentError);
+            // Don't fail the whole operation if appointment update/create fails
+        }
 
         // Cập nhật nextAppointmentDate của course nếu có buổi tiếp theo
         const course = await db.TreatmentCourse.findByPk(session.treatmentCourseId);

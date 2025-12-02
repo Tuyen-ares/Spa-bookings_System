@@ -433,6 +433,46 @@ router.put('/:id/complete-session', async (req, res) => {
             completedAt: new Date(),
         });
 
+        // Update or create Appointment for this treatment session
+        try {
+            if (session.appointmentId) {
+                // Update existing appointment status to 'completed'
+                const appointment = await db.Appointment.findByPk(session.appointmentId);
+                if (appointment) {
+                    await appointment.update({
+                        status: 'completed',
+                    });
+                    console.log(`✅ Updated appointment ${appointment.id} to completed status`);
+                }
+            } else if (session.sessionDate && session.sessionTime) {
+                // Create appointment if session has date/time but no appointmentId
+                // This handles cases where appointment was not created when session was scheduled
+                const service = await db.Service.findByPk(course.serviceId);
+                if (service && course.clientId) {
+                    const appointment = await db.Appointment.create({
+                        id: `apt-${uuidv4()}`,
+                        serviceId: course.serviceId,
+                        serviceName: service.name || course.serviceName,
+                        userId: course.clientId,
+                        date: session.sessionDate,
+                        time: session.sessionTime,
+                        therapistId: session.staffId || null,
+                        status: 'completed', // Already completed
+                        paymentStatus: 'Unpaid', // Default, can be updated later
+                        notesForTherapist: `Buổi ${session.sessionNumber} của liệu trình ${service.name || course.serviceName}`,
+                        bookingGroupId: `group-${course.id}`,
+                    });
+                    
+                    // Link appointment to session
+                    await session.update({ appointmentId: appointment.id });
+                    console.log(`✅ Created and linked appointment ${appointment.id} for completed treatment session ${session.id}`);
+                }
+            }
+        } catch (appointmentError) {
+            console.error('Error updating/creating appointment for treatment session:', appointmentError);
+            // Don't fail the whole operation if appointment update/create fails
+        }
+
         // Update course completedSessions
         const completedCount = await db.TreatmentSession.count({
             where: {
@@ -582,10 +622,15 @@ router.put('/:id/confirm-payment', async (req, res) => {
                         lastUpdated: new Date()
                     });
 
+                    // Lưu tierLevel cũ để kiểm tra lên hạng
+                    const oldTierLevel = wallet.tierLevel;
+                    
                     // Cập nhật tier level dựa trên totalSpent mới
                     const { calculateTierInfo } = require('../utils/tierUtils');
                     const tierInfo = calculateTierInfo(newTotalSpent);
-                    await wallet.update({ tierLevel: tierInfo.currentTier.level });
+                    const newTierLevel = tierInfo.currentTier.level;
+                    
+                    await wallet.update({ tierLevel: newTierLevel });
 
                     console.log(`✅ [TREATMENT COURSE PAYMENT] Wallet updated:`, {
                         pointsEarned: pointsEarned,
@@ -593,9 +638,11 @@ router.put('/:id/confirm-payment', async (req, res) => {
                         newPoints: currentPoints + pointsEarned,
                         oldTotalSpent: currentTotalSpent,
                         newTotalSpent: newTotalSpent,
-                        oldTierLevel: wallet.tierLevel,
-                        newTierLevel: tierInfo.currentTier.level
+                        oldTierLevel: oldTierLevel,
+                        newTierLevel: newTierLevel
                     });
+                    
+                    // Gửi voucher tự động nếu lên hạng (logic này sẽ được xử lý trong Wallet model hook)
                 } else {
                     console.log(`⚠️ [TREATMENT COURSE PAYMENT] Wallet not found for user ${course.clientId}`);
                 }

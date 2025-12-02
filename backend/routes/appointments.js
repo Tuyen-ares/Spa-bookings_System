@@ -708,17 +708,9 @@ router.post('/', async (req, res) => {
         if (!service) return res.status(404).json({ message: 'Service not found' });
 
         // ==========================================
-        // VALIDATION: Kiểm tra overlap và khoảng cách tối thiểu 1 giờ
+        // VALIDATION: Kiểm tra overlap (không cho phép trùng lịch)
         // ==========================================
         if (finalUserId && newAppointmentData.date && newAppointmentData.time) {
-            // Kiểm tra time có phải là giờ tròn không (chỉ cho phép XX:00, không cho XX:30, XX:45)
-            const [hours, minutes] = newAppointmentData.time.split(':').map(Number);
-            if (minutes !== 0) {
-                return res.status(400).json({ 
-                    message: 'Vui lòng chọn giờ tròn (ví dụ: 12:00, 13:00, không được 12:30, 12:45). Các lịch hẹn phải cách nhau ít nhất 1 giờ.' 
-                });
-            }
-
             // Lấy tất cả appointments của user trong ngày đó (cùng ngày, status != cancelled)
             const existingAppointments = await db.Appointment.findAll({
                 where: {
@@ -734,11 +726,15 @@ router.post('/', async (req, res) => {
 
             if (existingAppointments.length > 0) {
                 // Convert time to minutes for comparison
-                const newStartMinutes = hours * 60 + minutes;
+                const [newHours, newMinutes] = newAppointmentData.time.split(':').map(Number);
+                const newStartMinutes = newHours * 60 + newMinutes;
                 const newDuration = service.duration || 60;
                 const newEndMinutes = newStartMinutes + newDuration;
 
-                // Kiểm tra overlap với từng appointment đã đặt
+                // Kiểm tra overlap và logic đặt lịch với từng appointment đã đặt
+                // Logic từ promp.txt:
+                // - Nếu đặt SAU dịch vụ B: phải đặt sau khi dịch vụ B kết thúc (newStart >= existingEnd)
+                // - Nếu đặt TRƯỚC dịch vụ B: phải đặt trước C - duration của dịch vụ D (newEnd <= existingStart và newStart <= existingStart - newDuration)
                 for (const existingApt of existingAppointments) {
                     const existingService = existingApt.Service;
                     if (!existingService || !existingService.duration) continue;
@@ -759,31 +755,34 @@ router.post('/', async (req, res) => {
                         });
                     }
 
-                    // Kiểm tra khoảng cách tối thiểu 1 giờ (60 phút)
-                    // Tính khoảng cách giữa 2 appointments (khoảng trống giữa chúng, không tính overlap)
-                    let gapInMinutes = 0;
-                    
-                    // Nếu appointment mới đứng trước appointment đã đặt (newEnd <= existingStart)
-                    // Khoảng cách = existingStart - newEnd (khoảng trống giữa newEnd và existingStart)
-                    if (newEndMinutes <= existingStartMinutes) {
-                        gapInMinutes = existingStartMinutes - newEndMinutes;
-                    }
-                    // Nếu appointment mới đứng sau appointment đã đặt (newStart >= existingEnd)
-                    // Khoảng cách = newStart - existingEnd (khoảng trống giữa existingEnd và newStart)
-                    else if (newStartMinutes >= existingEndMinutes) {
-                        gapInMinutes = newStartMinutes - existingEndMinutes;
-                    }
+                    // Kiểm tra logic đặt lịch:
+                    // Nếu đặt SAU dịch vụ đã đặt: newStart >= existingEnd (cho phép)
+                    // Nếu đặt TRƯỚC dịch vụ đã đặt: newEnd <= existingStart VÀ newStart <= existingStart - newDuration (cho phép)
+                    // Nếu không thỏa mãn một trong hai điều kiện trên → không hợp lệ
+                    const isAfterExisting = newStartMinutes >= existingEndMinutes;
+                    const isBeforeExisting = newEndMinutes <= existingStartMinutes && 
+                                            newStartMinutes <= existingStartMinutes - newDuration;
 
-                    // PHẢI cách nhau ít nhất 1 giờ (60 phút)
-                    // Nếu gapInMinutes = 0, nghĩa là tiếp giáp nhau (không có khoảng trống) → không hợp lệ
-                    // Nếu gapInMinutes > 0 và < 60, nghĩa là có khoảng trống nhưng chưa đủ 1 giờ → không hợp lệ
-                    // Chỉ hợp lệ nếu gapInMinutes >= 60
-                    if (gapInMinutes < 60) {
-                        const gapText = gapInMinutes === 0 
-                            ? 'Các lịch hẹn tiếp giáp nhau không được phép' 
-                            : `Khoảng cách hiện tại: ${Math.floor(gapInMinutes)} phút, cần ít nhất 60 phút`;
+                    if (!isAfterExisting && !isBeforeExisting) {
+                        // Tính toán thông báo lỗi chi tiết
+                        let errorMessage = '';
+                        if (newStartMinutes < existingStartMinutes) {
+                            // Đang cố đặt trước nhưng không đủ khoảng cách
+                            const requiredStart = existingStartMinutes - newDuration;
+                            const requiredHours = Math.floor(requiredStart / 60);
+                            const requiredMins = requiredStart % 60;
+                            const requiredTime = `${String(requiredHours).padStart(2, '0')}:${String(requiredMins).padStart(2, '0')}`;
+                            errorMessage = `Nếu đặt trước lịch hẹn ${existingApt.time} (${existingService.name}), bạn phải đặt trước ${requiredTime} để dịch vụ kết thúc trước khi lịch hẹn bắt đầu.`;
+                        } else {
+                            // Đang cố đặt sau nhưng vẫn còn overlap hoặc quá sớm
+                            const requiredStart = existingEndMinutes;
+                            const requiredHours = Math.floor(requiredStart / 60);
+                            const requiredMins = requiredStart % 60;
+                            const requiredTime = `${String(requiredHours).padStart(2, '0')}:${String(requiredMins).padStart(2, '0')}`;
+                            errorMessage = `Nếu đặt sau lịch hẹn ${existingApt.time} (${existingService.name}), bạn phải đặt từ ${requiredTime} trở đi.`;
+                        }
                         return res.status(400).json({ 
-                            message: `Lịch hẹn phải cách lịch đã đặt ít nhất 1 giờ. ${gapText}. Vui lòng chọn giờ khác.` 
+                            message: errorMessage
                         });
                     }
                 }
@@ -956,6 +955,39 @@ router.post('/', async (req, res) => {
 
                 console.log(`   ✅ [BIRTHDAY] User can use Birthday voucher (today is birthday and not used yet)`);
                 console.log(`🔍 [BIRTHDAY VALIDATION] ==========================================\n`);
+            }
+        }
+
+        // Validate minimum sessions (số buổi tối thiểu) - parse from termsAndConditions
+        if (promotion.termsAndConditions) {
+            try {
+                const termsObj = JSON.parse(promotion.termsAndConditions);
+                if (termsObj && typeof termsObj.minSessions === 'number' && termsObj.minSessions > 0) {
+                    const quantity = newAppointmentData.quantity || 1;
+                    
+                    // Check if promotion applies to this service
+                    let shouldCheckQuantity = false;
+                    if (promotion.applicableServiceIds && promotion.applicableServiceIds.length > 0) {
+                        // Voucher chỉ áp dụng cho các services cụ thể
+                        const applicableServiceIdsArray = Array.isArray(promotion.applicableServiceIds) 
+                            ? promotion.applicableServiceIds 
+                            : (typeof promotion.applicableServiceIds === 'string' ? JSON.parse(promotion.applicableServiceIds) : []);
+                        if (applicableServiceIdsArray.includes(newAppointmentData.serviceId)) {
+                            shouldCheckQuantity = true;
+                        }
+                    } else {
+                        // Voucher áp dụng cho tất cả services
+                        shouldCheckQuantity = true;
+                    }
+                    
+                    if (shouldCheckQuantity && quantity < termsObj.minSessions) {
+                        return res.status(400).json({ 
+                            message: `Voucher chỉ áp dụng khi đặt từ ${termsObj.minSessions} buổi trở lên. Bạn đang đặt ${quantity} buổi.` 
+                        });
+                    }
+                }
+            } catch (e) {
+                // Not JSON or parse error, ignore (treat as regular text)
             }
         }
 
@@ -1610,13 +1642,20 @@ router.put('/:id', async (req, res) => {
                             // Note: Points history is derived from Payment records, not stored separately
                             console.log(`✅ User ${appointment.userId} earned ${pointsEarned} points from payment`);
 
+                            // Lưu tierLevel cũ để kiểm tra lên hạng
+                            const oldTierLevel = wallet.tierLevel;
+                            
                             // Cập nhật tier level dựa trên totalSpent mới
                             const { calculateTierInfo } = require('../utils/tierUtils');
                             const newTotalSpent = currentTotalSpent + amount;
                             const tierInfo = calculateTierInfo(newTotalSpent);
-                            await wallet.update({ tierLevel: tierInfo.currentTier.level });
+                            const newTierLevel = tierInfo.currentTier.level;
+                            
+                            await wallet.update({ tierLevel: newTierLevel });
 
-                            console.log(`✅ [APPOINTMENT PAYMENT] Wallet updated: +${pointsEarned} points, total: ${currentPoints + pointsEarned} points, totalSpent: ${newTotalSpent}, tierLevel: ${tierInfo.currentTier.level}`);
+                            console.log(`✅ [APPOINTMENT PAYMENT] Wallet updated: +${pointsEarned} points, total: ${currentPoints + pointsEarned} points, totalSpent: ${newTotalSpent}, tierLevel: ${oldTierLevel} → ${newTierLevel}`);
+                            
+                            // Gửi voucher tự động nếu lên hạng (logic này sẽ được xử lý trong Wallet model hook)
                         } else {
                             console.log(`⚠️ [APPOINTMENT PAYMENT] Payment ${payment.id} already completed, skipping wallet update`);
                         }

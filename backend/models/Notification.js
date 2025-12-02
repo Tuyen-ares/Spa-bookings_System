@@ -21,7 +21,10 @@ module.exports = (sequelize) => {
         'appointment_reminder',
         'treatment_course_reminder',
         'promotion',
+        'promo_alert',
+        'birthday_gift',
         'payment_success',
+        'payment_received',
         'system'
       ),
       allowNull: false,
