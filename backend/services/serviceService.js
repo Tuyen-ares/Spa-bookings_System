@@ -106,7 +106,31 @@ class ServiceService {
             throw new Error('Service not found');
         }
 
+        // Check if any treatment courses are using this service
+        const activeCourses = await db.TreatmentCourse.findAll({
+            where: {
+                serviceId: id
+            },
+            include: [
+                {
+                    model: db.User,
+                    as: 'Client',
+                    attributes: ['id', 'name']
+                }
+            ]
+        });
+
+        console.log(`[DELETE SERVICE] Checking service ${id}. Found ${activeCourses.length} treatment courses`);
+
+        if (activeCourses.length > 0) {
+            // Use a generic error message (do not expose client names)
+            const errorMsg = 'Không thể xóa dịch vụ này. Có khách đang sử dụng dịch vụ này.';
+            console.log('[DELETE SERVICE] Error:', errorMsg);
+            throw new Error(errorMsg);
+        }
+
         await service.destroy();
+        console.log(`[DELETE SERVICE] Service ${id} deleted successfully`);
         return { message: 'Service deleted successfully' };
     }
 
@@ -206,7 +230,7 @@ class ServiceService {
      */
     async getMostBookedServices(limit = 4) {
         const { Sequelize } = require('sequelize');
-        
+
         // Query to count completed appointments for each service
         const serviceBookingCounts = await db.Appointment.findAll({
             attributes: [
@@ -224,7 +248,7 @@ class ServiceService {
 
         // Get service IDs with their booking counts
         const serviceIds = serviceBookingCounts.map(item => item.serviceId);
-        
+
         if (serviceIds.length === 0) {
             // If no completed bookings, return top-rated active services
             return await db.Service.findAll({

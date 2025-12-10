@@ -6,7 +6,7 @@ class ServiceController {
         try {
             const services = await serviceService.getAllServices();
             console.log('Backend - getAllServices: Total services found:', services.length);
-            
+
             // Debug: Log services info
             if (services.length > 0) {
                 services.forEach((service, index) => {
@@ -24,7 +24,7 @@ class ServiceController {
             } else {
                 console.warn('Backend - No services found in database!');
             }
-            
+
             res.json(services);
         } catch (error) {
             console.error('Error fetching services:', error);
@@ -68,12 +68,19 @@ class ServiceController {
     }
 
     async deleteService(req, res) {
+        console.log(`[CONTROLLER] DELETE request for service: ${req.params.id}`);
         try {
             const result = await serviceService.deleteService(req.params.id);
+            console.log('[CONTROLLER] Service deleted successfully');
             res.json(result);
         } catch (error) {
+            console.log('[CONTROLLER] Delete failed:', error.message);
             if (error.message === 'Service not found') {
                 res.status(404).json({ error: error.message });
+            } else if (error.message.includes('Không thể xóa dịch vụ')) {
+                // Business logic error - return 400 Bad Request
+                console.log('[CONTROLLER] Returning 400 with error:', error.message);
+                res.status(400).json({ error: error.message });
             } else {
                 res.status(500).json({ error: 'Failed to delete service', message: error.message });
             }

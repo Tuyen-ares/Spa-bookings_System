@@ -173,7 +173,7 @@ export const getMyRedeemedVouchers = async (userId: string): Promise<Array<Promo
 
 export const getTiers = async (): Promise<Tier[]> => Promise.resolve([]);
 export const getUserWallet = async (userId: string): Promise<Wallet> => fetch(`${API_BASE_URL}/wallets/${userId}`).then(handleResponse);
-export const getUserPointsHistory = async (userId: string): Promise<Array<{date: string; pointsChange: number; type: string; source: string; description: string}>> => fetch(`${API_BASE_URL}/wallets/${userId}/points-history`).then(handleResponse);
+export const getUserPointsHistory = async (userId: string): Promise<Array<{ date: string; pointsChange: number; type: string; source: string; description: string }>> => fetch(`${API_BASE_URL}/wallets/${userId}/points-history`).then(handleResponse);
 export const getLuckyWheelPrizes = async (): Promise<Prize[]> => fetch(`${API_BASE_URL}/wallets/lucky-wheel-prizes`).then(handleResponse);
 export const getRedeemedRewards = async (): Promise<RedeemedReward[]> => Promise.resolve([]);
 export const getUserMissions = async (userId: string): Promise<Mission[]> => Promise.resolve([]);
@@ -251,7 +251,7 @@ export const getApplicablePromotions = async (userId?: string, serviceId?: strin
 };
 
 export const updateUserWallet = (userId: string, data: Partial<Wallet>) => update<Wallet>(`${API_BASE_URL}/wallets/${userId}`, data);
-export const createPointsHistoryEntry = (userId: string, data: {date?: string; pointsChange: number; type?: string; source?: string; description: string}) => create(`${API_BASE_URL}/wallets/${userId}/points-history`, data);
+export const createPointsHistoryEntry = (userId: string, data: { date?: string; pointsChange: number; type?: string; source?: string; description: string }) => create(`${API_BASE_URL}/wallets/${userId}/points-history`, data);
 
 export const updateStaffAvailability = (staffId: string, date: string, timeSlots: StaffDailyAvailability['timeSlots']) => update<StaffDailyAvailability>(`${API_BASE_URL}/staff/availability/${staffId}/${date}`, { timeSlots });
 export const deleteStaffAvailability = (staffId: string, date: string) => remove(`${API_BASE_URL}/staff/availability/${staffId}/${date}`);
@@ -278,7 +278,7 @@ export const updateStaffTask = (id: string, data: Partial<StaffTask>) => update<
 export const deleteStaffTask = (id: string) => remove(`${API_BASE_URL}/staff/tasks/${id}`);
 
 export const processPayment = async (appointmentId: string, method: PaymentMethod, finalAmount: number): Promise<{
-    transactionId: string; paymentUrl?: string; paymentId?: string; success?: boolean; payment?: Payment 
+    transactionId: string; paymentUrl?: string; paymentId?: string; success?: boolean; payment?: Payment
 }> => {
     // This is a specific action, so we define it separately
     const body = { appointmentId, method, amount: finalAmount };
@@ -295,61 +295,82 @@ export const deletePayment = (id: string) => remove(`${API_BASE_URL}/payments/${
 
 // --- TREATMENT COURSES ---
 export const getTreatmentCourses = async (params?: {
-  clientId?: string;
-  status?: string;
-  templateOnly?: boolean;
-  templatesOnly?: boolean;
-  includeExpired?: boolean;
-  includeCompleted?: boolean;
+    clientId?: string;
+    status?: string;
+    templateOnly?: boolean;
+    templatesOnly?: boolean;
+    includeExpired?: boolean;
+    includeCompleted?: boolean;
 }): Promise<TreatmentCourse[]> => {
-  let url = `${API_BASE_URL}/treatment-courses`;
-  const queryParams = new URLSearchParams();
-  
-  if (params?.templateOnly || params?.templatesOnly) queryParams.append('templatesOnly', 'true');
-  if (params?.clientId) queryParams.append('clientId', params.clientId);
-  if (params?.status) queryParams.append('status', params.status);
-  if (params?.includeExpired) queryParams.append('includeExpired', 'true');
-  if (params?.includeCompleted) queryParams.append('includeCompleted', 'true');
-  
-  const queryString = queryParams.toString();
-  if (queryString) url += `?${queryString}`;
-  
-  return fetch(url).then(handleResponse);
+    let url = `${API_BASE_URL}/treatment-courses`;
+    const queryParams = new URLSearchParams();
+
+    if (params?.templateOnly || params?.templatesOnly) queryParams.append('templatesOnly', 'true');
+    if (params?.clientId) queryParams.append('clientId', params.clientId);
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.includeExpired) queryParams.append('includeExpired', 'true');
+    if (params?.includeCompleted) queryParams.append('includeCompleted', 'true');
+
+    const queryString = queryParams.toString();
+    if (queryString) url += `?${queryString}`;
+
+    return fetch(url).then(handleResponse);
 };
 
-export const getTreatmentCourseById = async (id: string): Promise<TreatmentCourse> => 
-  fetch(`${API_BASE_URL}/treatment-courses/${id}`).then(handleResponse);
+// Paginated version used by admin pages. Returns { data: TreatmentCourse[], total: number, page: number, pageSize: number }
+export const getTreatmentCoursesPaginated = async (params?: {
+    clientId?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+    templatesOnly?: boolean;
+}): Promise<{ data: TreatmentCourse[]; total: number; page: number; pageSize: number }> => {
+    const queryParams = new URLSearchParams();
+    if (params?.clientId) queryParams.append('clientId', params.clientId);
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.page) queryParams.append('page', String(params.page));
+    if (params?.limit) queryParams.append('limit', String(params.limit));
+    if (params?.templatesOnly) queryParams.append('templatesOnly', 'true');
 
-export const createTreatmentCourse = (data: Partial<TreatmentCourse>) => 
-  create<TreatmentCourse>(`${API_BASE_URL}/treatment-courses`, data);
+    const queryString = queryParams.toString();
+    const url = `${API_BASE_URL}/treatment-courses${queryString ? `?${queryString}` : ''}`;
+
+    return fetch(url, { headers: getAuthHeaders() }).then(handleResponse) as Promise<{ data: TreatmentCourse[]; total: number; page: number; pageSize: number }>;
+};
+
+export const getTreatmentCourseById = async (id: string): Promise<TreatmentCourse> =>
+    fetch(`${API_BASE_URL}/treatment-courses/${id}`).then(handleResponse);
+
+export const createTreatmentCourse = (data: Partial<TreatmentCourse>) =>
+    create<TreatmentCourse>(`${API_BASE_URL}/treatment-courses`, data);
 
 export const registerForTreatmentCourse = (templateId: string, clientId: string) =>
-  fetch(`${API_BASE_URL}/treatment-courses/${templateId}/register`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ clientId })
-  }).then(handleResponse) as Promise<{ course: TreatmentCourse; message: string }>;
+    fetch(`${API_BASE_URL}/treatment-courses/${templateId}/register`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ clientId })
+    }).then(handleResponse) as Promise<{ course: TreatmentCourse; message: string }>;
 
-export const updateTreatmentCourse = (id: string, data: Partial<TreatmentCourse>) => 
-  update<TreatmentCourse>(`${API_BASE_URL}/treatment-courses/${id}`, data);
+export const updateTreatmentCourse = (id: string, data: Partial<TreatmentCourse>) =>
+    update<TreatmentCourse>(`${API_BASE_URL}/treatment-courses/${id}`, data);
 
-export const deleteTreatmentCourse = (id: string) => 
-  remove(`${API_BASE_URL}/treatment-courses/${id}`);
+export const deleteTreatmentCourse = (id: string) =>
+    remove(`${API_BASE_URL}/treatment-courses/${id}`);
 
 // New Phase 1 APIs
 export const pauseTreatmentCourse = (id: string, reason: string) =>
-  fetch(`${API_BASE_URL}/treatment-courses/${id}/pause`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reason })
-  }).then(handleResponse);
+    fetch(`${API_BASE_URL}/treatment-courses/${id}/pause`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+    }).then(handleResponse);
 
 export const resumeTreatmentCourse = (id: string, extendExpiryDays?: number) =>
-  fetch(`${API_BASE_URL}/treatment-courses/${id}/resume`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ extendExpiryDays })
-  }).then(handleResponse);
+    fetch(`${API_BASE_URL}/treatment-courses/${id}/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ extendExpiryDays })
+    }).then(handleResponse);
 
 // Confirm payment for a treatment course
 export const confirmTreatmentCoursePayment = async (id: string): Promise<TreatmentCourse> => {
@@ -361,27 +382,27 @@ export const confirmTreatmentCoursePayment = async (id: string): Promise<Treatme
 };
 
 export const getTreatmentCourseProgress = (id: string) =>
-  fetch(`${API_BASE_URL}/treatment-courses/${id}/progress`).then(handleResponse);
+    fetch(`${API_BASE_URL}/treatment-courses/${id}/progress`).then(handleResponse);
 
 export const scheduleSessionInCourse = (courseId: string, sessionId: string, data: {
-  appointmentDate: string;
-  appointmentTime: string;
-  serviceId: string;
-  staffId?: string;
-  notes?: string;
+    appointmentDate: string;
+    appointmentTime: string;
+    serviceId: string;
+    staffId?: string;
+    notes?: string;
 }) =>
-  fetch(`${API_BASE_URL}/treatment-courses/${courseId}/sessions/${sessionId}/schedule`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  }).then(handleResponse);
+    fetch(`${API_BASE_URL}/treatment-courses/${courseId}/sessions/${sessionId}/schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    }).then(handleResponse);
 
 export const completeSessionInCourse = (courseId: string, sessionId: string, data: any) =>
-  fetch(`${API_BASE_URL}/treatment-courses/${courseId}/sessions/${sessionId}/complete`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  }).then(handleResponse);
+    fetch(`${API_BASE_URL}/treatment-courses/${courseId}/sessions/${sessionId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    }).then(handleResponse);
 
 export const updateTier = async (level: number, tierData: Partial<Tier>): Promise<Tier> => update(`${API_BASE_URL}/vouchers/tiers/${level}`, tierData);
 export const updateMission = (id: string, data: Partial<Mission>) => update<Mission>(`${API_BASE_URL}/missions/${id}`, data);
@@ -423,15 +444,15 @@ export const sendMonthlyVouchersToTier = async (tierLevel: number, month?: strin
     console.log(`🌐 [API] Calling: POST ${url}`);
     console.log(`   tierLevel: ${tierLevel}, month: ${month || 'current'}`);
     console.log(`   API_BASE_URL: ${API_BASE_URL}`);
-    
+
     const response = await fetch(url, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(month ? { month } : {})
     });
-    
+
     console.log(`📡 [API] Response status: ${response.status} ${response.statusText}`);
-    
+
     return handleResponse(response);
 };
 
@@ -445,7 +466,7 @@ export const sendMonthlyVoucherToUser = async (userId: string, month?: string): 
 };
 
 export const getMonthlyVoucherStatus = async (month?: string): Promise<any> => {
-    const url = month 
+    const url = month
         ? `${API_BASE_URL}/monthly-vouchers/status?month=${month}`
         : `${API_BASE_URL}/monthly-vouchers/status`;
     const response = await fetch(url, {

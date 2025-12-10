@@ -15,7 +15,7 @@ interface AppointmentsPageProps {
 
 // --- SUB-COMPONENTS (Được đưa ra ngoài để tránh lỗi Re-mount/Mất focus) ---
 
-const UpcomingAppointmentCard: React.FC<{ 
+const UpcomingAppointmentCard: React.FC<{
     appointment: Appointment & { dateTime: Date },
     onViewDetail: (app: any) => void,
     onCancel: (app: any) => void
@@ -45,8 +45,8 @@ const UpcomingAppointmentCard: React.FC<{
             <div className="border-t mt-4 pt-4 flex justify-end items-center gap-3">
                 <button onClick={() => onViewDetail(appointment)} className="px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Xem Chi Tiết</button>
                 {appointment.status === 'pending' && (
-                    <button 
-                        onClick={() => onCancel(appointment)} 
+                    <button
+                        onClick={() => onCancel(appointment)}
                         className="px-4 py-2 text-sm font-semibold rounded-md bg-red-50 text-red-700 hover:bg-red-100"
                     >
                         Hủy lịch
@@ -57,14 +57,14 @@ const UpcomingAppointmentCard: React.FC<{
     );
 };
 
-const HistoryAppointmentCard: React.FC<{ 
+const HistoryAppointmentCard: React.FC<{
     appointment: Appointment & { dateTime: Date },
     allUsers: User[],
     onViewDetail: (app: any) => void
 }> = ({ appointment, allUsers, onViewDetail }) => {
     const navigate = useNavigate();
     const therapistName = appointment.Therapist?.name || (allUsers.find(u => u.id === appointment.therapistId)?.name) || 'Không có';
-    
+
     return (
         <div className="bg-white p-5 rounded-lg shadow-soft-lg border border-gray-100 flex justify-between items-center">
             <div>
@@ -87,7 +87,7 @@ const HistoryAppointmentCard: React.FC<{
     );
 };
 
-const TreatmentCourseCard: React.FC<{ 
+const TreatmentCourseCard: React.FC<{
     course: TreatmentCourse,
     currentUser: User,
     allServices: Service[],
@@ -96,7 +96,7 @@ const TreatmentCourseCard: React.FC<{
     setToastMessage: (msg: string) => void
 }> = ({ course, currentUser, allServices, allReviews, onReviewSuccess, setToastMessage }) => {
     const navigate = useNavigate();
-    
+
     // Local state for review form inside the card
     // Move state here to prevent parent re-renders causing focus loss
     const [isReviewing, setIsReviewing] = useState(false);
@@ -111,20 +111,20 @@ const TreatmentCourseCard: React.FC<{
     const isCompleted = completedSessions === course.totalSessions && course.totalSessions > 0;
     const pendingSessions = sessions.filter(s => s.status === 'pending').length;
     const scheduledSessions = sessions.filter(s => s.status === 'scheduled').length;
-    
+
     // Find current session (next uncompleted session)
     const currentSession = sessions
         .sort((a, b) => a.sessionNumber - b.sessionNumber)
         .find(s => s.status !== 'completed');
-    
+
     // Find previous completed session to get admin notes
     const previousSession = sessions
         .filter(s => s.status === 'completed')
         .sort((a, b) => b.sessionNumber - a.sessionNumber)[0]; // Get most recent completed session
-    
+
     // Get notes
     const customerStatusNotes = currentSession?.notes || previousSession?.notes;
-    
+
     // Determine Service ID logic
     const serviceId = (course as any).serviceId
         ?? (course as any).Service?.id
@@ -139,7 +139,7 @@ const TreatmentCourseCard: React.FC<{
             alert('Vui lòng chọn số sao đánh giá');
             return;
         }
-        
+
         setIsSubmitting(true);
         try {
             const service = allServices.find(s => s.id === serviceId);
@@ -152,7 +152,7 @@ const TreatmentCourseCard: React.FC<{
                 userName: currentUser.name,
                 userImageUrl: currentUser.profilePictureUrl || '',
             });
-            
+
             onReviewSuccess(); // Trigger parent refresh
             setIsReviewing(false);
             setToastMessage('Cảm ơn bạn đã đánh giá!');
@@ -165,12 +165,11 @@ const TreatmentCourseCard: React.FC<{
     };
 
     return (
-        <div 
-            className={`bg-white p-6 rounded-lg shadow-lg border-2 transition-all hover:shadow-xl ${
-                isCompleted 
-                    ? 'border-green-400 bg-green-50' 
+        <div
+            className={`bg-white p-6 rounded-lg shadow-lg border-2 transition-all hover:shadow-xl ${isCompleted
+                    ? 'border-green-400 bg-green-50'
                     : 'border-brand-primary hover:border-brand-dark'
-            }`}
+                }`}
         >
             <div className="flex justify-between items-start mb-4">
                 <div className="flex-1">
@@ -195,7 +194,7 @@ const TreatmentCourseCard: React.FC<{
                             </span>
                         )}
                     </div>
-                    
+
                     {!isCompleted && currentSession && (
                         <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-3">
                             <div className="flex items-center gap-2 mb-2">
@@ -209,7 +208,7 @@ const TreatmentCourseCard: React.FC<{
                             )}
                         </div>
                     )}
-                    
+
                     {customerStatusNotes && (
                         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
                             <p className="text-sm font-semibold text-yellow-800 mb-2">
@@ -229,14 +228,14 @@ const TreatmentCourseCard: React.FC<{
                     <div className="text-xs text-gray-500">Tiến độ</div>
                 </div>
             </div>
-            
+
             <div className="w-full bg-gray-200 rounded-full h-3 mb-4 overflow-hidden">
-                <div 
-                    className="bg-gradient-to-r from-brand-primary to-amber-500 h-3 rounded-full transition-all duration-500" 
+                <div
+                    className="bg-gradient-to-r from-brand-primary to-amber-500 h-3 rounded-full transition-all duration-500"
                     style={{ width: `${progress}%` }}
                 ></div>
             </div>
-            
+
             {isCompleted && (
                 <>
                     <div className="mb-4 p-3 bg-green-100 border border-green-300 rounded-lg">
@@ -244,7 +243,7 @@ const TreatmentCourseCard: React.FC<{
                             🎉 Chúc mừng! Bạn đã hoàn thành liệu trình!
                         </p>
                     </div>
-                    
+
                     {/* Review Section */}
                     {existingReview ? (
                         <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -270,7 +269,7 @@ const TreatmentCourseCard: React.FC<{
                     ) : isReviewing ? (
                         <div className="mt-4 p-4 bg-white border border-gray-300 rounded-lg">
                             <h5 className="text-lg font-semibold text-gray-800 mb-3">Đánh giá và phản hồi chất lượng dịch vụ</h5>
-                            
+
                             {/* Star Rating */}
                             <div className="mb-4">
                                 <label className="block text-sm font-medium text-gray-700 mb-2">Đánh giá sao *</label>
@@ -288,17 +287,16 @@ const TreatmentCourseCard: React.FC<{
                                             className="focus:outline-none"
                                         >
                                             <StarIcon
-                                                className={`w-8 h-8 transition-colors ${
-                                                    star <= (hoverRating || rating)
+                                                className={`w-8 h-8 transition-colors ${star <= (hoverRating || rating)
                                                         ? 'text-yellow-400 fill-current'
                                                         : 'text-gray-300'
-                                                }`}
+                                                    }`}
                                             />
                                         </button>
                                     ))}
                                 </div>
                             </div>
-                            
+
                             {/* Comment */}
                             <div className="mb-4">
                                 <label className="block text-sm font-medium text-gray-700 mb-2">Nhận xét (tùy chọn)</label>
@@ -310,7 +308,7 @@ const TreatmentCourseCard: React.FC<{
                                     placeholder="Chia sẻ trải nghiệm của bạn về dịch vụ này..."
                                 />
                             </div>
-                            
+
                             {/* Buttons */}
                             <div className="flex gap-2">
                                 <button
@@ -386,7 +384,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [dateRangeStart, setDateRangeStart] = useState<string>('');
     const [dateRangeEnd, setDateRangeEnd] = useState<string>('');
-    
+
     // Calculate start of current week (Monday)
     const getStartOfWeek = (date: Date): Date => {
         const startOfWeek = new Date(date);
@@ -396,19 +394,19 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
         startOfWeek.setHours(0, 0, 0, 0);
         return startOfWeek;
     };
-    
+
     const [historySort, setHistorySort] = useState('date-desc');
     const [historyFilterService, setHistoryFilterService] = useState('all');
     const [historyFilterTime, setHistoryFilterTime] = useState('all');
     const [historyFilterStatus, setHistoryFilterStatus] = useState('all');
-    
+
     // Pagination states for history
     const [historyCurrentPage, setHistoryCurrentPage] = useState(1);
     const [historyItemsPerPage, setHistoryItemsPerPage] = useState(10);
-    
+
     // Treatment Courses Filter States
     const [coursesFilterStatus, setCoursesFilterStatus] = useState<'active' | 'completed'>('active');
-    
+
     // Review states - REMOVED COMPLEX PARENT STATES
     const [allReviews, setAllReviews] = useState<Review[]>([]);
 
@@ -431,11 +429,11 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
         fetchAppointments();
         const interval = setInterval(() => {
             fetchAppointments();
-        }, 10000); 
-        
+        }, 10000);
+
         const handleRefresh = () => fetchAppointments();
         window.addEventListener('refresh-appointments', handleRefresh);
-        
+
         return () => {
             clearInterval(interval);
             window.removeEventListener('refresh-appointments', handleRefresh);
@@ -473,17 +471,17 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 console.error("Failed to fetch treatment courses:", error);
             }
         };
-        
+
         fetchTreatmentCourses();
         const interval = setInterval(() => {
             fetchTreatmentCourses();
         }, 30000); // 30 seconds
-        
+
         const handleRefresh = () => {
             fetchTreatmentCourses();
         };
         window.addEventListener('refresh-treatment-courses', handleRefresh);
-        
+
         return () => {
             clearInterval(interval);
             window.removeEventListener('refresh-treatment-courses', handleRefresh);
@@ -497,7 +495,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
             if (userApps.length > 0) {
                 setLocalAppointments(prev => {
                     const merged = [...prev, ...userApps];
-                    const unique = merged.filter((app, index, self) => 
+                    const unique = merged.filter((app, index, self) =>
                         index === self.findIndex(a => a.id === app.id)
                     );
                     return unique;
@@ -533,7 +531,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 const [hours, minutes] = app.time.split(':').map(Number);
                 const [year, month, day] = originalDate.split('-').map(Number);
                 const dateTime = new Date(year, month - 1, day, hours, minutes, 0, 0);
-                return {...app, date: originalDate, dateTime };
+                return { ...app, date: originalDate, dateTime };
             })
             .filter(app => {
                 const isUpcomingStatus = ['upcoming', 'pending', 'in-progress'].includes(app.status);
@@ -542,7 +540,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
             });
 
         const history = myApps
-            .map(app => ({...app, dateTime: new Date(`${app.date}T${app.time}`) }))
+            .map(app => ({ ...app, dateTime: new Date(`${app.date}T${app.time}`) }))
             .filter(app => {
                 const isCompletedOrCancelled = ['completed', 'cancelled'].includes(app.status);
                 const isPastDate = app.dateTime < now;
@@ -550,18 +548,18 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
             });
 
         const courses = localTreatmentCourses.filter(course => course.clientId === currentUser.id);
-        
+
         return { myUpcomingAppointments: upcoming, myHistoryAppointments: history, myTreatmentCourses: courses };
     }, [localAppointments, localTreatmentCourses, currentUser.id]);
 
     const reminders = useMemo(() => {
         const now = new Date();
         const twentyFourHoursFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-        
+
         return myUpcomingAppointments.filter(app => {
             const [hours, minutes] = app.time.split(':').map(Number);
             let dateStr: string | Date = app.date;
-            
+
             const isDateObject = typeof dateStr === 'object' && dateStr !== null && Object.prototype.toString.call(dateStr) === '[object Date]';
             if (isDateObject) {
                 const dateObj = dateStr as unknown as Date;
@@ -572,10 +570,10 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
             } else if (typeof dateStr === 'string') {
                 dateStr = dateStr.split('T')[0];
             }
-            
+
             const [year, month, day] = dateStr.split('-').map(Number);
             const appointmentDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
-            
+
             return appointmentDate >= now && appointmentDate <= twentyFourHoursFromNow;
         });
     }, [myUpcomingAppointments]);
@@ -584,23 +582,23 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         today.setHours(0, 0, 0, 0);
-        
+
         const startOfWeek = new Date(today);
-        const dayOfWeek = today.getDay(); 
+        const dayOfWeek = today.getDay();
         const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
         startOfWeek.setDate(today.getDate() - daysToMonday);
         startOfWeek.setHours(0, 0, 0, 0);
-        
+
         const endOfWeek = new Date(startOfWeek);
         endOfWeek.setDate(startOfWeek.getDate() + 6);
         endOfWeek.setHours(23, 59, 59, 999);
-        
+
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         startOfMonth.setHours(0, 0, 0, 0);
-        
+
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
         endOfMonth.setHours(23, 59, 59, 999);
-        
+
         return { today, startOfWeek, endOfWeek, startOfMonth, endOfMonth };
     };
 
@@ -612,7 +610,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 const filterDate = new Date(selectedDate);
                 filterDate.setHours(0, 0, 0, 0);
                 const filterTime = filterDate.getTime();
-                
+
                 return apps.filter(app => {
                     const appDate = new Date(app.dateTime);
                     appDate.setHours(0, 0, 0, 0);
@@ -626,7 +624,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 const weekEnd = new Date(weekStart);
                 weekEnd.setDate(weekStart.getDate() + 6);
                 weekEnd.setHours(23, 59, 59, 999);
-                
+
                 return apps.filter(app => {
                     const appDateTime = app.dateTime.getTime();
                     return appDateTime >= weekStart.getTime() && appDateTime <= weekEnd.getTime();
@@ -638,7 +636,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 monthStart.setHours(0, 0, 0, 0);
                 const monthEnd = new Date(selected.getFullYear(), selected.getMonth() + 1, 0);
                 monthEnd.setHours(23, 59, 59, 999);
-                
+
                 return apps.filter(app => {
                     const appDateTime = app.dateTime.getTime();
                     return appDateTime >= monthStart.getTime() && appDateTime <= monthEnd.getTime();
@@ -646,23 +644,23 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
             }
             // Nếu filterType không match hoặc không có selectedDate, fallback về logic cũ
         }
-        
+
         // Giữ lại logic cũ cho dateRange (backward compatibility)
         if (dateRangeStart || dateRangeEnd) {
             return apps.filter(app => {
                 const appDate = new Date(app.dateTime);
                 appDate.setHours(0, 0, 0, 0);
                 const appTime = appDate.getTime();
-                
+
                 if (dateRangeStart && dateRangeEnd) {
                     const startDate = new Date(dateRangeStart);
                     startDate.setHours(0, 0, 0, 0);
                     const startTime = startDate.getTime();
-                    
+
                     const endDate = new Date(dateRangeEnd);
                     endDate.setHours(23, 59, 59, 999);
                     const endTime = endDate.getTime();
-                    
+
                     return appTime >= startTime && appTime <= endTime;
                 } else if (dateRangeStart) {
                     const startDate = new Date(dateRangeStart);
@@ -678,7 +676,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 return true;
             });
         }
-        
+
         const { today, startOfWeek, endOfWeek, startOfMonth, endOfMonth } = getTimeRange();
 
         switch (timeFilter) {
@@ -703,7 +701,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 return apps;
         }
     };
-    
+
     const filterCoursesByStatus = (courses: TreatmentCourse[], statusFilter: 'active' | 'completed') => {
         if (statusFilter === 'active') {
             // CHỈ hiển thị courses có ít nhất một appointment đã được admin chấp nhận
@@ -717,7 +715,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
 
                 // Tìm appointments liên quan đến course này qua bookingGroupId
                 const courseBookingGroupId = `group-${course.id}`;
-                const relatedAppointments = localAppointments.filter(app => 
+                const relatedAppointments = localAppointments.filter(app =>
                     app.bookingGroupId === courseBookingGroupId
                 );
 
@@ -729,9 +727,9 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 // Kiểm tra xem có ít nhất một appointment đã được admin chấp nhận không
                 // Status được chấp nhận (admin đã chấp nhận): 'scheduled', 'upcoming', 'in-progress'
                 // Status chưa được chấp nhận: 'pending' (chờ xác nhận), 'cancelled' (đã hủy)
-                const hasAcceptedAppointment = relatedAppointments.some(app => 
-                    app.status === 'scheduled' || 
-                    app.status === 'upcoming' || 
+                const hasAcceptedAppointment = relatedAppointments.some(app =>
+                    app.status === 'scheduled' ||
+                    app.status === 'upcoming' ||
                     app.status === 'in-progress'
                 );
 
@@ -785,7 +783,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
         filtered.sort((a, b) => upcomingSort === 'date-asc' ? a.dateTime.getTime() - b.dateTime.getTime() : b.dateTime.getTime() - a.dateTime.getTime());
         return filtered;
     }, [myUpcomingAppointments, upcomingSort, upcomingFilterService, upcomingFilterTime, upcomingFilterType, upcomingSelectedDate, dateRangeStart, dateRangeEnd]);
-    
+
     const displayHistory = useMemo(() => {
         let filtered = [...myHistoryAppointments];
         if (historyFilterService !== 'all') {
@@ -814,7 +812,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
 
     const uniqueServiceIds = useMemo(() => [...new Set(myUpcomingAppointments.map(a => a.serviceId).concat(myHistoryAppointments.map(a => a.serviceId)))], [myUpcomingAppointments, myHistoryAppointments]);
     const serviceFilterOptions = allServices.filter(s => uniqueServiceIds.includes(s.id));
-    
+
     const displayCourses = useMemo(() => {
         return filterCoursesByStatus(myTreatmentCourses, coursesFilterStatus);
     }, [myTreatmentCourses, coursesFilterStatus]);
@@ -828,13 +826,13 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
         const daysInMonth = lastDay.getDate();
         const startingDayOfWeek = firstDay.getDay();
         const adjustedStartingDay = startingDayOfWeek === 0 ? 6 : startingDayOfWeek - 1;
-        
+
         const days: (Date | null)[] = [];
         for (let i = 0; i < adjustedStartingDay; i++) days.push(null);
         for (let day = 1; day <= daysInMonth; day++) days.push(new Date(year, month, day));
         return days;
     };
-    
+
     const groupAppsByDate = (apps: (Appointment & { dateTime: Date })[]) => {
         const map = new Map<string, (Appointment & { dateTime: Date })[]>();
         apps.forEach(app => {
@@ -874,7 +872,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                     <button onClick={() => setActiveTab('history')} className={`px-6 py-3 font-semibold text-lg transition-colors ${activeTab === 'history' ? 'border-b-2 border-brand-primary text-brand-dark' : 'text-gray-500 hover:text-brand-dark'}`}>Lịch Sử Hẹn</button>
                     <button onClick={() => setActiveTab('courses')} className={`px-6 py-3 font-semibold text-lg transition-colors ${activeTab === 'courses' ? 'border-b-2 border-brand-primary text-brand-dark' : 'text-gray-500 hover:text-brand-dark'}`}>Liệu Trình Của Tôi</button>
                 </div>
-                
+
                 <div className="max-w-5xl mx-auto">
                     {activeTab === 'upcoming' && (
                         <div className="space-y-6">
@@ -883,7 +881,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                     <div className="flex flex-col gap-2">
                                         <label className="text-sm font-medium text-gray-700">Lọc theo thời gian</label>
                                         <div className="flex gap-2 items-center">
-                                            <select 
+                                            <select
                                                 value={upcomingFilterType}
                                                 onChange={(e) => {
                                                     const newType = e.target.value as 'all' | 'day' | 'week' | 'month';
@@ -915,8 +913,8 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                                 <option value="month">Tháng</option>
                                             </select>
                                             {(upcomingFilterType === 'day' || upcomingFilterType === 'week' || upcomingFilterType === 'month') && (
-                                                <input 
-                                                    type="date" 
+                                                <input
+                                                    type="date"
                                                     value={upcomingSelectedDate || new Date().toISOString().split('T')[0]}
                                                     className="flex-1 p-2 border rounded-md bg-white"
                                                     onChange={(e) => {
@@ -938,10 +936,10 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                     </select>
                                 </div>
                             </div>
-                            
+
                             {reminders.length > 0 && (
                                 <div className="bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 p-4 rounded-md flex gap-3">
-                                    <BellIcon className="w-6 h-6 text-yellow-500 flex-shrink-0 mt-1"/>
+                                    <BellIcon className="w-6 h-6 text-yellow-500 flex-shrink-0 mt-1" />
                                     <div>
                                         <h4 className="font-bold">Nhắc nhở lịch hẹn!</h4>
                                         <p className="text-sm">Bạn có lịch hẹn sau đây trong vòng 24 giờ tới:</p>
@@ -949,8 +947,8 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                             {reminders.map(app => {
                                                 let dateStr = typeof app.date === 'string' ? app.date.split('T')[0] : '';
                                                 if (typeof app.date !== 'string') {
-                                                     const d = app.date as unknown as Date;
-                                                     dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                                                    const d = app.date as unknown as Date;
+                                                    dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                                                 }
                                                 const dateParts = dateStr.split('-');
                                                 const displayDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : dateStr;
@@ -973,7 +971,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                             ) : (
                                 (() => {
                                     const appointmentsByDate = groupAppsByDate(displayUpcoming);
-                                    
+
                                     // Hiển thị view theo filter type
                                     // Nếu chọn filter type nhưng chưa có ngày, dùng ngày hôm nay làm mặc định
                                     let displayDate = upcomingSelectedDate;
@@ -981,13 +979,13 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                         const today = new Date();
                                         displayDate = today.toISOString().split('T')[0];
                                     }
-                                    
+
                                     if (upcomingFilterType === 'day' && displayDate) {
                                         // View dạng ngày - hiển thị list appointments của 1 ngày
                                         const selectedDate = new Date(displayDate);
                                         const dateKey = displayDate.split('T')[0];
                                         const dayAppointments = appointmentsByDate.get(dateKey) || [];
-                                        
+
                                         return (
                                             <div className="bg-white p-6 rounded-lg shadow-md">
                                                 <div className="flex items-center justify-between mb-6">
@@ -1047,7 +1045,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                             day.setDate(weekStart.getDate() + i);
                                             weekDays.push(day);
                                         }
-                                        
+
                                         return (
                                             <div className="bg-white p-6 rounded-lg shadow-md">
                                                 <div className="flex items-center justify-between mb-6">
@@ -1079,14 +1077,14 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                                         </button>
                                                     </div>
                                                 </div>
-                                                
+
                                                 <div className="grid grid-cols-7 gap-2">
                                                     {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'].map(day => (
                                                         <div key={day} className="p-2 text-center font-semibold text-gray-700 bg-gray-50 rounded">
                                                             {day}
                                                         </div>
                                                     ))}
-                                                    
+
                                                     {weekDays.map((date) => {
                                                         const year = date.getFullYear();
                                                         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -1094,48 +1092,46 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                                         const dateKey = `${year}-${month}-${day}`;
                                                         const dayAppointments = appointmentsByDate.get(dateKey) || [];
                                                         const isToday = date.toDateString() === new Date().toDateString();
-                                                        
+
                                                         return (
-                                                            <div 
-                                                                key={dateKey} 
-                                                                className={`p-2 min-h-[150px] border rounded ${
-                                                                    isToday ? 'border-brand-primary bg-brand-secondary' : 'border-gray-200 bg-white'
-                                                                } hover:bg-gray-50 transition-colors`}
+                                                            <div
+                                                                key={dateKey}
+                                                                className={`p-2 min-h-[150px] border rounded ${isToday ? 'border-brand-primary bg-brand-secondary' : 'border-gray-200 bg-white'
+                                                                    } hover:bg-gray-50 transition-colors`}
                                                             >
-                                                                <div className={`text-sm font-semibold mb-1 ${
-                                                                    isToday ? 'text-brand-primary' : 'text-gray-800'
-                                                                }`}>
+                                                                <div className={`text-sm font-semibold mb-1 ${isToday ? 'text-brand-primary' : 'text-gray-800'
+                                                                    }`}>
                                                                     {date.getDate()}
                                                                 </div>
                                                                 <div className="space-y-1">
                                                                     {dayAppointments.map(app => {
-                                                                    const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                                                                                        app.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
-                                                                                        app.status === 'in-progress' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800';
-                                                                    return (
-                                                                        <div
-                                                                            key={app.id}
-                                                                            onClick={() => setViewingAppointment(app)}
-                                                                            className={`text-xs p-1.5 rounded cursor-pointer transition-shadow hover:shadow-md ${statusColor}`}
-                                                                            title={`${app.time} - ${app.serviceName}`}
-                                                                        >
-                                                                            <div className="font-semibold truncate">{app.time}</div>
-                                                                            <div className="truncate font-medium">{app.serviceName}</div>
-                                                                        </div>
-                                                                    );
-                                                                })}
+                                                                        const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                                                            app.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
+                                                                                app.status === 'in-progress' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800';
+                                                                        return (
+                                                                            <div
+                                                                                key={app.id}
+                                                                                onClick={() => setViewingAppointment(app)}
+                                                                                className={`text-xs p-1.5 rounded cursor-pointer transition-shadow hover:shadow-md ${statusColor}`}
+                                                                                title={`${app.time} - ${app.serviceName}`}
+                                                                            >
+                                                                                <div className="font-semibold truncate">{app.time}</div>
+                                                                                <div className="truncate font-medium">{app.serviceName}</div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    );
-                                                })}
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
-                                        </div>
-                                    );
+                                        );
                                     } else if (upcomingFilterType === 'month' && displayDate) {
                                         // View dạng tháng - hiển thị toàn bộ tháng
                                         const targetMonth = new Date(displayDate);
                                         const days = getCalendarDays(targetMonth);
-                                        
+
                                         return (
                                             <div className="bg-white p-6 rounded-lg shadow-md">
                                                 <div className="flex items-center justify-between mb-6">
@@ -1165,41 +1161,39 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                                         Tháng sau ›
                                                     </button>
                                                 </div>
-                                                
+
                                                 <div className="grid grid-cols-7 gap-2">
                                                     {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'].map(day => (
                                                         <div key={day} className="p-2 text-center font-semibold text-gray-700 bg-gray-50 rounded">
                                                             {day}
                                                         </div>
                                                     ))}
-                                                    
+
                                                     {days.map((date, index) => {
                                                         if (!date) return <div key={`empty-${index}`} className="p-2 min-h-[100px] border border-gray-200 rounded bg-gray-50"></div>;
-                                                        
+
                                                         const year = date.getFullYear();
                                                         const month = String(date.getMonth() + 1).padStart(2, '0');
                                                         const day = String(date.getDate()).padStart(2, '0');
                                                         const dateKey = `${year}-${month}-${day}`;
                                                         const dayAppointments = appointmentsByDate.get(dateKey) || [];
                                                         const isToday = date.toDateString() === new Date().toDateString();
-                                                        
+
                                                         return (
-                                                            <div 
-                                                                key={dateKey} 
-                                                                className={`p-2 min-h-[100px] border rounded ${
-                                                                    isToday ? 'border-brand-primary bg-brand-secondary' : 'border-gray-200 bg-white'
-                                                                } hover:bg-gray-50 transition-colors`}
+                                                            <div
+                                                                key={dateKey}
+                                                                className={`p-2 min-h-[100px] border rounded ${isToday ? 'border-brand-primary bg-brand-secondary' : 'border-gray-200 bg-white'
+                                                                    } hover:bg-gray-50 transition-colors`}
                                                             >
-                                                                <div className={`text-sm font-semibold mb-1 ${
-                                                                    isToday ? 'text-brand-primary' : 'text-gray-800'
-                                                                }`}>
+                                                                <div className={`text-sm font-semibold mb-1 ${isToday ? 'text-brand-primary' : 'text-gray-800'
+                                                                    }`}>
                                                                     {date.getDate()}
                                                                 </div>
                                                                 <div className="space-y-1">
                                                                     {dayAppointments.map(app => {
-                                                                        const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                                                                                            app.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
-                                                                                            app.status === 'in-progress' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800';
+                                                                        const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                                                            app.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
+                                                                                app.status === 'in-progress' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800';
                                                                         return (
                                                                             <div
                                                                                 key={app.id}
@@ -1223,7 +1217,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                         // View mặc định - hiển thị tháng hiện tại (filter "Tất cả" hoặc chưa chọn filter)
                                         const targetMonth = currentMonth;
                                         const days = getCalendarDays(targetMonth);
-                                        
+
                                         return (
                                             <div className="bg-white p-6 rounded-lg shadow-md">
                                                 <div className="flex items-center justify-between mb-6">
@@ -1251,41 +1245,39 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                                         Tháng sau ›
                                                     </button>
                                                 </div>
-                                                
+
                                                 <div className="grid grid-cols-7 gap-2">
                                                     {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'].map(day => (
                                                         <div key={day} className="p-2 text-center font-semibold text-gray-700 bg-gray-50 rounded">
                                                             {day}
                                                         </div>
                                                     ))}
-                                                    
+
                                                     {days.map((date, index) => {
                                                         if (!date) return <div key={`empty-${index}`} className="p-2 min-h-[100px] border border-gray-200 rounded bg-gray-50"></div>;
-                                                        
+
                                                         const year = date.getFullYear();
                                                         const month = String(date.getMonth() + 1).padStart(2, '0');
                                                         const day = String(date.getDate()).padStart(2, '0');
                                                         const dateKey = `${year}-${month}-${day}`;
                                                         const dayAppointments = appointmentsByDate.get(dateKey) || [];
                                                         const isToday = date.toDateString() === new Date().toDateString();
-                                                        
+
                                                         return (
-                                                            <div 
-                                                                key={dateKey} 
-                                                                className={`p-2 min-h-[100px] border rounded ${
-                                                                    isToday ? 'border-brand-primary bg-brand-secondary' : 'border-gray-200 bg-white'
-                                                                } hover:bg-gray-50 transition-colors`}
+                                                            <div
+                                                                key={dateKey}
+                                                                className={`p-2 min-h-[100px] border rounded ${isToday ? 'border-brand-primary bg-brand-secondary' : 'border-gray-200 bg-white'
+                                                                    } hover:bg-gray-50 transition-colors`}
                                                             >
-                                                                <div className={`text-sm font-semibold mb-1 ${
-                                                                    isToday ? 'text-brand-primary' : 'text-gray-800'
-                                                                }`}>
+                                                                <div className={`text-sm font-semibold mb-1 ${isToday ? 'text-brand-primary' : 'text-gray-800'
+                                                                    }`}>
                                                                     {date.getDate()}
                                                                 </div>
                                                                 <div className="space-y-1">
                                                                     {dayAppointments.map(app => {
-                                                                        const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                                                                                            app.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
-                                                                                            app.status === 'in-progress' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800';
+                                                                        const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                                                            app.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
+                                                                                app.status === 'in-progress' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800';
                                                                         return (
                                                                             <div
                                                                                 key={app.id}
@@ -1310,9 +1302,9 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                             )}
                         </div>
                     )}
-                    
+
                     {activeTab === 'history' && (
-                         <div className="space-y-6">
+                        <div className="space-y-6">
                             <div className="bg-white p-4 rounded-lg shadow-md grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
                                 <select value={historySort} onChange={e => setHistorySort(e.target.value)} className="w-full p-2 border rounded-md bg-white">
                                     <option value="date-desc">Sắp xếp theo: Ngày hẹn (Mới nhất)</option>
@@ -1322,15 +1314,15 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                     <option value="all">Tất cả dịch vụ</option>
                                     {serviceFilterOptions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                 </select>
-                                 <div className="flex items-center justify-center gap-2">
+                                <div className="flex items-center justify-center gap-2">
                                     {['all', 'completed', 'cancelled'].map(filter => {
-                                        const labels: Record<string, string> = {all: 'Tất cả', completed: 'Hoàn thành', cancelled: 'Đã hủy'};
+                                        const labels: Record<string, string> = { all: 'Tất cả', completed: 'Hoàn thành', cancelled: 'Đã hủy' };
                                         return <button key={filter} onClick={() => setHistoryFilterStatus(filter)} className={`px-3 py-1.5 text-sm font-semibold rounded-full ${historyFilterStatus === filter ? 'bg-brand-primary text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>{labels[filter]}</button>
                                     })}
                                 </div>
                                 <div className="flex items-center justify-center gap-2">
                                     {['all', 'today', 'this-week', 'this-month'].map(filter => {
-                                        const labels: Record<string, string> = {all: 'Tất cả', today: 'Hôm nay', 'this-week': 'Tuần này', 'this-month': 'Tháng này'};
+                                        const labels: Record<string, string> = { all: 'Tất cả', today: 'Hôm nay', 'this-week': 'Tuần này', 'this-month': 'Tháng này' };
                                         return <button key={filter} onClick={() => setHistoryFilterTime(filter)} className={`px-3 py-1.5 text-sm font-semibold rounded-full ${historyFilterTime === filter ? 'bg-brand-primary text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>{labels[filter]}</button>
                                     })}
                                 </div>
@@ -1341,8 +1333,8 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                 <div className="bg-white p-3 rounded-lg shadow-md flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <span className="text-sm text-gray-600">Hiển thị:</span>
-                                        <select 
-                                            value={historyItemsPerPage} 
+                                        <select
+                                            value={historyItemsPerPage}
                                             onChange={(e) => {
                                                 setHistoryItemsPerPage(Number(e.target.value));
                                                 setHistoryCurrentPage(1);
@@ -1364,29 +1356,28 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                             {historyPaginatedData.length > 0 ? (
                                 <>
                                     {historyPaginatedData.map(app => (
-                                        <HistoryAppointmentCard 
-                                            key={app.id} 
-                                            appointment={app} 
+                                        <HistoryAppointmentCard
+                                            key={app.id}
+                                            appointment={app}
                                             allUsers={allUsers}
-                                            onViewDetail={setViewingAppointment} 
+                                            onViewDetail={setViewingAppointment}
                                         />
                                     ))}
-                                    
+
                                     {/* Pagination Controls */}
                                     {historyTotalPages > 1 && (
                                         <div className="bg-white p-4 rounded-lg shadow-md flex items-center justify-center gap-2">
                                             <button
                                                 onClick={() => setHistoryCurrentPage(prev => Math.max(1, prev - 1))}
                                                 disabled={historyCurrentPage === 1}
-                                                className={`px-4 py-2 text-sm font-semibold rounded-md ${
-                                                    historyCurrentPage === 1
+                                                className={`px-4 py-2 text-sm font-semibold rounded-md ${historyCurrentPage === 1
                                                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                                         : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                                }`}
+                                                    }`}
                                             >
                                                 ‹ Trước
                                             </button>
-                                            
+
                                             <div className="flex items-center gap-1">
                                                 {Array.from({ length: historyTotalPages }, (_, i) => i + 1)
                                                     .filter(page => {
@@ -1405,11 +1396,10 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                                                 )}
                                                                 <button
                                                                     onClick={() => setHistoryCurrentPage(page)}
-                                                                    className={`px-3 py-2 text-sm font-semibold rounded-md ${
-                                                                        historyCurrentPage === page
+                                                                    className={`px-3 py-2 text-sm font-semibold rounded-md ${historyCurrentPage === page
                                                                             ? 'bg-brand-primary text-white'
                                                                             : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                                                    }`}
+                                                                        }`}
                                                                 >
                                                                     {page}
                                                                 </button>
@@ -1417,19 +1407,18 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                                         );
                                                     })}
                                             </div>
-                                            
+
                                             <button
                                                 onClick={() => setHistoryCurrentPage(prev => Math.min(historyTotalPages, prev + 1))}
                                                 disabled={historyCurrentPage === historyTotalPages}
-                                                className={`px-4 py-2 text-sm font-semibold rounded-md ${
-                                                    historyCurrentPage === historyTotalPages
+                                                className={`px-4 py-2 text-sm font-semibold rounded-md ${historyCurrentPage === historyTotalPages
                                                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                                         : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                                }`}
+                                                    }`}
                                             >
                                                 Sau ›
                                             </button>
-                                            
+
                                             <span className="text-sm text-gray-600 ml-4">
                                                 Trang {historyCurrentPage} / {historyTotalPages}
                                             </span>
@@ -1441,37 +1430,35 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                             )}
                         </div>
                     )}
-                    
+
                     {activeTab === 'courses' && (
                         <div className="space-y-6">
                             <div className="bg-white p-4 rounded-lg shadow-md flex items-center justify-center gap-2 border-b-2 border-gray-200">
-                                <button 
-                                    onClick={() => setCoursesFilterStatus('active')} 
-                                    className={`px-6 py-3 text-base font-semibold rounded-lg transition-colors ${
-                                        coursesFilterStatus === 'active' 
-                                            ? 'bg-brand-primary text-white border-2 border-brand-primary' 
+                                <button
+                                    onClick={() => setCoursesFilterStatus('active')}
+                                    className={`px-6 py-3 text-base font-semibold rounded-lg transition-colors ${coursesFilterStatus === 'active'
+                                            ? 'bg-brand-primary text-white border-2 border-brand-primary'
                                             : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-2 border-transparent'
-                                    }`}
+                                        }`}
                                 >
                                     Liệu trình đang thực hiện
                                 </button>
-                                <button 
-                                    onClick={() => setCoursesFilterStatus('completed')} 
-                                    className={`px-6 py-3 text-base font-semibold rounded-lg transition-colors ${
-                                        coursesFilterStatus === 'completed' 
-                                            ? 'bg-brand-primary text-white border-2 border-brand-primary' 
+                                <button
+                                    onClick={() => setCoursesFilterStatus('completed')}
+                                    className={`px-6 py-3 text-base font-semibold rounded-lg transition-colors ${coursesFilterStatus === 'completed'
+                                            ? 'bg-brand-primary text-white border-2 border-brand-primary'
                                             : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-2 border-transparent'
-                                    }`}
+                                        }`}
                                 >
                                     Liệu trình đã xong
                                 </button>
                             </div>
-                            
+
                             {displayCourses.length > 0 ? (
                                 displayCourses.map(course => (
-                                    <TreatmentCourseCard 
-                                        key={course.id} 
-                                        course={course} 
+                                    <TreatmentCourseCard
+                                        key={course.id}
+                                        course={course}
                                         currentUser={currentUser}
                                         allServices={allServices}
                                         allReviews={allReviews}
@@ -1482,8 +1469,8 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                             ) : (
                                 <div className="text-center py-10 bg-white rounded-lg shadow-md">
                                     <p className="text-lg text-gray-500">
-                                        {coursesFilterStatus === 'active' 
-                                            ? 'Bạn chưa có liệu trình đang thực hiện nào.' 
+                                        {coursesFilterStatus === 'active'
+                                            ? 'Bạn chưa có liệu trình đang thực hiện nào.'
                                             : 'Bạn chưa có liệu trình đã hoàn thành nào.'}
                                     </p>
                                 </div>
@@ -1500,10 +1487,9 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                             <h2 className="text-2xl font-serif font-bold text-brand-dark">Chi Tiết Lịch Hẹn</h2>
                             <button onClick={() => setViewingAppointment(null)} className="text-gray-400 hover:text-gray-800 text-3xl font-light leading-none">&times;</button>
                         </div>
-                        
+
                         <div className="mb-4">
-                            <span className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold rounded-full border ${
-                                viewingAppointment.status === 'pending'
+                            <span className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold rounded-full border ${viewingAppointment.status === 'pending'
                                     ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
                                     : viewingAppointment.status === 'scheduled' || viewingAppointment.status === 'upcoming'
                                         ? 'bg-green-100 text-green-800 border-green-300'
@@ -1512,7 +1498,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                             : viewingAppointment.status === 'completed'
                                                 ? 'bg-gray-100 text-gray-800 border-gray-300'
                                                 : 'bg-red-100 text-red-800 border-red-300'
-                            }`}>
+                                }`}>
                                 {viewingAppointment.status === 'pending' && '⏳ Chờ xác nhận'}
                                 {(viewingAppointment.status === 'scheduled' || viewingAppointment.status === 'upcoming') && '✓ Đã xác nhận'}
                                 {viewingAppointment.status === 'in-progress' && '🔄 Đang thực hiện'}
@@ -1545,15 +1531,14 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                 </div>
                                 <div>
                                     <p className="text-sm text-gray-500">Trạng thái thanh toán</p>
-                                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                        viewingAppointment.status === 'cancelled'
+                                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${viewingAppointment.status === 'cancelled'
                                             ? 'bg-gray-100 text-gray-600'
                                             : viewingAppointment.status === 'completed'
                                                 ? 'bg-green-100 text-green-800'
                                                 : viewingAppointment.paymentStatus === 'Paid'
                                                     ? 'bg-green-100 text-green-800'
                                                     : 'bg-yellow-100 text-yellow-800'
-                                    }`}>
+                                        }`}>
                                         {viewingAppointment.status === 'cancelled'
                                             ? 'Chưa thanh toán'
                                             : viewingAppointment.status === 'completed'
@@ -1574,11 +1559,11 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                         <div className="mt-6 flex justify-between items-center">
                             <div>
                                 {viewingAppointment.status === 'pending' ? (
-                                    <button 
+                                    <button
                                         onClick={() => {
                                             setAppointmentToCancel(viewingAppointment);
                                             setViewingAppointment(null);
-                                        }} 
+                                        }}
                                         className="bg-red-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-red-700 transition-colors duration-300"
                                     >
                                         Hủy lịch
@@ -1592,7 +1577,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                     </div>
                 </div>
             )}
-            
+
             {appointmentToCancel && (
                 <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={() => setAppointmentToCancel(null)}>
                     <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full text-center transform transition-all animate-fadeIn" onClick={(e) => e.stopPropagation()}>
@@ -1601,8 +1586,8 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                         </div>
                         <h2 className="text-2xl font-bold text-brand-dark mb-4">Xác nhận Hủy Lịch hẹn</h2>
                         <p className="text-md text-brand-text mb-6">
-                            Bạn có chắc chắn muốn hủy lịch hẹn cho dịch vụ <br/>
-                            <strong className="text-brand-primary">{appointmentToCancel.serviceName}</strong> <br/>
+                            Bạn có chắc chắn muốn hủy lịch hẹn cho dịch vụ <br />
+                            <strong className="text-brand-primary">{appointmentToCancel.serviceName}</strong> <br />
                             vào lúc {appointmentToCancel.time} ngày {appointmentToCancel.dateTime.toLocaleDateString('vi-VN')}?
                         </p>
                         <div className="flex justify-center gap-4">

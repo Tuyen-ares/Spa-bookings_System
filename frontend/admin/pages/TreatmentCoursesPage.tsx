@@ -25,6 +25,10 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
+    const [serverTotal, setServerTotal] = useState(0);
+
+    // Tabs: 'active' | 'history'
+    const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
 
     useEffect(() => {
         loadData();
@@ -38,71 +42,74 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
         const courseAppointments = appointments.filter(apt => {
             // Check if appointment is linked to this treatment course via bookingGroupId
             if (!apt.bookingGroupId) return false;
-            
+
             // bookingGroupId format: "group-{courseId}" or "group-tc-{courseId}"
             // courseId format: "tc-xxx" or just "xxx"
             // We need to check if bookingGroupId matches the courseId
-            
+
             // Normalize bookingGroupId: remove "group-" prefix
             let normalizedGroupId = apt.bookingGroupId;
             if (normalizedGroupId.startsWith('group-')) {
                 normalizedGroupId = normalizedGroupId.replace('group-', '');
             }
-            
+
             // Check if normalizedGroupId matches courseId (with or without tc- prefix)
             // Examples:
             // - bookingGroupId: "group-tc-123" -> normalized: "tc-123" -> matches courseId: "tc-123" ✓
             // - bookingGroupId: "group-123" -> normalized: "123" -> matches courseId: "tc-123" if we remove tc- ✓
             // - bookingGroupId: "group-tc-123" -> normalized: "tc-123" -> matches courseId: "123" if we add tc- ✓
-            const matchesCourseId = normalizedGroupId === courseId || 
-                                   normalizedGroupId === courseId.replace(/^tc-/, '') ||
-                                   normalizedGroupId === `tc-${courseId.replace(/^tc-/, '')}` ||
-                                   apt.bookingGroupId === `group-${courseId}` ||
-                                   apt.bookingGroupId === `group-tc-${courseId.replace(/^tc-/, '')}`;
-            
+            const matchesCourseId = normalizedGroupId === courseId ||
+                normalizedGroupId === courseId.replace(/^tc-/, '') ||
+                normalizedGroupId === `tc-${courseId.replace(/^tc-/, '')}` ||
+                apt.bookingGroupId === `group-${courseId}` ||
+                apt.bookingGroupId === `group-tc-${courseId.replace(/^tc-/, '')}`;
+
             if (!matchesCourseId) return false;
-            
+
             // Only count appointments that are NOT 'pending' (admin has approved them)
             // Approved statuses: 'upcoming', 'scheduled', 'in-progress', 'completed'
             // Exclude: 'pending', 'cancelled'
             const isApproved = apt.status !== 'pending' && apt.status !== 'cancelled';
-            
+
             return isApproved;
         });
-        
+
         return courseAppointments.length > 0;
     };
 
     useEffect(() => {
         // Only show courses that have at least one confirmed appointment
-        const coursesWithConfirmedAppointments = allCourses.filter(course => 
+        const coursesWithConfirmedAppointments = allCourses.filter(course =>
             hasConfirmedAppointments(course)
         );
         setCourses(coursesWithConfirmedAppointments);
     }, [allCourses, appointments]);
 
+    // Apply filters when filter states change (but don't change page)
     useEffect(() => {
         applyFilters();
     }, [courses, statusFilter, clientFilter, serviceFilter, searchTerm]);
 
+    // Reload when tab or page changes
+    useEffect(() => {
+        loadData();
+    }, [activeTab, currentPage]);
+
     const loadData = async () => {
         setIsLoading(true);
         try {
-            // Load treatment courses, appointments, and treatment sessions
-            const [coursesData, appointmentsData] = await Promise.all([
-                apiService.getTreatmentCourses(),
-                apiService.getAppointments()
-            ]);
+            // Load appointments and paginated treatment courses for current tab
+            const appointmentsPromise = apiService.getAppointments();
+            const statusParam = activeTab === 'history' ? 'history' : 'active';
+            const coursesPromise = apiService.getTreatmentCoursesPaginated({ page: currentPage, limit: itemsPerPage, status: statusParam });
 
-            // Store all courses - will be filtered by tab
-            console.log('📊 Loaded treatment courses:', coursesData.length, coursesData);
-            console.log('📊 Courses by status:', {
-                pending: coursesData.filter(c => c.status === 'pending').length,
-                active: coursesData.filter(c => c.status === 'active').length,
-                completed: coursesData.filter(c => c.status === 'completed').length,
-                expired: coursesData.filter(c => c.status === 'expired').length,
-            });
+            const [appointmentsData, coursesResp] = await Promise.all([appointmentsPromise, coursesPromise]);
+
+            const coursesData = coursesResp.data;
+            console.log('📊 Loaded paginated treatment courses:', coursesData.length, 'total:', coursesResp.total);
             setAllCourses(coursesData);
+            setCourses(coursesData);
+            setServerTotal(coursesResp.total || 0);
             setAppointments(appointmentsData);
         } catch (error) {
             console.error('Error loading data:', error);
@@ -129,8 +136,8 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
         if (serviceFilter !== 'all') {
             filtered = filtered.filter(c => {
                 // Check if any service in the services array matches the filter
-                return c.services?.some(s => s.serviceId === serviceFilter) || 
-                       c.Service?.id === serviceFilter;
+                return c.services?.some(s => s.serviceId === serviceFilter) ||
+                    c.Service?.id === serviceFilter;
             });
         }
 
@@ -143,7 +150,7 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                 const service = serviceId ? allServices.find(s => s.id === serviceId) : null;
                 // Get service name from services array or Service association
                 const serviceName = c.services?.[0]?.serviceName || c.Service?.name || service?.name;
-                
+
                 return (
                     c.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                     serviceName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -155,7 +162,7 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
         }
 
         setFilteredCourses(filtered);
-        setCurrentPage(1);
+        // DO NOT reset currentPage here - it causes pagination jump
     };
 
     const getStatusBadge = (status: string) => {
@@ -197,9 +204,9 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
         const courseAppointments = appointments.filter(
             apt => apt.serviceId === courseServiceId && apt.userId === course.clientId
         );
-        
+
         if (courseAppointments.length === 0) return null;
-        
+
         // Sort by date and find next upcoming appointment
         const upcomingAppointments = courseAppointments
             .filter(apt => apt.status === 'upcoming' || apt.status === 'scheduled')
@@ -224,27 +231,29 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
         };
     };
 
-    // Pagination
-    const totalPages = Math.ceil(filteredCourses.length / itemsPerPage);
+    // Pagination (server-driven)
+    // Calculate total pages based on filtered courses (after search is applied)
+    const totalPages = Math.max(1, Math.ceil(filteredCourses.length / itemsPerPage));
     const startIndex = (currentPage - 1) * itemsPerPage;
-    const paginatedCourses = filteredCourses.slice(startIndex, startIndex + itemsPerPage);
+    // paginatedCourses are provided by server; applyFilters already set filteredCourses from server page
+    const paginatedCourses = filteredCourses;
 
-    // Stats - calculate based on filteredCourses (số lượng hiển thị) and only courses with confirmed appointments
+    // Stats - calculate based on courses (toàn bộ dữ liệu tab hiện tại) để hiển thị đầy đủ cho admin
     const stats = useMemo(() => {
-        // Only count courses that have confirmed appointments (already filtered in 'courses' state)
-        // Use filteredCourses to reflect the current filter/search state
+        // Calculate stats from courses (full data of current tab), not filtered data
+        // This shows complete picture for admin to observe
         return {
-            total: filteredCourses.length,
-            active: filteredCourses.filter(c => c.status === 'active').length,
-            completed: filteredCourses.filter(c => c.status === 'completed').length,
-            expired: filteredCourses.filter(c => c.status === 'expired' || (c.expiryDate && new Date(c.expiryDate) < new Date())).length,
-            expiringSoon: filteredCourses.filter(c => {
+            total: courses.length,
+            active: courses.filter(c => c.status === 'active').length,
+            completed: courses.filter(c => c.status === 'completed').length,
+            expired: courses.filter(c => c.status === 'expired' || (c.expiryDate && new Date(c.expiryDate) < new Date())).length,
+            expiringSoon: courses.filter(c => {
                 if (!c.expiryDate) return false;
                 const days = getDaysUntilExpiry(c.expiryDate);
                 return days > 0 && days <= 7;
             }).length
         };
-    }, [filteredCourses]);
+    }, [courses]);
 
     if (isLoading) {
         return (
@@ -288,11 +297,14 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
 
             {/* Tabs */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
-                <div className="border-b border-gray-200 px-6 py-4">
-                    <h2 className="text-lg font-semibold text-gray-800">
-                        Liệu trình ({filteredCourses.length})
-                    </h2>
+                <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-gray-800">Liệu trình</h2>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => { setActiveTab('active'); setCurrentPage(1); }} className={`px-3 py-1 rounded ${activeTab === 'active' ? 'bg-brand-primary text-white' : 'bg-gray-100 text-gray-700'}`}>Đang hoạt động</button>
+                        <button onClick={() => { setActiveTab('history'); setCurrentPage(1); }} className={`px-3 py-1 rounded ${activeTab === 'history' ? 'bg-brand-primary text-white' : 'bg-gray-100 text-gray-700'}`}>Lịch sử</button>
+                    </div>
                 </div>
+                <div className="px-6 py-3 text-sm text-gray-600">Hiển thị {filteredCourses.length} kết quả</div>
             </div>
 
             {/* Filters */}
@@ -414,10 +426,9 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                                                     <div className="flex-1 min-w-[80px]">
                                                         <div className="w-full bg-gray-200 rounded-full h-2">
                                                             <div
-                                                                className={`h-2 rounded-full transition-all ${
-                                                                    progress === 100 ? 'bg-green-500' : 
+                                                                className={`h-2 rounded-full transition-all ${progress === 100 ? 'bg-green-500' :
                                                                     progress >= 50 ? 'bg-blue-500' : 'bg-yellow-500'
-                                                                }`}
+                                                                    }`}
                                                                 style={{ width: `${progress}%` }}
                                                             />
                                                         </div>
@@ -463,7 +474,7 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                 {totalPages > 1 && (
                     <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
                         <div className="text-sm text-gray-700">
-                            Hiển thị {startIndex + 1} - {Math.min(startIndex + itemsPerPage, filteredCourses.length)} trong tổng số {filteredCourses.length}
+                            Hiển thị {Math.min(startIndex + 1, filteredCourses.length)} - {Math.min(startIndex + itemsPerPage, filteredCourses.length)} trong tổng số {filteredCourses.length}
                         </div>
                         <div className="flex gap-2">
                             <button
@@ -477,11 +488,10 @@ const TreatmentCoursesPage: React.FC<TreatmentCoursesPageProps> = ({ allUsers, a
                                 <button
                                     key={i + 1}
                                     onClick={() => setCurrentPage(i + 1)}
-                                    className={`px-3 py-1 border rounded-md ${
-                                        currentPage === i + 1
-                                            ? 'bg-brand-primary text-white border-brand-primary'
-                                            : 'border-gray-300 hover:bg-gray-50'
-                                    }`}
+                                    className={`px-3 py-1 border rounded-md ${currentPage === i + 1
+                                        ? 'bg-brand-primary text-white border-brand-primary'
+                                        : 'border-gray-300 hover:bg-gray-50'
+                                        }`}
                                 >
                                     {i + 1}
                                 </button>

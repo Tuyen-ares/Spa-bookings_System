@@ -25,6 +25,7 @@ const ServicesPage: React.FC = () => {
     const [editingService, setEditingService] = useState<ServiceWithStatus | null>(null);
 
     const [toast, setToast] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
+    const [deleteErrorModal, setDeleteErrorModal] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
 
     const fetchServiceData = async () => {
         try {
@@ -112,20 +113,20 @@ const ServicesPage: React.FC = () => {
                 }
                 savedService = await apiService.createService(serviceData);
             }
-            
+
             // Close modal first
             setIsAddEditModalOpen(false);
             setEditingService(null);
-            
+
             // Show loading state
             setIsLoadingServices(true);
-            
+
             // Small delay to ensure backend has updated
             await new Promise(resolve => setTimeout(resolve, 300));
-            
+
             // Then refetch data to ensure consistency
             await fetchServiceData();
-            
+
             setToast({ visible: true, message: `Lưu dịch vụ ${savedService.name} thành công!` });
             setTimeout(() => setToast({ visible: false, message: '' }), 4000);
         } catch (err: any) {
@@ -138,17 +139,28 @@ const ServicesPage: React.FC = () => {
     };
 
     const handleDeleteService = async (serviceId: string) => {
+        console.log('[FRONTEND] Attempting to delete service:', serviceId);
         if (window.confirm('Bạn có chắc chắn muốn xóa dịch vụ này? Thao tác này không thể hoàn tác.')) {
+            console.log('[FRONTEND] User confirmed delete');
             try {
+                console.log('[FRONTEND] Calling API deleteService...');
                 await apiService.deleteService(serviceId);
+                console.log('[FRONTEND] API call successful');
                 setLocalServices(prev => prev.filter(s => s.id !== serviceId));
                 setToast({ visible: true, message: `Đã xóa dịch vụ thành công!` });
             } catch (err: any) {
-                console.error("Error deleting service:", err);
-                setToast({ visible: true, message: `Xóa dịch vụ thất bại: ${err.message}` });
+                console.error('[FRONTEND] Error deleting service:', err);
+                console.error('[FRONTEND] Error message:', err.message);
+                console.error('[FRONTEND] Full error:', JSON.stringify(err, null, 2));
+                const errorMessage = err.message || 'Xóa dịch vụ thất bại';
+
+                // Show error modal instead of alert
+                setDeleteErrorModal({ visible: true, message: errorMessage });
             } finally {
-                setTimeout(() => setToast({ visible: false, message: '' }), 4000);
+                setTimeout(() => setToast({ visible: false, message: '' }), 5000);
             }
+        } else {
+            console.log('[FRONTEND] User cancelled delete');
         }
     };
 
@@ -228,11 +240,11 @@ const ServicesPage: React.FC = () => {
                                             <div className="relative">
                                                 {service.imageUrl && service.imageUrl.trim() !== '' ? (
                                                     <div className="w-full h-48 bg-gray-100 rounded-t-lg overflow-hidden relative flex items-center justify-center">
-                                                        <img 
-                                                            src={service.imageUrl} 
-                                                            alt={service.name} 
+                                                        <img
+                                                            src={service.imageUrl}
+                                                            alt={service.name}
                                                             className="w-full h-full object-contain object-center"
-                                                            style={{ 
+                                                            style={{
                                                                 objectFit: 'contain',
                                                                 objectPosition: 'center',
                                                                 width: '100%',
@@ -312,11 +324,11 @@ const ServicesPage: React.FC = () => {
                                                 <tr key={service.id} className="border-b border-gray-200 hover:bg-gray-50">
                                                     <td className="p-4 flex items-center gap-3">
                                                         {service.imageUrl && service.imageUrl.trim() !== '' ? (
-                                                            <img 
-                                                                src={service.imageUrl} 
-                                                                alt={service.name} 
+                                                            <img
+                                                                src={service.imageUrl}
+                                                                alt={service.name}
                                                                 className="w-10 h-10 object-contain object-center rounded-md"
-                                                                style={{ 
+                                                                style={{
                                                                     objectFit: 'contain',
                                                                     objectPosition: 'center'
                                                                 }}
@@ -366,6 +378,38 @@ const ServicesPage: React.FC = () => {
                 </div>
             ) : (
                 <div className="text-center py-10 text-gray-500 bg-white rounded-lg shadow-md">Không tìm thấy dịch vụ nào.</div>
+            )}
+
+            {/* Delete Error Modal */}
+            {deleteErrorModal.visible && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg shadow-lg max-w-md w-full mx-4 overflow-hidden">
+                        {/* Red Header */}
+                        <div className="bg-red-600 px-6 py-4">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                <span className="text-2xl">⚠️</span>
+                                KHÔNG THỂ XÓA DỊCH VỤ
+                            </h2>
+                        </div>
+
+                        {/* Message Body */}
+                        <div className="px-6 py-6 border-b border-gray-200">
+                            <p className="text-gray-700 text-base leading-relaxed">
+                                {deleteErrorModal.message}
+                            </p>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-6 py-4 bg-gray-50 flex justify-end">
+                            <button
+                                onClick={() => setDeleteErrorModal({ visible: false, message: '' })}
+                                className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors"
+                            >
+                                Đã hiểu
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

@@ -162,8 +162,10 @@ const AppContent: React.FC = () => {
     // Auto-reload data when navigating between admin pages
     useEffect(() => {
         const isAdminRoute = location.pathname.startsWith('/admin');
-        
-        if (isAdminRoute && currentUser?.role === 'admin') {
+        // Normalize role to string for safe comparison with literal 'admin'
+        const userRole = currentUser?.role ? (currentUser.role).toString().toLowerCase() : '';
+
+        if (isAdminRoute && userRole === 'admin') {
             console.log('🔄 Admin page navigation detected, reloading data...');
             fetchData();
         }
@@ -240,7 +242,7 @@ const AppContent: React.FC = () => {
 
         window.addEventListener('refresh-appointments', handleRefreshAppointments);
         window.addEventListener('appointments-updated', handleAppointmentsUpdated);
-        
+
         return () => {
             window.removeEventListener('refresh-appointments', handleRefreshAppointments);
             window.removeEventListener('appointments-updated', handleAppointmentsUpdated);
@@ -274,7 +276,7 @@ const AppContent: React.FC = () => {
             const redirectPath = sessionStorage.getItem('redirectPath');
             const userRole = (currentUser.role || '').toString();
             const normalizedRole = userRole.toLowerCase();
-            
+
             console.log('Navigation check:', {
                 pathname: location.pathname,
                 userRole: userRole,
@@ -310,12 +312,12 @@ const AppContent: React.FC = () => {
                 }
                 return;
             }
-            
+
             // Define public routes that all users can access
-            const isPublicRoute = ['/', '/services', '/promotions', '/treatment-packages', '/policy'].includes(location.pathname) || 
-                                 location.pathname.startsWith('/service/') || 
-                                 location.pathname.startsWith('/treatment-packages/');
-            
+            const isPublicRoute = ['/', '/services', '/promotions', '/treatment-packages', '/policy'].includes(location.pathname) ||
+                location.pathname.startsWith('/service/') ||
+                location.pathname.startsWith('/treatment-packages/');
+
             // Redirect staff to /staff/dashboard if they're on client routes (except public routes)
             if (normalizedRole === 'staff') {
                 if (!location.pathname.startsWith('/staff') && !location.pathname.startsWith('/admin')) {
@@ -326,7 +328,7 @@ const AppContent: React.FC = () => {
                     }
                 }
             }
-            
+
             // CRITICAL: Redirect admin to /admin if they're on ANY route outside admin panel
             if (normalizedRole === 'admin') {
                 if (!location.pathname.startsWith('/admin')) {
@@ -349,11 +351,11 @@ const AppContent: React.FC = () => {
         const userRole = (user.role || '').toString().toLowerCase();
         console.log('User logged in:', { email: user.email, role: user.role, normalizedRole: userRole, id: user.id });
         setCurrentUser(user);
-        
+
         // Immediately redirect based on role after login
         // This ensures staff users go to /staff, not client pages
         const redirectPath = sessionStorage.getItem('redirectPath');
-    if (redirectPath) {
+        if (redirectPath) {
             // Check if redirect path is appropriate for user role
             if (redirectPath.startsWith('/admin') && userRole !== 'admin') {
                 sessionStorage.removeItem('redirectPath');
@@ -391,7 +393,7 @@ const AppContent: React.FC = () => {
             console.log('Registration requires email verification:', registerResponse.email);
             return;
         }
-        
+
         // Only proceed with login if token is present (old flow for backward compatibility)
         if ('token' in registerResponse) {
             const { user, token } = registerResponse;
@@ -401,7 +403,7 @@ const AppContent: React.FC = () => {
             sessionStorage.setItem('isNewRegistration', 'true');
             console.log('User registered:', { email: user.email, role: user.role, normalizedRole: userRole, id: user.id });
             setCurrentUser(user);
-            
+
             // Immediately redirect based on role after registration
             if (userRole === 'admin') {
                 navigate('/admin', { replace: true });
@@ -434,7 +436,7 @@ const AppContent: React.FC = () => {
                     <Route path="/" element={<HomePage allServices={allServices} allPromotions={allPromotions} isLoading={isLoading} />} />
                     <Route path="/services" element={<ServicesListPage allServices={allServices} />} />
                     <Route path="/service/:id" element={<ServiceDetailPage allServices={allServices} currentUser={currentUser} allPromotions={allPromotions} setAllReviews={setAllReviews} setAllAppointments={setAllAppointments} />} />
-                    <Route path="/promotions" element={<PromotionsPage currentUser={currentUser} wallet={wallet} setWallet={setWallet} userVouchers={[]} setUserVouchers={() => {}} allTiers={allTiers} />} />
+                    <Route path="/promotions" element={<PromotionsPage currentUser={currentUser} wallet={wallet} setWallet={setWallet} userVouchers={[]} setUserVouchers={() => { }} allTiers={allTiers} />} />
                     <Route path="/policy" element={<PolicyPage />} />
                     <Route path="/qa" element={<QAPage />} />
                     <Route path="/contact" element={<ContactPage />} />

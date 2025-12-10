@@ -49,30 +49,45 @@ const calculateDefaultDurationWeeks = (totalSessions) => {
     return totalSessions + 1;
 };
 
-// GET /api/treatment-courses - Get all treatment courses
+// GET /api/treatment-courses - Get all treatment courses (supports optional pagination)
 router.get('/', async (req, res) => {
     try {
-        const { clientId, status, serviceId } = req.query;
+        const { clientId, status, serviceId, page, limit, templatesOnly } = req.query;
         const where = {};
-        
-        if (clientId) where.clientId = clientId;
-        if (status) where.status = status;
-        if (serviceId) where.serviceId = serviceId;
 
-        const courses = await db.TreatmentCourse.findAll({
+        if (clientId) where.clientId = clientId;
+        if (status) {
+            // Support multiple statuses separated by comma or special 'history' alias
+            if (typeof status === 'string' && status.includes(',')) {
+                const statuses = status.split(',').map(s => s.trim());
+                where.status = { [Op.in]: statuses };
+            } else if (status === 'history') {
+                where.status = { [Op.in]: ['completed', 'expired'] };
+            } else {
+                where.status = status;
+            }
+        }
+        if (serviceId) where.serviceId = serviceId;
+        if (templatesOnly === 'true' || templatesOnly === true) where.isTemplate = true;
+
+        // Pagination
+        const pageNum = page ? parseInt(page, 10) : null;
+        const pageSize = limit ? parseInt(limit, 10) : 20;
+
+        const queryOptions = {
             where,
             include: [
-                { 
+                {
                     model: db.Service,
                     attributes: ['id', 'name', 'description', 'price', 'duration']
                 },
-                { 
-                    model: db.User, 
+                {
+                    model: db.User,
                     as: 'Client',
                     attributes: ['id', 'name', 'email', 'phone']
                 },
-                { 
-                    model: db.User, 
+                {
+                    model: db.User,
                     as: 'Therapist',
                     attributes: ['id', 'name', 'email', 'phone'],
                     required: false
@@ -94,7 +109,20 @@ router.get('/', async (req, res) => {
                 },
             ],
             order: [['createdAt', 'DESC']],
-        });
+        };
+
+        let findResult;
+        if (pageNum) {
+            queryOptions.limit = pageSize;
+            queryOptions.offset = (pageNum - 1) * pageSize;
+            findResult = await db.TreatmentCourse.findAndCountAll(queryOptions);
+        } else {
+            const rows = await db.TreatmentCourse.findAll(queryOptions);
+            findResult = { rows, count: null };
+        }
+
+        const courses = findResult.rows;
+        const totalCount = typeof findResult.count === 'number' ? findResult.count : courses.length;
 
         // Đồng bộ totalAmount từ Payment cho từng course
         const mappedCourses = await Promise.all(courses.map(async (course) => {
@@ -104,12 +132,11 @@ router.get('/', async (req, res) => {
                 delete courseData.TreatmentSessions;
             }
 
-            // Đồng bộ totalAmount từ Payment nếu có
             try {
                 const appointmentIds = courseData.sessions
                     ?.map(s => s.appointmentId)
                     .filter(id => id !== null) || [];
-                
+
                 if (appointmentIds.length > 0) {
                     const payment = await db.Payment.findOne({
                         where: {
@@ -117,19 +144,18 @@ router.get('/', async (req, res) => {
                         },
                         order: [['date', 'DESC']]
                     });
-                    
+
                     if (payment && payment.amount) {
                         const paymentAmount = parseFloat(payment.amount);
                         const currentTotalAmount = courseData.totalAmount ? parseFloat(courseData.totalAmount) : null;
-                        
+
                         if (!currentTotalAmount || currentTotalAmount === 0 || currentTotalAmount !== paymentAmount) {
-                            await course.update({ 
+                            await course.update({
                                 totalAmount: paymentAmount,
                                 paymentStatus: payment.status === 'Completed' ? 'Paid' : 'Unpaid'
                             });
                             courseData.totalAmount = paymentAmount;
                             courseData.paymentStatus = 'Paid';
-                            console.log(`✅ [TREATMENT COURSE LIST] Updated totalAmount from Payment: ${paymentAmount} VND for course ${course.id}`);
                         }
                     }
                 }
@@ -137,13 +163,16 @@ router.get('/', async (req, res) => {
                 console.error(`Error syncing totalAmount for course ${course.id}:`, syncError);
             }
 
-            // Đảm bảo totalAmount được trả về đúng định dạng
             if (courseData.totalAmount !== null && courseData.totalAmount !== undefined) {
                 courseData.totalAmount = parseFloat(courseData.totalAmount);
             }
 
             return courseData;
         }));
+
+        if (pageNum) {
+            return res.json({ data: mappedCourses, total: totalCount, page: pageNum, pageSize: pageSize });
+        }
 
         res.json(mappedCourses);
     } catch (error) {
@@ -164,8 +193,8 @@ router.get('/:id', async (req, res) => {
                     model: db.TreatmentSession,
                     as: 'TreatmentSessions',
                     include: [
-                        { 
-                            model: db.Appointment, 
+                        {
+                            model: db.Appointment,
                             as: 'Appointment',
                             include: [
                                 {
@@ -175,8 +204,8 @@ router.get('/:id', async (req, res) => {
                                 }
                             ]
                         },
-                        { 
-                            model: db.User, 
+                        {
+                            model: db.User,
                             as: 'Staff',
                             attributes: ['id', 'name', 'email', 'phone'],
                             required: false
@@ -199,11 +228,11 @@ router.get('/:id', async (req, res) => {
                 where: { treatmentCourseId: course.id },
                 attributes: ['appointmentId']
             });
-            
+
             const appointmentIds = sessions
                 .map(s => s.appointmentId)
                 .filter(id => id !== null);
-            
+
             if (appointmentIds.length > 0) {
                 // Tìm Payment record với appointmentId trong danh sách (bất kỳ status nào)
                 const payment = await db.Payment.findOne({
@@ -212,14 +241,14 @@ router.get('/:id', async (req, res) => {
                     },
                     order: [['date', 'DESC']] // Lấy payment mới nhất
                 });
-                
+
                 if (payment && payment.amount) {
                     const paymentAmount = parseFloat(payment.amount);
                     const currentTotalAmount = course.totalAmount ? parseFloat(course.totalAmount) : null;
-                    
+
                     // Nếu totalAmount chưa có hoặc khác với payment amount, cập nhật
                     if (!currentTotalAmount || currentTotalAmount === 0 || currentTotalAmount !== paymentAmount) {
-                        await course.update({ 
+                        await course.update({
                             totalAmount: paymentAmount,
                             paymentStatus: payment.status === 'Completed' ? 'Paid' : 'Unpaid'
                         });
@@ -239,7 +268,7 @@ router.get('/:id', async (req, res) => {
         if (courseData.totalAmount !== null && courseData.totalAmount !== undefined) {
             courseData.totalAmount = parseFloat(courseData.totalAmount);
         }
-        
+
         // Ensure TreatmentSessions have sessionDate and sessionTime properly formatted
         if (courseData.TreatmentSessions && Array.isArray(courseData.TreatmentSessions)) {
             courseData.TreatmentSessions = courseData.TreatmentSessions.map((session) => {
@@ -322,7 +351,7 @@ router.post('/', async (req, res) => {
 
         for (let i = 1; i <= totalSessions; i++) {
             let sessionDate = new Date(startDateObj);
-            
+
             // Calculate session date based on frequency
             if (frequencyType === 'sessions_per_week' && frequencyValue) {
                 // e.g., 2 sessions per week = every 3-4 days
@@ -462,7 +491,7 @@ router.put('/:id/complete-session', async (req, res) => {
                         notesForTherapist: `Buổi ${session.sessionNumber} của liệu trình ${service.name || course.serviceName}`,
                         bookingGroupId: `group-${course.id}`,
                     });
-                    
+
                     // Link appointment to session
                     await session.update({ appointmentId: appointment.id });
                     console.log(`✅ Created and linked appointment ${appointment.id} for completed treatment session ${session.id}`);
@@ -508,14 +537,14 @@ router.put('/:id/confirm-payment', async (req, res) => {
                 required: false
             }]
         });
-        
+
         if (!course) {
             return res.status(404).json({ message: 'Treatment course not found' });
         }
 
         // Dùng số tiền thực tế đã lưu khi đặt lịch (sau giảm giá/voucher), nếu không có thì tính từ service price
-        const totalAmount = course.totalAmount 
-            ? parseFloat(course.totalAmount.toString()) 
+        const totalAmount = course.totalAmount
+            ? parseFloat(course.totalAmount.toString())
             : (course.Service ? parseFloat(course.Service.price) * course.totalSessions : 0);
 
         // Update payment status to Paid
@@ -528,23 +557,23 @@ router.put('/:id/confirm-payment', async (req, res) => {
                 where: { treatmentCourseId: course.id },
                 attributes: ['appointmentId']
             });
-            
+
             const appointmentIdsFromSessions = sessions
                 .map(s => s.appointmentId)
                 .filter(id => id !== null);
-            
+
             // Cách 2: Tìm appointments qua bookingGroupId (fallback)
             const bookingGroupId = `group-${course.id}`;
             const appointmentsFromGroup = await db.Appointment.findAll({
                 where: { bookingGroupId: bookingGroupId },
                 attributes: ['id']
             });
-            
+
             const appointmentIdsFromGroup = appointmentsFromGroup.map(apt => apt.id);
-            
+
             // Kết hợp cả 2 cách và loại bỏ duplicates
             const allAppointmentIds = [...new Set([...appointmentIdsFromSessions, ...appointmentIdsFromGroup])];
-            
+
             if (allAppointmentIds.length > 0) {
                 await db.Appointment.update(
                     { paymentStatus: 'Paid' },
@@ -583,7 +612,7 @@ router.put('/:id/confirm-payment', async (req, res) => {
                 attributes: ['appointmentId'],
                 order: [['sessionNumber', 'ASC']]
             });
-            
+
             payment = await db.Payment.create({
                 id: `pay-${uuidv4()}`,
                 appointmentId: firstSession?.appointmentId || null, // Link với appointment đầu tiên nếu có
@@ -595,7 +624,7 @@ router.put('/:id/confirm-payment', async (req, res) => {
                 date: new Date().toISOString(),
                 transactionId: `TC-${id}-${Date.now()}`
             });
-            
+
             console.log(`✅ [TREATMENT COURSE PAYMENT] Created new Payment record:`, {
                 paymentId: payment.id,
                 amount: totalAmount,
@@ -614,7 +643,7 @@ router.put('/:id/confirm-payment', async (req, res) => {
                     const currentPoints = wallet.points || 0;
                     const currentTotalSpent = parseFloat(wallet.totalSpent?.toString() || '0');
                     const newTotalSpent = currentTotalSpent + totalAmount;
-                    
+
                     // Cập nhật wallet với points và totalSpent mới
                     await wallet.update({
                         points: currentPoints + pointsEarned,
@@ -624,12 +653,12 @@ router.put('/:id/confirm-payment', async (req, res) => {
 
                     // Lưu tierLevel cũ để kiểm tra lên hạng
                     const oldTierLevel = wallet.tierLevel;
-                    
+
                     // Cập nhật tier level dựa trên totalSpent mới
                     const { calculateTierInfo } = require('../utils/tierUtils');
                     const tierInfo = calculateTierInfo(newTotalSpent);
                     const newTierLevel = tierInfo.currentTier.level;
-                    
+
                     await wallet.update({ tierLevel: newTierLevel });
 
                     console.log(`✅ [TREATMENT COURSE PAYMENT] Wallet updated:`, {
@@ -641,7 +670,7 @@ router.put('/:id/confirm-payment', async (req, res) => {
                         oldTierLevel: oldTierLevel,
                         newTierLevel: newTierLevel
                     });
-                    
+
                     // Gửi voucher tự động nếu lên hạng (logic này sẽ được xử lý trong Wallet model hook)
                 } else {
                     console.log(`⚠️ [TREATMENT COURSE PAYMENT] Wallet not found for user ${course.clientId}`);
@@ -653,7 +682,7 @@ router.put('/:id/confirm-payment', async (req, res) => {
         } else {
             console.log(`⚠️ [TREATMENT COURSE PAYMENT] Payment already exists, skipping wallet update to avoid double counting`);
         }
-        
+
         console.log(`✅ [TREATMENT COURSE PAYMENT] Confirmed payment for treatment course ${id}:`, {
             courseId: id,
             totalAmount: totalAmount,
@@ -667,7 +696,7 @@ router.put('/:id/confirm-payment', async (req, res) => {
             const client = await db.User.findByPk(course.clientId);
             const clientName = client ? client.name : 'Khách hàng';
             const formatPrice = (price) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
-            
+
             notifyAdmins(
                 'payment_received',
                 'Thanh toán tiền mặt',
@@ -678,7 +707,7 @@ router.put('/:id/confirm-payment', async (req, res) => {
             console.error('Error creating payment notification:', notifError);
             // Don't fail payment if notification fails
         }
-        
+
         res.json({ course, payment, message: 'Payment confirmed successfully' });
     } catch (error) {
         console.error('Error confirming payment:', error);
@@ -690,71 +719,71 @@ router.put('/:id/confirm-payment', async (req, res) => {
 router.post('/sync-payment-status', async (req, res) => {
     try {
         console.log('🔄 [SYNC PAYMENT STATUS] Starting sync for all treatment courses...');
-        
+
         // Lấy tất cả treatment courses đã thanh toán
         const paidCourses = await db.TreatmentCourse.findAll({
             where: { paymentStatus: 'Paid' }
         });
-        
+
         console.log(`📊 [SYNC PAYMENT STATUS] Found ${paidCourses.length} paid treatment courses`);
-        
+
         let totalUpdated = 0;
-        
+
         for (const course of paidCourses) {
             // Cách 1: Lấy appointments qua TreatmentSession
             const sessions = await db.TreatmentSession.findAll({
                 where: { treatmentCourseId: course.id },
                 attributes: ['appointmentId']
             });
-            
+
             const appointmentIdsFromSessions = sessions
                 .map(s => s.appointmentId)
                 .filter(id => id !== null);
-            
+
             // Cách 2: Lấy appointments qua bookingGroupId (fallback)
             const bookingGroupId = `group-${course.id}`;
             const appointmentsFromGroup = await db.Appointment.findAll({
                 where: { bookingGroupId: bookingGroupId },
                 attributes: ['id']
             });
-            
+
             const appointmentIdsFromGroup = appointmentsFromGroup.map(apt => apt.id);
-            
+
             // Kết hợp cả 2 cách và loại bỏ duplicates
             const allAppointmentIds = [...new Set([...appointmentIdsFromSessions, ...appointmentIdsFromGroup])];
-            
+
             if (allAppointmentIds.length > 0) {
                 // Cập nhật paymentStatus cho tất cả appointments liên quan
                 const [updatedCount] = await db.Appointment.update(
                     { paymentStatus: 'Paid' },
-                    { 
-                        where: { 
+                    {
+                        where: {
                             id: { [Op.in]: allAppointmentIds },
                             paymentStatus: { [Op.ne]: 'Paid' } // Chỉ cập nhật những cái chưa Paid
                         }
                     }
                 );
-                
+
                 if (updatedCount > 0) {
                     totalUpdated += updatedCount;
                     console.log(`✅ [SYNC PAYMENT STATUS] Updated ${updatedCount} appointments for treatment course ${course.id} (${appointmentIdsFromSessions.length} from sessions, ${appointmentIdsFromGroup.length} from bookingGroup)`);
                 }
             }
         }
-        
+
         console.log(`✅ [SYNC PAYMENT STATUS] Total appointments updated: ${totalUpdated}`);
-        
-        res.json({ 
-            success: true, 
+
+        res.json({
+            success: true,
             message: `Đã đồng bộ paymentStatus cho ${totalUpdated} appointments`,
-            totalUpdated 
+            totalUpdated
         });
     } catch (error) {
         console.error('❌ [SYNC PAYMENT STATUS] Error:', error);
-        res.status(500).json({ 
-            success: false, 
+        res.status(500).json({
+            success: false,
             message: 'Lỗi khi đồng bộ paymentStatus',
-            error: error.message 
+            error: error.message
         });
     }
 });

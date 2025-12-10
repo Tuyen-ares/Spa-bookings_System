@@ -1,1 +1,0 @@
-làm phần hạng thành viên, chia làm 3 hạng đồng,bạc,kim cương tương ứng với số tiền mà khách đã thanh toán là 10 triệu,30 triệu,50 triệu, ở hạng đồng thì khi đặt lịch tất cả dịch vụ được giảm 5%,bạc giảm 10% còn kim cương giảm 15% tổng giá trị dịch vụ khi đặt lịch

@@ -2,28 +2,28 @@ import React from 'react';
 
 // New Lotus Icon replacing the old book icon
 export const LogoIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg {...props} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-            <linearGradient id="lotusGradient" x1="50%" y1="0%" x2="50%" y2="100%">
-                <stop offset="0%" stopColor="#F3E2B3" />
-                <stop offset="100%" stopColor="#C8A46A" />
-            </linearGradient>
-            <filter id="lotusGlow" x="-50%" y="-50%" width="200%" height="200%">
-                <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="#F9F4EF" floodOpacity="0.8" />
-            </filter>
-        </defs>
-        <g stroke="url(#lotusGradient)" strokeWidth="2.5" filter="url(#lotusGlow)" fill="none" strokeLinecap="round" strokeLinejoin="round">
-            {/* Lower petals */}
-            <path d="M22 50 C 26 42, 38 42, 42 50" />
-            <path d="M16 42 C 24 32, 40 32, 48 42" />
-            {/* Upper petals */}
-            <path d="M32 12 C 26 24, 32 38, 32 38 C 32 38, 38 24, 32 12 Z" />
-            <path d="M24 20 C 18 30, 28 40, 28 40" />
-            <path d="M40 20 C 46 30, 36 40, 36 40" />
-        </g>
-        {/* Glint */}
-        <circle cx="32" cy="19" r="1.5" fill="#FFFFFF" fillOpacity="0.9" />
-    </svg>
+  <svg {...props} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="lotusGradient" x1="50%" y1="0%" x2="50%" y2="100%">
+        <stop offset="0%" stopColor="#F3E2B3" />
+        <stop offset="100%" stopColor="#C8A46A" />
+      </linearGradient>
+      <filter id="lotusGlow" x="-50%" y="-50%" width="200%" height="200%">
+        <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="#F9F4EF" floodOpacity="0.8" />
+      </filter>
+    </defs>
+    <g stroke="url(#lotusGradient)" strokeWidth="2.5" filter="url(#lotusGlow)" fill="none" strokeLinecap="round" strokeLinejoin="round">
+      {/* Lower petals */}
+      <path d="M22 50 C 26 42, 38 42, 42 50" />
+      <path d="M16 42 C 24 32, 40 32, 48 42" />
+      {/* Upper petals */}
+      <path d="M32 12 C 26 24, 32 38, 32 38 C 32 38, 38 24, 32 12 Z" />
+      <path d="M24 20 C 18 30, 28 40, 28 40" />
+      <path d="M40 20 C 46 30, 36 40, 36 40" />
+    </g>
+    {/* Glint */}
+    <circle cx="32" cy="19" r="1.5" fill="#FFFFFF" fillOpacity="0.9" />
+  </svg>
 );
 
 // --- Standard UI Icons (Heroicons based) ---
@@ -33,9 +33,10 @@ const iconProps = {
   viewBox: "0 0 24 24",
   strokeWidth: 1.5,
   stroke: "currentColor"
-};export const HomeIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} {...iconProps}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>;
+}; export const HomeIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} {...iconProps}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>;
 export const QuestionMarkCircleIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} {...iconProps}><path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" /></svg>;
 export const ChevronDownIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} {...iconProps}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>;
+export const ChevronUpIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} {...iconProps}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg>;
 export const MenuIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} {...iconProps}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>;
 export const CloseIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} {...iconProps}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>;
 export const SearchIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} {...iconProps}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>;
@@ -151,7 +152,7 @@ export const InstagramIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 export const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg {...props} strokeWidth="2" viewBox="0 0 24 24">
-        <path d="M16 4.938A6.5 6.5 0 1 1 9.5 17.5v-9.125a4.375 4.375 0 1 0 4.375 4.375" />
-    </svg>
+  <svg {...props} strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M16 4.938A6.5 6.5 0 1 1 9.5 17.5v-9.125a4.375 4.375 0 1 0 4.375 4.375" />
+  </svg>
 );
