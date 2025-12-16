@@ -438,6 +438,143 @@ router.get('/', async (req, res) => {
     }
 });
 
+// DELETE: Cancel all appointments of a booking group (hủy toàn bộ lịch dịch vụ)
+// MUST be before /:id route to avoid being caught by it
+router.delete('/cancel-all/:appointmentId', async (req, res) => {
+    const transaction = await db.sequelize.transaction();
+    
+    try {
+        const { appointmentId } = req.params;
+        const { reason } = req.body;
+
+        // Find the appointment to get bookingGroupId
+        const appointment = await db.Appointment.findByPk(appointmentId, { transaction });
+
+        if (!appointment) {
+            await transaction.rollback();
+            return res.status(404).json({ message: 'Appointment not found' });
+        }
+
+        // Find all appointments with the same bookingGroupId and serviceId
+        const appointmentsToCancel = await db.Appointment.findAll({
+            where: {
+                bookingGroupId: appointment.bookingGroupId,
+                serviceId: appointment.serviceId,
+                userId: appointment.userId,
+                status: { [db.sequelize.Sequelize.Op.ne]: 'cancelled' } // Exclude already cancelled
+            },
+            transaction
+        });
+
+        if (appointmentsToCancel.length === 0) {
+            await transaction.rollback();
+            return res.status(404).json({ message: 'No appointments to cancel' });
+        }
+
+        // Cancel all appointments
+        const cancelledIds = [];
+        for (const apt of appointmentsToCancel) {
+            await apt.update({
+                status: 'cancelled',
+                rejectionReason: reason || 'Khách hàng yêu cầu hủy'
+            }, { transaction });
+            cancelledIds.push(apt.id);
+        }
+
+        // If there's a treatment course, update its status
+        const treatmentSession = await db.TreatmentSession.findOne({
+            where: { appointmentId: appointmentId },
+            transaction
+        });
+
+        if (treatmentSession) {
+            const treatmentCourse = await db.TreatmentCourse.findByPk(
+                treatmentSession.treatmentCourseId,
+                { transaction }
+            );
+
+            if (treatmentCourse) {
+                await treatmentCourse.update({
+                    status: 'cancelled'
+                }, { transaction });
+
+                console.log(`✅ Treatment course ${treatmentCourse.id} cancelled`);
+            }
+        }
+
+        await transaction.commit();
+
+        res.json({
+            message: `Successfully cancelled ${cancelledIds.length} appointments`,
+            cancelledCount: cancelledIds.length,
+            cancelledIds: cancelledIds
+        });
+    } catch (error) {
+        await transaction.rollback();
+        console.error('Error cancelling appointments:', error);
+        res.status(500).json({ message: 'Error cancelling appointments', error: error.message });
+    }
+});
+
+// DELETE: Cancel an entire treatment course (hủy toàn bộ liệu trình)
+// MUST be before /:id route to avoid being caught by it
+router.delete('/cancel-treatment-course/:treatmentCourseId', async (req, res) => {
+    const transaction = await db.sequelize.transaction();
+    
+    try {
+        const { treatmentCourseId } = req.params;
+        const { reason } = req.body;
+
+        // Find treatment course
+        const treatmentCourse = await db.TreatmentCourse.findByPk(treatmentCourseId, { transaction });
+
+        if (!treatmentCourse) {
+            await transaction.rollback();
+            return res.status(404).json({ message: 'Treatment course not found' });
+        }
+
+        // Update treatment course status
+        await treatmentCourse.update({
+            status: 'cancelled'
+        }, { transaction });
+
+        // Find and cancel all related treatment sessions
+        const treatmentSessions = await db.TreatmentSession.findAll({
+            where: { treatmentCourseId: treatmentCourseId },
+            transaction
+        });
+
+        const cancelledAppointmentIds = [];
+
+        // Cancel all related appointments
+        for (const session of treatmentSessions) {
+            if (session.appointmentId) {
+                const appointment = await db.Appointment.findByPk(session.appointmentId, { transaction });
+                if (appointment && appointment.status !== 'cancelled') {
+                    await appointment.update({
+                        status: 'cancelled',
+                        rejectionReason: reason || 'Liệu trình bị hủy'
+                    }, { transaction });
+                    cancelledAppointmentIds.push(appointment.id);
+                }
+            }
+        }
+
+        await transaction.commit();
+
+        res.json({
+            message: `Treatment course cancelled successfully with ${cancelledAppointmentIds.length} appointments`,
+            treatmentCourseId: treatmentCourseId,
+            cancelledAppointmentCount: cancelledAppointmentIds.length,
+            cancelledAppointmentIds: cancelledAppointmentIds
+        });
+    } catch (error) {
+        await transaction.rollback();
+        console.error('Error cancelling treatment course:', error);
+        res.status(500).json({ message: 'Error cancelling treatment course', error: error.message });
+    }
+});
+
 // GET /api/appointments/:id - Get single appointment by ID
 router.get('/:id', async (req, res) => {
     try {
@@ -2634,141 +2771,6 @@ router.put('/:id/confirm', async (req, res) => {
         await transaction.rollback();
         console.error('Error confirming appointment:', error);
         res.status(500).json({ message: 'Error confirming appointment', error: error.message });
-    }
-});
-
-// DELETE: Cancel all appointments of a booking group (hủy toàn bộ lịch dịch vụ)
-router.delete('/cancel-all/:appointmentId', async (req, res) => {
-    const transaction = await db.sequelize.transaction();
-    
-    try {
-        const { appointmentId } = req.params;
-        const { reason } = req.body;
-
-        // Find the appointment to get bookingGroupId
-        const appointment = await db.Appointment.findByPk(appointmentId, { transaction });
-
-        if (!appointment) {
-            await transaction.rollback();
-            return res.status(404).json({ message: 'Appointment not found' });
-        }
-
-        // Find all appointments with the same bookingGroupId and serviceId
-        const appointmentsToCancel = await db.Appointment.findAll({
-            where: {
-                bookingGroupId: appointment.bookingGroupId,
-                serviceId: appointment.serviceId,
-                userId: appointment.userId,
-                status: { [db.sequelize.Sequelize.Op.ne]: 'cancelled' } // Exclude already cancelled
-            },
-            transaction
-        });
-
-        if (appointmentsToCancel.length === 0) {
-            await transaction.rollback();
-            return res.status(404).json({ message: 'No appointments to cancel' });
-        }
-
-        // Cancel all appointments
-        const cancelledIds = [];
-        for (const apt of appointmentsToCancel) {
-            await apt.update({
-                status: 'cancelled',
-                rejectionReason: reason || 'Khách hàng yêu cầu hủy'
-            }, { transaction });
-            cancelledIds.push(apt.id);
-        }
-
-        // If there's a treatment course, update its status
-        const treatmentSession = await db.TreatmentSession.findOne({
-            where: { appointmentId: appointmentId },
-            transaction
-        });
-
-        if (treatmentSession) {
-            const treatmentCourse = await db.TreatmentCourse.findByPk(
-                treatmentSession.treatmentCourseId,
-                { transaction }
-            );
-
-            if (treatmentCourse) {
-                await treatmentCourse.update({
-                    status: 'cancelled'
-                }, { transaction });
-
-                console.log(`✅ Treatment course ${treatmentCourse.id} cancelled`);
-            }
-        }
-
-        await transaction.commit();
-
-        res.json({
-            message: `Successfully cancelled ${cancelledIds.length} appointments`,
-            cancelledCount: cancelledIds.length,
-            cancelledIds: cancelledIds
-        });
-    } catch (error) {
-        await transaction.rollback();
-        console.error('Error cancelling appointments:', error);
-        res.status(500).json({ message: 'Error cancelling appointments', error: error.message });
-    }
-});
-
-// DELETE: Cancel an entire treatment course (hủy toàn bộ liệu trình)
-router.delete('/cancel-treatment-course/:treatmentCourseId', async (req, res) => {
-    const transaction = await db.sequelize.transaction();
-    
-    try {
-        const { treatmentCourseId } = req.params;
-        const { reason } = req.body;
-
-        // Find treatment course
-        const treatmentCourse = await db.TreatmentCourse.findByPk(treatmentCourseId, { transaction });
-
-        if (!treatmentCourse) {
-            await transaction.rollback();
-            return res.status(404).json({ message: 'Treatment course not found' });
-        }
-
-        // Update treatment course status
-        await treatmentCourse.update({
-            status: 'cancelled'
-        }, { transaction });
-
-        // Find and cancel all related treatment sessions
-        const treatmentSessions = await db.TreatmentSession.findAll({
-            where: { treatmentCourseId: treatmentCourseId },
-            transaction
-        });
-
-        const cancelledAppointmentIds = [];
-
-        // Cancel all related appointments
-        for (const session of treatmentSessions) {
-            if (session.appointmentId) {
-                const appointment = await db.Appointment.findByPk(session.appointmentId, { transaction });
-                if (appointment && appointment.status !== 'cancelled') {
-                    await appointment.update({
-                        status: 'cancelled',
-                        rejectionReason: reason || 'Liệu trình bị hủy'
-                    }, { transaction });
-                    cancelledAppointmentIds.push(appointment.id);
-                }
-            }
-        }
-
-        await transaction.commit();
-
-        res.json({
-            message: `Treatment course cancelled successfully with ${cancelledAppointmentIds.length} appointments`,
-            treatmentCourseId: treatmentCourseId,
-            cancelledAppointmentCount: cancelledAppointmentIds.length,
-            cancelledAppointmentIds: cancelledAppointmentIds
-        });
-    } catch (error) {
-        await transaction.rollback();
-        console.error('Error cancelling treatment course:', error);
-        res.status(500).json({ message: 'Error cancelling treatment course', error: error.message });
     }
 });
 
