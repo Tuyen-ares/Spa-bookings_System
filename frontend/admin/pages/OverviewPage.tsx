@@ -34,7 +34,7 @@ const getFontSize = (value: string): string => {
     // Remove currency symbols and spaces for length calculation
     const cleanValue = value.replace(/[₫,\s]/g, '');
     const length = cleanValue.length;
-    
+
     if (length <= 8) return 'text-3xl'; // Default size for numbers like 14.000.000
     if (length <= 10) return 'text-2xl'; // For numbers like 1.000.000.000
     if (length <= 12) return 'text-xl';  // For numbers like 1.000.000.000.000
@@ -44,7 +44,7 @@ const getFontSize = (value: string): string => {
 
 const StatCard: React.FC<StatCardProps> = ({ title, value, icon, change, changeType, bgColor }) => {
     const fontSize = getFontSize(value);
-    
+
     return (
         <div className="group relative overflow-hidden bg-gradient-to-br from-white to-gray-50 p-6 rounded-xl shadow-md transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 border border-gray-100">
             <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-brand-primary/5 to-transparent rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500"></div>
@@ -57,11 +57,10 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon, change, changeT
                     {value}
                 </p>
                 {change && (
-                    <div className={`mt-3 inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${
-                        changeType === 'increase' 
-                            ? 'bg-green-100 text-green-700' 
+                    <div className={`mt-3 inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${changeType === 'increase'
+                            ? 'bg-green-100 text-green-700'
                             : 'bg-red-100 text-red-700'
-                    }`}>
+                        }`}>
                         <span className="mr-1">{changeType === 'increase' ? '↑' : '↓'}</span>
                         {change}
                     </div>
@@ -199,7 +198,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
     const [dateError, setDateError] = useState<string>('');
-    
+
     // State cho revenue period selection
     const [revenuePeriod, setRevenuePeriod] = useState<'total' | 'day' | 'week' | 'month'>('total');
 
@@ -378,7 +377,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
 
         // Tính doanh thu theo period
         let displayRevenue = totalRevenue;
-        
+
         if (revenuePeriod === 'day') {
             // Doanh thu hôm nay
             displayRevenue = safePayments
@@ -400,7 +399,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
             const monday = new Date(today);
             monday.setDate(today.getDate() - diff);
             monday.setHours(0, 0, 0, 0);
-            
+
             displayRevenue = safePayments
                 .filter(p => {
                     if (!p || p.status !== 'Completed') return false;
@@ -510,8 +509,8 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
                     </div>
                     <label className="text-sm font-bold text-gray-700">Hiển thị doanh thu:</label>
                 </div>
-                <select 
-                    value={revenuePeriod} 
+                <select
+                    value={revenuePeriod}
                     onChange={(e) => setRevenuePeriod(e.target.value as 'total' | 'day' | 'week' | 'month')}
                     className="px-5 py-2.5 border-2 border-brand-primary/20 rounded-xl bg-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary font-semibold text-gray-800 shadow-sm hover:shadow-md transition-all cursor-pointer"
                 >
@@ -540,14 +539,14 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
             {/* Main Stat Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
                 <div className="opacity-0 animate-fadeInUp" style={{ animationDelay: '100ms' }}>
-                    <StatCard 
+                    <StatCard
                         title={
                             revenuePeriod === 'total' ? 'TỔNG DOANH THU' :
-                            revenuePeriod === 'day' ? 'DOANH THU HÔM NAY' :
-                            revenuePeriod === 'week' ? 'DOANH THU TUẦN NÀY' :
-                            'DOANH THU THÁNG NÀY'
-                        } 
-                        value={stats.totalRevenue || '0 ₫'} 
+                                revenuePeriod === 'day' ? 'DOANH THU HÔM NAY' :
+                                    revenuePeriod === 'week' ? 'DOANH THU TUẦN NÀY' :
+                                        'DOANH THU THÁNG NÀY'
+                        }
+                        value={stats.totalRevenue || '0 ₫'}
                     />
                 </div>
                 <div className="opacity-0 animate-fadeInUp" style={{ animationDelay: '200ms' }}>
@@ -607,8 +606,8 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
                                     <BarChart data={revenueChartData}>
                                         <defs>
                                             <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="0%" stopColor="#10b981" stopOpacity={0.9}/>
-                                                <stop offset="100%" stopColor="#059669" stopOpacity={0.6}/>
+                                                <stop offset="0%" stopColor="#10b981" stopOpacity={0.9} />
+                                                <stop offset="100%" stopColor="#059669" stopOpacity={0.6} />
                                             </linearGradient>
                                         </defs>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -626,14 +625,14 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
                                         <Tooltip
                                             formatter={(value: number) => formatCurrency(value)}
                                             labelFormatter={(label) => `Ngày: ${label}`}
-                                            contentStyle={{ 
+                                            contentStyle={{
                                                 backgroundColor: 'white',
                                                 border: '1px solid #e5e7eb',
                                                 borderRadius: '8px',
                                                 boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                                             }}
                                         />
-                                        <Legend 
+                                        <Legend
                                             wrapperStyle={{ fontWeight: 600, fontSize: '13px' }}
                                         />
                                         <Bar
@@ -688,12 +687,11 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
                                 {topServices.map((service, index) => (
                                     <li key={index} className="flex justify-between items-center p-3 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border border-gray-100">
                                         <div className="flex items-center gap-3">
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
-                                                index === 0 ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white' :
-                                                index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-white' :
-                                                index === 2 ? 'bg-gradient-to-br from-orange-400 to-red-500 text-white' :
-                                                'bg-gradient-to-br from-blue-400 to-indigo-500 text-white'
-                                            }`}>
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${index === 0 ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white' :
+                                                    index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-white' :
+                                                        index === 2 ? 'bg-gradient-to-br from-orange-400 to-red-500 text-white' :
+                                                            'bg-gradient-to-br from-blue-400 to-indigo-500 text-white'
+                                                }`}>
                                                 {index + 1}
                                             </div>
                                             <span className="font-semibold text-gray-700">{service.name}</span>

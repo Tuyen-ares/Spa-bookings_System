@@ -6,6 +6,7 @@ const db = require('../config/database'); // Sequelize models
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
 const bcrypt = require('bcryptjs');
+const appointmentService = require('../services/appointmentService');
 
 // --- Helper Functions ---
 
@@ -182,6 +183,74 @@ const notifyAdmins = async (type, title, message, relatedId = null) => {
 };
 
 const updateUserAndWalletAfterAppointment = async (userId, appointment) => { /* ... (same as before) ... */ };
+
+/**
+ * Helper function: Kiểm tra xung đột nhân viên dựa trên thời gian dịch vụ
+ * Nếu nhân viên A phân công cho khách X, giờ C, dịch vụ X có duration D,
+ * thì khi đặt lịch cho khách Y cùng nhân viên A, giờ R với dịch vụ Y, duration E,
+ * phải kiểm tra xem [C, C+D) và [R, R+E) có overlap không
+ */
+const checkTherapistTimeConflict = async (therapistId, appointmentDate, appointmentTime, serviceDuration) => {
+    try {
+        // Lấy tất cả appointments của nhân viên vào ngày đó (status != cancelled)
+        const therapistAppointments = await db.Appointment.findAll({
+            where: {
+                therapistId: therapistId,
+                date: appointmentDate,
+                status: { [Op.ne]: 'cancelled' }
+            },
+            include: [{
+                model: db.Service,
+                attributes: ['id', 'name', 'duration']
+            }]
+        });
+
+        if (therapistAppointments.length === 0) {
+            return null; // Không có xung đột
+        }
+
+        // Convert thời gian mới thành phút
+        const [newHours, newMinutes] = appointmentTime.split(':').map(Number);
+        const newStartMinutes = newHours * 60 + newMinutes;
+        const newEndMinutes = newStartMinutes + (serviceDuration || 60);
+
+        // Kiểm tra xem có appointment nào overlap với khoảng thời gian mới
+        for (const existingApt of therapistAppointments) {
+            const existingService = existingApt.Service;
+            if (!existingService || !existingService.duration) continue;
+
+            const [existingHours, existingMinutes] = existingApt.time.split(':').map(Number);
+            const existingStartMinutes = existingHours * 60 + existingMinutes;
+            const existingEndMinutes = existingStartMinutes + existingService.duration;
+
+            // Kiểm tra overlap: [newStart, newEnd) overlap [existingStart, existingEnd)
+            const hasOverlap = newStartMinutes < existingEndMinutes && newEndMinutes > existingStartMinutes;
+
+            if (hasOverlap) {
+                return {
+                    conflictAppointment: existingApt,
+                    conflictService: existingService,
+                    newStartMinutes,
+                    newEndMinutes,
+                    existingStartMinutes,
+                    existingEndMinutes,
+                    message: `Nhân viên đã được phân công từ ${existingApt.time} - ${minutesToTime(existingEndMinutes)} cho dịch vụ "${existingService.name}" vào ngày này. Khoảng thời gian overlap với lịch đặt hiện tại (${appointmentTime} - ${minutesToTime(newEndMinutes)}). Vui lòng chọn nhân viên khác hoặc thay đổi thời gian.`
+                };
+            }
+        }
+
+        return null; // Không có xung đột
+    } catch (error) {
+        console.error('Error checking therapist time conflict:', error);
+        throw error;
+    }
+};
+
+const minutesToTime = (minutes) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
 
 const findBestTherapist = async (serviceId, userId, date, time) => {
     // 1. Get service and its category name (use association ServiceCategory)
@@ -374,56 +443,11 @@ router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
 
-        const appointment = await db.Appointment.findByPk(id, {
-            attributes: ['id', 'serviceId', 'serviceName', 'userId', 'date', 'time', 'status', 'paymentStatus', 'therapistId', 'notesForTherapist', 'staffNotesAfterSession', 'rejectionReason', 'bookingGroupId', 'promotionId'],
-            include: [
-                {
-                    model: db.User,
-                    as: 'Client',
-                    attributes: ['id', 'name', 'email', 'phone']
-                },
-                {
-                    model: db.User,
-                    as: 'Therapist',
-                    attributes: ['id', 'name', 'email', 'phone']
-                },
-                {
-                    model: db.Service,
-                    attributes: ['id', 'name', 'description', 'price', 'duration']
-                },
-                {
-                    model: db.TreatmentSession,
-                    as: 'TreatmentSession',
-                    attributes: ['id', 'sessionNumber', 'adminNotes', 'customerStatusNotes', 'status', 'treatmentCourseId'],
-                    required: false,
-                    include: [
-                        {
-                            model: db.TreatmentCourse,
-                            as: 'TreatmentCourse',
-                            attributes: ['id', 'totalSessions', 'completedSessions', 'serviceName', 'paymentStatus'],
-                            required: false
-                        }
-                    ]
-                }
-            ]
-        });
+        // Use service function to get appointment with session calculation
+        const appointmentData = await appointmentService.getAppointmentById(id);
 
-        if (!appointment) {
+        if (!appointmentData) {
             return res.status(404).json({ message: 'Không tìm thấy lịch hẹn' });
-        }
-
-        // Map appointment to include paymentStatus from TreatmentCourse if available
-        const appointmentData = appointment.toJSON();
-
-        // QUAN TRỌNG: Sử dụng helper function để xác định paymentStatus
-        const originalPaymentStatus = appointmentData.paymentStatus;
-        const finalPaymentStatus = await getAppointmentPaymentStatus(appointmentData);
-        appointmentData.paymentStatus = finalPaymentStatus;
-
-        if (originalPaymentStatus !== finalPaymentStatus) {
-            console.log(`✅ [GET /api/appointments/:id] Appointment ${appointmentData.id} paymentStatus changed: ${originalPaymentStatus} → ${finalPaymentStatus}`);
-        } else {
-            console.log(`✅ [GET /api/appointments/:id] Appointment ${appointmentData.id} paymentStatus = '${finalPaymentStatus}'`);
         }
 
         res.json(appointmentData);
@@ -832,6 +856,35 @@ router.post('/', async (req, res) => {
             }
         }
 
+        // ==========================================
+        // VALIDATION: Kiểm tra xung đột nhân viên dựa trên thời gian dịch vụ
+        // ==========================================
+        if (finalTherapistId && newAppointmentData.date && newAppointmentData.time) {
+            const conflict = await checkTherapistTimeConflict(
+                finalTherapistId,
+                newAppointmentData.date,
+                newAppointmentData.time,
+                service.duration || 60
+            );
+
+            if (conflict) {
+                console.log(`\n⚠️ [THERAPIST CONFLICT] ==========================================`);
+                console.log(`   Therapist ${finalTherapistId} has time conflict`);
+                console.log(`   Conflict message: ${conflict.message}`);
+                console.log(`⚠️ [THERAPIST CONFLICT] ==========================================\n`);
+
+                return res.status(400).json({
+                    message: conflict.message,
+                    conflict: {
+                        therapistId: finalTherapistId,
+                        conflictAppointmentId: conflict.conflictAppointment.id,
+                        conflictTime: `${conflict.conflictAppointment.time} - ${minutesToTime(conflict.existingEndMinutes)}`,
+                        conflictService: conflict.conflictService.name
+                    }
+                });
+            }
+        }
+
         // Validate promotion if provided
         if (newAppointmentData.promotionId) {
             const promotion = await db.Promotion.findByPk(newAppointmentData.promotionId);
@@ -1041,6 +1094,7 @@ router.post('/', async (req, res) => {
         // Check if this is a treatment course booking (quantity >= 1, meaning all bookings are treatment courses)
         const quantity = newAppointmentData.quantity || 1;
         let treatmentCourseId = null;
+        const createdAppointments = []; // Store all created appointments
 
         if (quantity >= 1) {
             // Create treatment course
@@ -1125,42 +1179,56 @@ router.post('/', async (req, res) => {
                 });
             }
 
-            await db.TreatmentSession.bulkCreate(sessions);
+            const createdSessions = await db.TreatmentSession.bulkCreate(sessions);
             console.log(`✅ Created treatment course ${treatmentCourse.id} with ${quantity} sessions`);
-        }
 
-        // Create appointment
-        const createdAppointment = await db.Appointment.create({
-            id: `apt-${uuidv4()}`,
-            serviceName: service.name,
-            status: appointmentStatus,
-            userId: finalUserId,
-            date: newAppointmentData.date,
-            time: newAppointmentData.time,
-            serviceId: newAppointmentData.serviceId,
-            therapistId: finalTherapistId,
-            notesForTherapist: newAppointmentData.notesForTherapist || null,
-            promotionId: newAppointmentData.promotionId || null, // Save promotion ID if provided
-            bookingGroupId: newAppointmentData.bookingGroupId || null,
-        });
+            // Create appointments for ALL sessions (not just session 1)
+            for (let i = 0; i < createdSessions.length; i++) {
+                const session = createdSessions[i];
 
-        // Link first treatment session to appointment if treatment course was created
-        if (treatmentCourseId) {
-            const firstSession = await db.TreatmentSession.findOne({
-                where: {
-                    treatmentCourseId: treatmentCourseId,
-                    sessionNumber: 1,
-                },
-            });
-
-            if (firstSession) {
-                await firstSession.update({
-                    appointmentId: createdAppointment.id,
-                    sessionDate: newAppointmentData.date,
-                    sessionTime: newAppointmentData.time,
+                const appointment = await db.Appointment.create({
+                    id: `apt-${uuidv4()}`,
+                    serviceName: service.name,
+                    status: appointmentStatus,
+                    userId: finalUserId,
+                    date: session.sessionDate,
+                    time: session.sessionTime,
+                    serviceId: newAppointmentData.serviceId,
+                    therapistId: finalTherapistId,
+                    notesForTherapist: i === 0 ? (newAppointmentData.notesForTherapist || null) : null,
+                    promotionId: i === 0 ? (newAppointmentData.promotionId || null) : null,
+                    bookingGroupId: `group-${treatmentCourse.id}`,
                 });
+
+                // Link session to appointment
+                await session.update({
+                    appointmentId: appointment.id,
+                });
+
+                createdAppointments.push(appointment);
+                console.log(`✅ Created appointment ${i + 1}/${quantity}: ${appointment.id} for session ${session.sessionNumber} on ${session.sessionDate} ${session.sessionTime}`);
             }
+        } else {
+            // Single appointment (no treatment course)
+            const appointment = await db.Appointment.create({
+                id: `apt-${uuidv4()}`,
+                serviceName: service.name,
+                status: appointmentStatus,
+                userId: finalUserId,
+                date: newAppointmentData.date,
+                time: newAppointmentData.time,
+                serviceId: newAppointmentData.serviceId,
+                therapistId: finalTherapistId,
+                notesForTherapist: newAppointmentData.notesForTherapist || null,
+                promotionId: newAppointmentData.promotionId || null,
+                bookingGroupId: newAppointmentData.bookingGroupId || null,
+            });
+            createdAppointments.push(appointment);
+            console.log(`✅ Created single appointment: ${appointment.id}`);
         }
+
+        const createdAppointment = createdAppointments[0]; // Keep reference for voucher logic below
+
 
         // ==========================================
         // TRỪ VOUCHER NGAY KHI ĐẶT LỊCH
@@ -1364,8 +1432,9 @@ router.post('/', async (req, res) => {
         }
 
         res.status(201).json({
-            ...createdAppointment.toJSON(),
+            appointments: createdAppointments.map(apt => apt.toJSON()),
             treatmentCourseId: treatmentCourseId,
+            message: `Successfully created ${createdAppointments.length} appointment(s)${treatmentCourseId ? ' with treatment course' : ''}`,
         });
 
         // Notify admins about new appointment (async, don't wait)
@@ -1445,6 +1514,38 @@ router.put('/:id', async (req, res) => {
             const appointmentDate = updatedData.date || appointment.date;
             const appointmentTime = updatedData.time || appointment.time;
 
+            // Lấy service duration
+            const appointmentService = await db.Service.findByPk(appointment.serviceId, {
+                attributes: ['id', 'name', 'duration']
+            });
+            const serviceDuration = appointmentService?.duration || 60;
+
+            // Kiểm tra xung đột khung giờ dịch vụ (new logic)
+            const conflict = await checkTherapistTimeConflict(
+                therapistId,
+                appointmentDate,
+                appointmentTime,
+                serviceDuration
+            );
+
+            if (conflict) {
+                console.log(`\n⚠️ [PUT THERAPIST CONFLICT] ==========================================`);
+                console.log(`   Therapist ${therapistId} has time conflict when updating appointment ${id}`);
+                console.log(`   Conflict message: ${conflict.message}`);
+                console.log(`⚠️ [PUT THERAPIST CONFLICT] ==========================================\n`);
+
+                return res.status(400).json({
+                    message: conflict.message,
+                    conflict: {
+                        therapistId: therapistId,
+                        conflictAppointmentId: conflict.conflictAppointment.id,
+                        conflictTime: `${conflict.conflictAppointment.time} - ${minutesToTime(conflict.existingEndMinutes)}`,
+                        conflictService: conflict.conflictService.name
+                    }
+                });
+            }
+
+            // Old logic (keep for backward compatibility if needed)
             // Find conflicting appointments (same therapist, same date, same time, different appointment)
             const conflictingAppointment = await db.Appointment.findOne({
                 where: {
@@ -2533,6 +2634,141 @@ router.put('/:id/confirm', async (req, res) => {
         await transaction.rollback();
         console.error('Error confirming appointment:', error);
         res.status(500).json({ message: 'Error confirming appointment', error: error.message });
+    }
+});
+
+// DELETE: Cancel all appointments of a booking group (hủy toàn bộ lịch dịch vụ)
+router.delete('/cancel-all/:appointmentId', async (req, res) => {
+    const transaction = await db.sequelize.transaction();
+    
+    try {
+        const { appointmentId } = req.params;
+        const { reason } = req.body;
+
+        // Find the appointment to get bookingGroupId
+        const appointment = await db.Appointment.findByPk(appointmentId, { transaction });
+
+        if (!appointment) {
+            await transaction.rollback();
+            return res.status(404).json({ message: 'Appointment not found' });
+        }
+
+        // Find all appointments with the same bookingGroupId and serviceId
+        const appointmentsToCancel = await db.Appointment.findAll({
+            where: {
+                bookingGroupId: appointment.bookingGroupId,
+                serviceId: appointment.serviceId,
+                userId: appointment.userId,
+                status: { [db.sequelize.Sequelize.Op.ne]: 'cancelled' } // Exclude already cancelled
+            },
+            transaction
+        });
+
+        if (appointmentsToCancel.length === 0) {
+            await transaction.rollback();
+            return res.status(404).json({ message: 'No appointments to cancel' });
+        }
+
+        // Cancel all appointments
+        const cancelledIds = [];
+        for (const apt of appointmentsToCancel) {
+            await apt.update({
+                status: 'cancelled',
+                rejectionReason: reason || 'Khách hàng yêu cầu hủy'
+            }, { transaction });
+            cancelledIds.push(apt.id);
+        }
+
+        // If there's a treatment course, update its status
+        const treatmentSession = await db.TreatmentSession.findOne({
+            where: { appointmentId: appointmentId },
+            transaction
+        });
+
+        if (treatmentSession) {
+            const treatmentCourse = await db.TreatmentCourse.findByPk(
+                treatmentSession.treatmentCourseId,
+                { transaction }
+            );
+
+            if (treatmentCourse) {
+                await treatmentCourse.update({
+                    status: 'cancelled'
+                }, { transaction });
+
+                console.log(`✅ Treatment course ${treatmentCourse.id} cancelled`);
+            }
+        }
+
+        await transaction.commit();
+
+        res.json({
+            message: `Successfully cancelled ${cancelledIds.length} appointments`,
+            cancelledCount: cancelledIds.length,
+            cancelledIds: cancelledIds
+        });
+    } catch (error) {
+        await transaction.rollback();
+        console.error('Error cancelling appointments:', error);
+        res.status(500).json({ message: 'Error cancelling appointments', error: error.message });
+    }
+});
+
+// DELETE: Cancel an entire treatment course (hủy toàn bộ liệu trình)
+router.delete('/cancel-treatment-course/:treatmentCourseId', async (req, res) => {
+    const transaction = await db.sequelize.transaction();
+    
+    try {
+        const { treatmentCourseId } = req.params;
+        const { reason } = req.body;
+
+        // Find treatment course
+        const treatmentCourse = await db.TreatmentCourse.findByPk(treatmentCourseId, { transaction });
+
+        if (!treatmentCourse) {
+            await transaction.rollback();
+            return res.status(404).json({ message: 'Treatment course not found' });
+        }
+
+        // Update treatment course status
+        await treatmentCourse.update({
+            status: 'cancelled'
+        }, { transaction });
+
+        // Find and cancel all related treatment sessions
+        const treatmentSessions = await db.TreatmentSession.findAll({
+            where: { treatmentCourseId: treatmentCourseId },
+            transaction
+        });
+
+        const cancelledAppointmentIds = [];
+
+        // Cancel all related appointments
+        for (const session of treatmentSessions) {
+            if (session.appointmentId) {
+                const appointment = await db.Appointment.findByPk(session.appointmentId, { transaction });
+                if (appointment && appointment.status !== 'cancelled') {
+                    await appointment.update({
+                        status: 'cancelled',
+                        rejectionReason: reason || 'Liệu trình bị hủy'
+                    }, { transaction });
+                    cancelledAppointmentIds.push(appointment.id);
+                }
+            }
+        }
+
+        await transaction.commit();
+
+        res.json({
+            message: `Treatment course cancelled successfully with ${cancelledAppointmentIds.length} appointments`,
+            treatmentCourseId: treatmentCourseId,
+            cancelledAppointmentCount: cancelledAppointmentIds.length,
+            cancelledAppointmentIds: cancelledAppointmentIds
+        });
+    } catch (error) {
+        await transaction.rollback();
+        console.error('Error cancelling treatment course:', error);
+        res.status(500).json({ message: 'Error cancelling treatment course', error: error.message });
     }
 });
 

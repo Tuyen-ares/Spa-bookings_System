@@ -103,6 +103,12 @@ router.get('/', async (req, res) => {
                             as: 'Staff',
                             attributes: ['id', 'name', 'email', 'phone'],
                             required: false
+                        },
+                        {
+                            model: db.Appointment,
+                            as: 'Appointment',
+                            attributes: ['id', 'date', 'time', 'status', 'therapistId'],
+                            required: false
                         }
                     ],
                     order: [['sessionNumber', 'ASC']],

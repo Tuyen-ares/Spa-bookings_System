@@ -76,7 +76,7 @@
 //             for (let minute = 0; minute < 60; minute += 15) {
 //                 // Stop at 22:00
 //                 if (hour === 22 && minute > 0) break;
-                
+
 //                 const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 //                 slots.push(timeString);
 //             }
@@ -87,7 +87,7 @@
 //     // Get available time slots based on selected date
 //     const getAvailableTimeSlots = () => {
 //         const allSlots = generateTimeSlots();
-        
+
 //         // If no date selected, return all slots
 //         if (!selectedDate) {
 //             return allSlots;
@@ -95,7 +95,7 @@
 
 //         const today = new Date();
 //         const selectedDateObj = new Date(selectedDate);
-        
+
 //         // Check if selected date is today
 //         const isToday = 
 //             selectedDateObj.getFullYear() === today.getFullYear() &&
@@ -155,7 +155,7 @@
 //         try {
 //             console.log('Loading initial data...');
 //             console.log('API Base URL:', 'http://localhost:3001/api');
-            
+
 //             // Try to fetch services first to check connection
 //             try {
 //                 const testResponse = await fetch('http://localhost:3001/api/services');
@@ -170,7 +170,7 @@
 //                 }
 //                 throw testError;
 //             }
-            
+
 //             const [servicesData, categoriesData, usersData, promotionsData, coursesData, reviewsData, appointmentsData] = await Promise.all([
 //                 apiService.getServices().catch(err => { console.error('Error fetching services:', err); throw err; }),
 //                 apiService.getServiceCategories().catch(err => { console.error('Error fetching categories:', err); return []; }),
@@ -184,11 +184,11 @@
 
 //             console.log('Services data received:', servicesData);
 //             console.log('Services count:', servicesData?.length || 0);
-            
+
 //             // Filter active services (include null/undefined as active)
 //             const activeServices = servicesData.filter(s => s.isActive === true || s.isActive === undefined || s.isActive === null);
 //             console.log('Active services count:', activeServices.length);
-            
+
 //             setServices(activeServices);
 //             setCategories(categoriesData || []);
 //             // Parse applicableServiceIds if they're strings (from JSON)
@@ -210,7 +210,7 @@
 
 //             if (currentUser) {
 //                 setUserAppointments(appointmentsData.filter(a => a.userId === currentUser.id));
-                
+
 //                 // Check if today is user's birthday
 //                 if (currentUser.birthday) {
 //                     const today = new Date();
@@ -235,7 +235,7 @@
 //         } catch (error: any) {
 //             console.error('Error loading data:', error);
 //             console.error('Error details:', error.message, error.stack);
-            
+
 //             // More specific error messages
 //             let errorMessage = 'Không thể tải dữ liệu. Vui lòng thử lại sau.';
 //             if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
@@ -243,7 +243,7 @@
 //             } else if (error.message) {
 //                 errorMessage = `Lỗi: ${error.message}`;
 //             }
-            
+
 //             alert(errorMessage);
 //         }
 //     };
@@ -285,7 +285,7 @@
 //                 setApplicablePromotions([]);
 //                 return;
 //             }
-            
+
 //             try {
 //                 // Get promotions for first selected service (or all if multiple)
 //                 const firstService = selectedServices[0].service;
@@ -296,7 +296,7 @@
 //                 setApplicablePromotions([]);
 //             }
 //         };
-        
+
 //         loadApplicablePromotions();
 //     }, [currentUser, selectedServices]);
 
@@ -339,7 +339,7 @@
 //     const handleProcessPayment = async () => {
 //         try {
 //             const bookingGroupId = uuidv4();
-            
+
 //             // Validate promotion is still applicable
 //             if (selectedPromotion) {
 //                 const isStillApplicable = applicablePromotions.some(p => p.id === selectedPromotion.id);
@@ -349,7 +349,7 @@
 //                     return;
 //                 }
 //             }
-            
+
 //             // Create ONE appointment per service (backend will handle treatment course if quantity >= 1, all bookings create courses)
 //             const appointmentsToCreate = selectedServices.map(({ service, quantity }) => ({
 //                 id: `apt-${uuidv4()}`,
@@ -415,7 +415,7 @@
 //                 } catch (error) {
 //                     console.error('Failed to refresh appointments:', error);
 //                 }
-                
+
 //                 alert('Đặt lịch thành công! Vui lòng thanh toán tại quầy.');
 //                 navigate('/appointments');
 //             }
@@ -461,7 +461,7 @@
 
 //     const renderStep1 = () => {
 //         const selectedServiceIds = selectedServices.map(s => s.service.id);
-        
+
 //         return (
 //             <div className="max-w-4xl mx-auto">
 //                 {/* Category Filter */}
@@ -499,7 +499,7 @@
 //                                 const isSelected = selectedServiceIds.includes(service.id);
 //                                 const selectedItem = selectedServices.find(s => s.service.id === service.id);
 //                                 const quantity = selectedItem?.quantity || 1;
-                                
+
 //                                 return (
 //                                     <div
 //                                         key={service.id}
@@ -519,7 +519,7 @@
 //                                                     }}
 //                                                 />
 //                                             )}
-                                            
+
 //                                             <div className="flex-1">
 //                                                 <div className="flex items-center gap-3 mb-2">
 //                                                     <input
@@ -539,7 +539,7 @@
 //                                                         </div>
 //                                                     </div>
 //                                                 </div>
-                                                
+
 //                                                 {/* Quantity Selector - Show for all services */}
 //                                                 <div className="ml-8 mt-3 flex items-center gap-3">
 //                                                     <label className="text-sm font-medium text-gray-700">Chọn số lượng:</label>
@@ -633,9 +633,9 @@
 //                             if (value.length > 0) formatted = value.slice(0, 2);
 //                             if (value.length > 2) formatted += '-' + value.slice(2, 4);
 //                             if (value.length > 4) formatted += '-' + value.slice(4, 8);
-                            
+
 //                             setDateInputValue(formatted);
-                            
+
 //                             // Parse to YYYY-MM-DD when complete (8 digits)
 //                             if (value.length === 8) {
 //                                 const parsed = parseDateInput(formatted);
@@ -718,7 +718,7 @@
 //                         selectedDateObj.getFullYear() === today.getFullYear() &&
 //                         selectedDateObj.getMonth() === today.getMonth() &&
 //                         selectedDateObj.getDate() === today.getDate();
-                    
+
 //                     if (isToday) {
 //                         const now = new Date();
 //                         const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -800,12 +800,12 @@
 //                             onChange={(e) => {
 //                                 const selectedCode = e.target.value;
 //                                 setPromoCode(selectedCode);
-                                
+
 //                                 if (!selectedCode) {
 //                                     setSelectedPromotion(null);
 //                                     return;
 //                                 }
-                                
+
 //                                 // Find promotion by code from applicable promotions first, then from all public promotions
 //                                 const promo = applicablePromotions.find(p => 
 //                                     p.code && selectedCode && 
@@ -815,7 +815,7 @@
 //                                     p.code.toUpperCase().trim() === selectedCode.toUpperCase().trim() &&
 //                                     p.isPublic === true // Only public promotions
 //                                 );
-                                
+
 //                                 if (promo) {
 //                                     // Check if promotion is active
 //                                     if (promo.isActive === false) {
@@ -851,31 +851,31 @@
 //                                 // Get all public promotions that are active and not expired
 //                                 const today = new Date();
 //                                 today.setHours(0, 0, 0, 0);
-                                
+
 //                                 // Get selected service IDs
 //                                 const selectedServiceIds = selectedServices.map(({ service }) => service.id);
-                                
+
 //                                 // If no services selected, don't show any promotions
 //                                 if (selectedServiceIds.length === 0) {
 //                                     return null;
 //                                 }
-                                
+
 //                                 // Filter promotions based on conditions
 //                                 const filteredPromotions = promotions.filter(p => {
 //                                     // Must be public
 //                                     if (p.isPublic !== true) return false;
-                                    
+
 //                                     // Must be active
 //                                     if (p.isActive === false) return false;
-                                    
+
 //                                     // Check expiry
 //                                     const expiryDate = new Date(p.expiryDate);
 //                                     expiryDate.setHours(0, 0, 0, 0);
 //                                     if (today > expiryDate) return false;
-                                    
+
 //                                     // Check stock
 //                                     if (p.stock !== null && p.stock <= 0) return false;
-                                    
+
 //                                     // IMPORTANT: Check if promotion applies to selected services
 //                                     // Parse applicableServiceIds if it's a string (from JSON)
 //                                     let applicableServiceIdsArray: string[] = [];
@@ -891,7 +891,7 @@
 //                                             applicableServiceIdsArray = p.applicableServiceIds;
 //                                         }
 //                                     }
-                                    
+
 //                                     // If promotion has applicableServiceIds and it's not empty, it must match at least one selected service
 //                                     if (applicableServiceIdsArray && applicableServiceIdsArray.length > 0) {
 //                                         // Promotion is for specific services - check if any selected service matches
@@ -904,7 +904,7 @@
 //                                         }
 //                                     }
 //                                     // If applicableServiceIds is empty/null, promotion applies to all services (no filter needed)
-                                    
+
 //                                     // Filter by target audience
 //                                     if (p.targetAudience === 'Birthday') {
 //                                         // Only show if today is user's birthday
@@ -912,7 +912,7 @@
 //                                     } else if (p.targetAudience === 'New Clients') {
 //                                         // Only show if user hasn't used this service before
 //                                         if (!currentUser) return false;
-                                        
+
 //                                         // Check if user has used any of the selected services
 //                                         // For new client promotions, check each service individually
 //                                         const hasUsedAnySelectedService = selectedServiceIds.some(serviceId => {
@@ -921,25 +921,25 @@
 //                                                 apt.status === 'completed'
 //                                             );
 //                                         });
-                                        
+
 //                                         // If user has used any selected service, don't show new client promotion
 //                                         if (hasUsedAnySelectedService) return false;
-                                        
+
 //                                         // For new client promotions with specific services, 
 //                                         // we already checked applicableServiceIds above
 //                                     }
 //                                     // For "All" and other target audiences, no additional filtering needed
-                                    
+
 //                                     return true;
 //                                 });
-                                
+
 //                                 // Also include applicable promotions from API (which backend already filtered)
 //                                 // But we need to filter them again by selected services
 //                                 const filteredApplicablePromotions = applicablePromotions.filter(p => {
 //                                     if (p.isPublic !== true) return false;
 //                                     if (p.isActive !== false) return false;
 //                                     if (p.stock !== null && p.stock <= 0) return false;
-                                    
+
 //                                     // Parse applicableServiceIds if it's a string (from JSON)
 //                                     let applicableServiceIdsArray: string[] = [];
 //                                     if (p.applicableServiceIds) {
@@ -954,7 +954,7 @@
 //                                             applicableServiceIdsArray = p.applicableServiceIds;
 //                                         }
 //                                     }
-                                    
+
 //                                     // Check if promotion applies to selected services
 //                                     if (applicableServiceIdsArray && applicableServiceIdsArray.length > 0) {
 //                                         const matchesService = selectedServiceIds.some(serviceId => 
@@ -962,21 +962,21 @@
 //                                         );
 //                                         if (!matchesService) return false;
 //                                     }
-                                    
+
 //                                     return true;
 //                                 });
-                                
+
 //                                 // Combine both lists
 //                                 const allAvailablePromotions = [
 //                                     ...filteredApplicablePromotions,
 //                                     ...filteredPromotions
 //                                 ];
-                                
+
 //                                 // Remove duplicates by code
 //                                 const uniquePromotions = Array.from(
 //                                     new Map(allAvailablePromotions.map(p => [p.code, p])).values()
 //                                 );
-                                
+
 //                                 return uniquePromotions.map(promo => (
 //                                     <option key={promo.id} value={promo.code}>
 //                                         {promo.code} - {promo.title} 
@@ -988,7 +988,7 @@
 //                             })()}
 //                         </select>
 //                     </div>
-                    
+
 //                     {selectedPromotion && (
 //                         <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
 //                             <p className="text-sm text-green-800">
@@ -1045,7 +1045,7 @@
 //             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
 //                 <div className="bg-white rounded-lg p-6 max-w-md w-full">
 //                     <h2 className="text-2xl font-bold   text-gray-800 mb-4">Chọn phương thức thanh toán</h2>
-                    
+
 //                     <div className="space-y-3 mb-6">
 //                         <button
 //                             onClick={() => setPaymentMethod('VNPay')}
@@ -1056,7 +1056,7 @@
 //                             <VNPayIcon className="w-8 h-8" />
 //                             <span className="font-semibold">Thanh toán VNPay</span>
 //                         </button>
-                        
+
 //                         <button
 //                             onClick={() => setPaymentMethod('Cash')}
 //                             className={`w-full p-4 border rounded-lg flex items-center gap-3 ${
@@ -1091,9 +1091,9 @@
 //         <div className="min-h-screen bg-gray-50 py-8">
 //             <div className="container mx-auto px-4">
 //                 <h1 className="text-3xl font-bold text-center text-amber-700 mb-8">Đặt Lịch Hẹn</h1>
-                
+
 //                 {renderStepIndicator()}
-                
+
 //                 <div className="mt-8">
 //                     {currentStep === 1 && renderStep1()}
 //                     {currentStep === 2 && renderStep2()}
@@ -1126,7 +1126,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const serviceIdFromUrl = searchParams.get('serviceId');
-    
+
     const dateInputRef = useRef<HTMLInputElement>(null);
 
     // Format date from YYYY-MM-DD to dd-mm-yyyy
@@ -1187,7 +1187,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             for (let minute = 0; minute < 60; minute += 15) {
                 // Stop at 22:00
                 if (hour === 22 && minute > 0) break;
-                
+
                 const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
                 slots.push(timeString);
             }
@@ -1198,7 +1198,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     // Get available time slots based on selected date
     const getAvailableTimeSlots = () => {
         const allSlots = generateTimeSlots();
-        
+
         // If no date selected, return all slots
         if (!selectedDate) {
             return allSlots;
@@ -1206,9 +1206,9 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
         const today = new Date();
         const selectedDateObj = new Date(selectedDate);
-        
+
         // Check if selected date is today
-        const isToday = 
+        const isToday =
             selectedDateObj.getFullYear() === today.getFullYear() &&
             selectedDateObj.getMonth() === today.getMonth() &&
             selectedDateObj.getDate() === today.getDate();
@@ -1259,16 +1259,16 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     // Load data
     useEffect(() => {
         loadInitialData();
-        
+
         // Listen for refresh events (e.g., after payment success)
         const handleRefresh = () => {
             console.log('🔄 [BookingPage] Refreshing data after payment/voucher usage...');
             loadInitialData();
         };
-        
+
         window.addEventListener('refresh-vouchers', handleRefresh);
         window.addEventListener('refresh-appointments', handleRefresh);
-        
+
         return () => {
             window.removeEventListener('refresh-vouchers', handleRefresh);
             window.removeEventListener('refresh-appointments', handleRefresh);
@@ -1321,7 +1321,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             const appointmentsData = results[6].status === 'fulfilled' ? results[6].value : [];
 
             const activeServices = servicesData.filter(s => s.isActive === true || s.isActive === undefined || s.isActive === null);
-            
+
             setServices(activeServices);
             setCategories(categoriesData || []);
             const parsedPromotions = promotionsData.filter(p => p.isActive !== false).map(p => {
@@ -1344,8 +1344,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 if (currentUser.birthday) {
                     const today = new Date();
                     const birthday = new Date(currentUser.birthday);
-                    const isTodayBirthday = birthday.getMonth() === today.getMonth() && 
-                                           birthday.getDate() === today.getDate();
+                    const isTodayBirthday = birthday.getMonth() === today.getMonth() &&
+                        birthday.getDate() === today.getDate();
                     setIsBirthday(isTodayBirthday);
                 }
                 // Fetch redeemed vouchers for usage validation
@@ -1387,15 +1387,15 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
     const handleQuantityChange = (serviceId: string, quantity: number) => {
         if (quantity < 1) return;
-        setSelectedServices(selectedServices.map(item => 
-            item.service.id === serviceId 
-                ? { ...item, quantity } 
+        setSelectedServices(selectedServices.map(item =>
+            item.service.id === serviceId
+                ? { ...item, quantity }
                 : item
         ));
     };
 
     const filteredServices = useMemo(() => {
-        const filtered = selectedCategory 
+        const filtered = selectedCategory
             ? services.filter(s => s.categoryId === selectedCategory)
             : services;
         return filtered;
@@ -1412,7 +1412,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 const firstService = selectedServices[0].service;
                 const applicable = await apiService.getApplicablePromotions(currentUser.id, firstService.id);
                 setApplicablePromotions(applicable);
-                
+
                 // Also reload redeemed vouchers to ensure they are up-to-date
                 try {
                     const fetchedRedeemed = await apiService.getMyRedeemedVouchers(currentUser.id);
@@ -1433,10 +1433,10 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        
+
         // Calculate current order total
         const currentOrderTotal = selectedServices.reduce((sum, { service, quantity }) => sum + ((service.discountPrice || service.price) * quantity), 0);
-        
+
         let isStillValid = true;
         let invalidReason = '';
 
@@ -1445,13 +1445,13 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             isStillValid = false;
             invalidReason = 'Mã khuyến mãi này không còn hoạt động';
         }
-        
+
         // Check expiry
         else if (new Date(selectedPromotion.expiryDate) < today) {
             isStillValid = false;
             invalidReason = 'Mã khuyến mãi đã hết hạn';
         }
-        
+
         // Check stock - CHỈ kiểm tra cho voucher public, KHÔNG kiểm tra cho voucher đổi điểm
         else if (selectedPromotion.isPublic !== false && selectedPromotion.stock !== null && selectedPromotion.stock !== undefined && selectedPromotion.stock <= 0) {
             // Voucher public: kiểm tra stock
@@ -1459,8 +1459,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             invalidReason = 'Mã khuyến mãi đã hết lượt sử dụng';
         } else if (selectedPromotion.isPublic === false) {
             // Voucher đổi điểm: kiểm tra redeemedCount thay vì stock
-            const redeemedVoucher = redeemedVouchers.find((v: any) => 
-                v.code && selectedPromotion.code && 
+            const redeemedVoucher = redeemedVouchers.find((v: any) =>
+                v.code && selectedPromotion.code &&
                 v.code.toUpperCase().trim() === selectedPromotion.code.toUpperCase().trim()
             );
             if (!redeemedVoucher || !redeemedVoucher.redeemedCount || redeemedVoucher.redeemedCount <= 0) {
@@ -1468,17 +1468,17 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 invalidReason = 'Bạn không còn voucher này để sử dụng';
             }
         }
-        
+
         // Check minimum order value
         else if (selectedPromotion.minOrderValue && currentOrderTotal < selectedPromotion.minOrderValue) {
             isStillValid = false;
             invalidReason = `Đơn hàng chưa đủ giá trị tối thiểu ${formatPrice(selectedPromotion.minOrderValue)}`;
         }
-        
+
         // Check service applicability
         else if (selectedPromotion.applicableServiceIds && selectedPromotion.applicableServiceIds.length > 0) {
             const selectedServiceIds = selectedServices.map(s => s.service.id);
-            const hasMatch = selectedPromotion.applicableServiceIds.some(promoServiceId => 
+            const hasMatch = selectedPromotion.applicableServiceIds.some(promoServiceId =>
                 selectedServiceIds.includes(promoServiceId)
             );
             if (!hasMatch) {
@@ -1486,7 +1486,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 invalidReason = 'Mã khuyến mãi không áp dụng cho dịch vụ đã chọn';
             }
         }
-        
+
         // Check minimum sessions (số buổi tối thiểu) - parse from termsAndConditions
         else if (selectedPromotion.termsAndConditions) {
             try {
@@ -1496,8 +1496,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                     let totalQuantity = 0;
                     if (selectedPromotion.applicableServiceIds && selectedPromotion.applicableServiceIds.length > 0) {
                         // Voucher chỉ áp dụng cho các services cụ thể - tính tổng quantity của các services đó
-                        const applicableServiceIdsArray = Array.isArray(selectedPromotion.applicableServiceIds) 
-                            ? selectedPromotion.applicableServiceIds 
+                        const applicableServiceIdsArray = Array.isArray(selectedPromotion.applicableServiceIds)
+                            ? selectedPromotion.applicableServiceIds
                             : (typeof selectedPromotion.applicableServiceIds === 'string' ? JSON.parse(selectedPromotion.applicableServiceIds) : []);
                         totalQuantity = selectedServices
                             .filter(({ service }) => applicableServiceIdsArray.includes(service.id))
@@ -1528,37 +1528,37 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     const isPromotionApplicable = (promo: Promotion): boolean => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        
+
         // 1. Must be active
         if (promo.isActive === false) return false;
-        
+
         // 2. Not expired
         const expiryDate = new Date(promo.expiryDate);
         expiryDate.setHours(0, 0, 0, 0);
         if (expiryDate < today) return false;
-        
+
         // 3. Check stock availability - CHỈ cho voucher public, KHÔNG cho voucher đổi điểm
         if (promo.isPublic !== false && promo.stock !== null && promo.stock !== undefined && promo.stock <= 0) return false;
-        
+
         // 4. Calculate current order total
         const currentOrderTotal = selectedServices.reduce(
-            (sum, { service, quantity }) => sum + ((service.discountPrice || service.price) * quantity), 
+            (sum, { service, quantity }) => sum + ((service.discountPrice || service.price) * quantity),
             0
         );
-        
+
         // 5. Check minimum order value
         if (promo.minOrderValue && currentOrderTotal < promo.minOrderValue) return false;
-        
+
         // 6. Check if promo applies to selected services
         if (promo.applicableServiceIds && promo.applicableServiceIds.length > 0) {
             const selectedServiceIds = selectedServices.map(s => s.service.id);
-            const hasMatch = promo.applicableServiceIds.some(promoServiceId => 
+            const hasMatch = promo.applicableServiceIds.some(promoServiceId =>
                 selectedServiceIds.includes(promoServiceId)
             );
             if (!hasMatch) return false;
         }
         // If applicableServiceIds is empty/null, voucher applies to all services
-        
+
         // 6.5. Check minimum sessions (số buổi tối thiểu) - parse from termsAndConditions
         if (promo.termsAndConditions) {
             try {
@@ -1568,8 +1568,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                     let totalQuantity = 0;
                     if (promo.applicableServiceIds && promo.applicableServiceIds.length > 0) {
                         // Voucher chỉ áp dụng cho các services cụ thể - tính tổng quantity của các services đó
-                        const applicableServiceIdsArray = Array.isArray(promo.applicableServiceIds) 
-                            ? promo.applicableServiceIds 
+                        const applicableServiceIdsArray = Array.isArray(promo.applicableServiceIds)
+                            ? promo.applicableServiceIds
                             : (typeof promo.applicableServiceIds === 'string' ? JSON.parse(promo.applicableServiceIds) : []);
                         totalQuantity = selectedServices
                             .filter(({ service }) => applicableServiceIdsArray.includes(service.id))
@@ -1584,43 +1584,43 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 // Not JSON or parse error, ignore (treat as regular text)
             }
         }
-        
+
         // ✅ 7. Check if user has already used this voucher
         if (promo.targetAudience === 'Birthday') {
             // Birthday vouchers: Check if used this year
-            const hasUsedBirthdayVoucher = redeemedVouchers.some(rv => 
+            const hasUsedBirthdayVoucher = redeemedVouchers.some(rv =>
                 rv.targetAudience === 'Birthday' && rv.redeemedCount > 0
             );
             if (hasUsedBirthdayVoucher) return false;
-            
+
             // Also check if today is actually the birthday
             if (!isBirthday) return false;
         }
 
         if (promo.targetAudience === 'New Clients') {
             // New client vouchers: Check if already used
-            const hasUsedNewClientVoucher = redeemedVouchers.some(rv => 
+            const hasUsedNewClientVoucher = redeemedVouchers.some(rv =>
                 rv.targetAudience === 'New Clients' && rv.redeemedCount > 0
             );
             if (hasUsedNewClientVoucher) return false;
-            
+
             // Also check if user has any successful bookings
-            const hasAnySuccessfulBooking = userAppointments.some(app => 
-                app.status !== 'cancelled' && 
-                (app.paymentStatus === 'Paid' || 
-                 (app.status === 'completed' || app.status === 'upcoming' || app.status === 'scheduled'))
+            const hasAnySuccessfulBooking = userAppointments.some(app =>
+                app.status !== 'cancelled' &&
+                (app.paymentStatus === 'Paid' ||
+                    (app.status === 'completed' || app.status === 'upcoming' || app.status === 'scheduled'))
             );
             if (hasAnySuccessfulBooking) return false;
         }
 
         // For other vouchers (Bronze, Silver, Gold, etc.): Check if user has used this specific voucher
         if (promo.targetAudience !== 'Birthday' && promo.targetAudience !== 'New Clients') {
-            const hasUsedThisVoucher = redeemedVouchers.some(rv => 
+            const hasUsedThisVoucher = redeemedVouchers.some(rv =>
                 rv.id === promo.id && rv.redeemedCount > 0
             );
             if (hasUsedThisVoucher) return false;
         }
-        
+
         return true;
     };
 
@@ -1639,9 +1639,9 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     // Step 2: Select Time
     const isTimeSlotBooked = (time: string) => {
         if (!selectedDate) return false;
-        return userAppointments.some(apt => 
-            apt.date === selectedDate && 
-            apt.time === time && 
+        return userAppointments.some(apt =>
+            apt.date === selectedDate &&
+            apt.time === time &&
             apt.status !== 'cancelled'
         );
     };
@@ -1651,7 +1651,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     // Time slot bị chặn nếu có bất kỳ overlap nào (cả đi lùi và đi tiến)
     const isTimeSlotBlocked = (time: string): boolean => {
         if (!selectedDate || selectedServices.length === 0) return false;
-        
+
         // Lấy duration của dịch vụ đang được chọn (lấy dịch vụ đầu tiên nếu có nhiều)
         const selectedService = selectedServices[0].service;
         if (!selectedService || !selectedService.duration) return false;
@@ -1660,8 +1660,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         const newEndTimeInMinutes = newStartTimeInMinutes + selectedService.duration;
 
         // Lấy tất cả appointments của user trong ngày đó (cùng ngày, status != cancelled)
-        const appointmentsOnSelectedDate = userAppointments.filter(apt => 
-            apt.date === selectedDate && 
+        const appointmentsOnSelectedDate = userAppointments.filter(apt =>
+            apt.date === selectedDate &&
             apt.status !== 'cancelled'
         );
 
@@ -1676,8 +1676,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
             // Kiểm tra overlap: Hai khoảng thời gian overlap nếu:
             // newStart < existingEnd && newEnd > existingStart
-            const hasOverlap = newStartTimeInMinutes < existingEndTimeInMinutes && 
-                               newEndTimeInMinutes > existingStartTimeInMinutes;
+            const hasOverlap = newStartTimeInMinutes < existingEndTimeInMinutes &&
+                newEndTimeInMinutes > existingStartTimeInMinutes;
 
             return hasOverlap;
         });
@@ -1703,8 +1703,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         const newEndTimeInMinutes = newStartTimeInMinutes + selectedService.duration;
 
         // Lấy tất cả appointments của user trong ngày đó (cùng ngày, status != cancelled)
-        const appointmentsOnSelectedDate = userAppointments.filter(apt => 
-            apt.date === selectedDate && 
+        const appointmentsOnSelectedDate = userAppointments.filter(apt =>
+            apt.date === selectedDate &&
             apt.status !== 'cancelled'
         );
 
@@ -1751,8 +1751,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     // Step 4: Confirmation
     const calculateTotal = () => {
         const servicesTotal = selectedServices.reduce((sum, { service, quantity }) => sum + ((service.discountPrice || service.price) * quantity), 0);
-        const discount = selectedPromotion ? 
-            (selectedPromotion.discountType === 'percentage' 
+        const discount = selectedPromotion ?
+            (selectedPromotion.discountType === 'percentage'
                 ? servicesTotal * (selectedPromotion.discountValue / 100)
                 : selectedPromotion.discountValue
             ) : 0;
@@ -1779,22 +1779,22 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         if (!currentUser || !treatmentCourses || treatmentCourses.length === 0) {
             return null;
         }
-        
+
         const activeCourse = treatmentCourses.find(course => {
             // Kiểm tra xem course này thuộc về user hiện tại
             if (course.clientId !== currentUser.id) return false;
-            
+
             // Kiểm tra xem course này có cùng serviceId không
             const courseServiceId = course.services?.[0]?.serviceId || course.Service?.id || (course as any).serviceId;
             if (courseServiceId !== serviceId) return false;
-            
+
             // Kiểm tra xem course này chưa hoàn tất (status không phải 'completed' hoặc 'cancelled')
             const status = course.status;
             if (status === 'completed' || status === 'cancelled') return false;
-            
+
             return true;
         });
-        
+
         return activeCourse || null;
     };
 
@@ -1809,7 +1809,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                         const completedSessions = activeCourse.completedSessions || 0;
                         const totalSessions = activeCourse.totalSessions || 0;
                         const progress = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0;
-                        
+
                         console.warn(`⚠️ [DUPLICATE SERVICE BOOKING] User ${currentUser?.id} đang cố đặt lại dịch vụ ${service.id}`);
                         console.warn(`   Đã tìm thấy liệu trình chưa hoàn tất:`, {
                             courseId: activeCourse.id,
@@ -1817,7 +1817,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                             status: activeCourse.status,
                             progress: `${completedSessions}/${totalSessions} buổi (${progress}%)`
                         });
-                        
+
                         alert(`Bạn đang có liệu trình "${serviceName}" chưa hoàn tất (đã hoàn thành ${completedSessions}/${totalSessions} buổi - ${progress}%).\n\nVui lòng hoàn tất liệu trình hiện tại trước khi đặt lại dịch vụ này.`);
                         setIsPaymentModalOpen(false);
                         return;
@@ -1830,11 +1830,11 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             if (selectedPromotion) {
                 // Normalize isPublic to boolean (handle cases where backend returns number/string)
                 const isPublicValue: any = selectedPromotion.isPublic;
-                const normalizedIsPublic = isPublicValue === true || 
-                                         isPublicValue === 1 || 
-                                         (typeof isPublicValue === 'string' && isPublicValue === '1');
+                const normalizedIsPublic = isPublicValue === true ||
+                    isPublicValue === 1 ||
+                    (typeof isPublicValue === 'string' && isPublicValue === '1');
                 const isRedeemedVoucher = !normalizedIsPublic;
-                
+
                 console.log('🔍 [PRE-BOOKING VALIDATION] Checking voucher:', {
                     code: selectedPromotion.code,
                     id: selectedPromotion.id,
@@ -1843,20 +1843,20 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                     isRedeemedVoucher: isRedeemedVoucher,
                     redeemedVouchersLength: redeemedVouchers.length
                 });
-                
+
                 // Đối với voucher đổi điểm (isPublic = false), kiểm tra trong redeemedVouchers
                 if (isRedeemedVoucher) {
-                    const redeemedVoucher = redeemedVouchers.find((v: any) => 
-                        v.code && selectedPromotion.code && 
+                    const redeemedVoucher = redeemedVouchers.find((v: any) =>
+                        v.code && selectedPromotion.code &&
                         v.code.toUpperCase().trim() === selectedPromotion.code.toUpperCase().trim()
                     );
-                    
+
                     console.log('🔍 [PRE-BOOKING VALIDATION] Redeemed voucher check:', {
                         found: !!redeemedVoucher,
                         redeemedCount: redeemedVoucher?.redeemedCount,
                         isValid: redeemedVoucher && redeemedVoucher.redeemedCount && redeemedVoucher.redeemedCount > 0
                     });
-                    
+
                     if (!redeemedVoucher || !redeemedVoucher.redeemedCount || redeemedVoucher.redeemedCount <= 0) {
                         console.error('❌ [PRE-BOOKING VALIDATION] Redeemed voucher not found or count is 0');
                         alert('Mã khuyến mãi này không còn khả dụng. Vui lòng chọn mã khác.');
@@ -1867,13 +1867,13 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                     // Đối với voucher public, kiểm tra trong applicablePromotions hoặc promotions
                     const isStillApplicable = applicablePromotions.some(p => p.id === selectedPromotion.id);
                     const isGeneralPromo = promotions.find(p => p.id === selectedPromotion.id && p.isActive !== false);
-                    
+
                     console.log('🔍 [PRE-BOOKING VALIDATION] Public voucher check:', {
                         isStillApplicable: isStillApplicable,
                         isGeneralPromo: !!isGeneralPromo,
                         isValid: isStillApplicable || !!isGeneralPromo
                     });
-                    
+
                     if (!isStillApplicable && !isGeneralPromo) {
                         console.error('❌ [PRE-BOOKING VALIDATION] Public voucher not found in applicable lists');
                         alert('Mã khuyến mãi này không còn khả dụng. Vui lòng chọn mã khác.');
@@ -1903,21 +1903,32 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             }));
 
             // Create appointments (promotion will be validated by backend)
-            const createdAppointments = await Promise.all(
+            // Backend may return single Appointment OR { appointments: Appointment[] }
+            const creationResponses = await Promise.all(
                 appointmentsToCreate.map(apt => apiService.createAppointment(apt))
             );
+
+            // Flatten to a single array of appointments
+            const createdAppointments: Appointment[] = [];
+            for (const resp of creationResponses) {
+                if ((resp as any)?.appointments && Array.isArray((resp as any).appointments)) {
+                    createdAppointments.push(...(resp as any).appointments);
+                } else {
+                    createdAppointments.push(resp as Appointment);
+                }
+            }
 
             const totalAmount = calculateTotal();
             console.log('💰 Payment amount calculation:', {
                 servicesTotal: selectedServices.reduce((sum, { service, quantity }) => sum + ((service.discountPrice || service.price) * quantity), 0),
-                discount: selectedPromotion ? (selectedPromotion.discountType === 'percentage' 
+                discount: selectedPromotion ? (selectedPromotion.discountType === 'percentage'
                     ? selectedServices.reduce((sum, { service, quantity }) => sum + ((service.discountPrice || service.price) * quantity), 0) * (selectedPromotion.discountValue / 100)
                     : selectedPromotion.discountValue) : 0,
                 finalAmount: totalAmount,
                 hasPromotion: !!selectedPromotion,
                 promotionCode: selectedPromotion?.code
             });
-            
+
             const result = await apiService.processPayment(
                 createdAppointments[0].id,
                 paymentMethod,
@@ -1927,7 +1938,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             // QUAN TRỌNG: Đợi một chút để đảm bảo backend đã commit update PromotionUsage
             // Sau đó mới refresh để frontend lấy dữ liệu mới nhất
             await new Promise(resolve => setTimeout(resolve, 500)); // Đợi 500ms
-            
+
             // Reload redeemed vouchers ngay lập tức để cập nhật dropdown và state
             if (currentUser) {
                 try {
@@ -1942,7 +1953,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                     console.error('Error reloading redeemed vouchers:', error);
                 }
             }
-            
+
             // Refresh appointments AND vouchers in app (các trang khác sẽ nhận được event này)
             window.dispatchEvent(new Event('refresh-appointments'));
             window.dispatchEvent(new Event('refresh-vouchers'));
@@ -1990,9 +2001,9 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
     const renderStepIndicator = () => {
         const steps = [
-            { num: 1, label: 'Chọn Dịch Vụ', icon: <ShoppingCartIcon className="w-5 h-5"/> },
-            { num: 2, label: 'Chọn Thời Gian', icon: <CalendarIcon className="w-5 h-5"/> },
-            { num: 3, label: 'Xác Nhận', icon: <CheckCircleIcon className="w-5 h-5"/> }
+            { num: 1, label: 'Chọn Dịch Vụ', icon: <ShoppingCartIcon className="w-5 h-5" /> },
+            { num: 2, label: 'Chọn Thời Gian', icon: <CalendarIcon className="w-5 h-5" /> },
+            { num: 3, label: 'Xác Nhận', icon: <CheckCircleIcon className="w-5 h-5" /> }
         ];
 
         return (
@@ -2000,25 +2011,22 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 {steps.map((step, idx) => (
                     <React.Fragment key={step.num}>
                         <div className={`flex flex-col items-center relative z-10 transition-all duration-500 ${currentStep === step.num ? 'scale-110' : 'scale-100'}`}>
-                            <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg border-4 transition-colors duration-500 ${
-                                currentStep >= step.num 
-                                ? 'bg-gradient-to-br from-brand-primary to-rose-500 border-rose-100 text-white' 
-                                : 'bg-white border-gray-200 text-gray-300'
-                            }`}>
+                            <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg border-4 transition-colors duration-500 ${currentStep >= step.num
+                                    ? 'bg-gradient-to-br from-brand-primary to-rose-500 border-rose-100 text-white'
+                                    : 'bg-white border-gray-200 text-gray-300'
+                                }`}>
                                 {step.icon}
                             </div>
-                            <span className={`mt-3 text-xs font-bold uppercase tracking-widest transition-colors duration-500 ${
-                                currentStep >= step.num ? 'text-brand-primary' : 'text-gray-300'
-                            }`}>
+                            <span className={`mt-3 text-xs font-bold uppercase tracking-widest transition-colors duration-500 ${currentStep >= step.num ? 'text-brand-primary' : 'text-gray-300'
+                                }`}>
                                 {step.label}
                             </span>
                         </div>
                         {idx < steps.length - 1 && (
                             <div className="flex-1 max-w-[80px] w-16 h-1 bg-gray-200 mx-2 rounded-full overflow-hidden">
-                                <div 
-                                    className={`h-full bg-brand-primary transition-all duration-700 ease-out ${
-                                        currentStep > step.num ? 'w-full' : 'w-0'
-                                    }`} 
+                                <div
+                                    className={`h-full bg-brand-primary transition-all duration-700 ease-out ${currentStep > step.num ? 'w-full' : 'w-0'
+                                        }`}
                                 />
                             </div>
                         )}
@@ -2030,18 +2038,17 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
     const renderStep1 = () => {
         const selectedServiceIds = selectedServices.map(s => s.service.id);
-        
+
         return (
             <div className="max-w-5xl mx-auto animate-fadeInUp">
                 {/* Category Filter - Modern Pills */}
                 <div className="flex gap-3 mb-8 overflow-x-auto pb-4 scrollbar-hide">
                     <button
                         onClick={() => setSelectedCategory('')}
-                        className={`flex-shrink-0 px-6 py-3 rounded-full text-sm font-bold transition-all duration-300 whitespace-nowrap ${
-                            selectedCategory === '' 
-                            ? 'bg-brand-dark text-white shadow-lg shadow-brand-dark/20 scale-105' 
-                            : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-primary hover:text-brand-primary'
-                        }`}
+                        className={`flex-shrink-0 px-6 py-3 rounded-full text-sm font-bold transition-all duration-300 whitespace-nowrap ${selectedCategory === ''
+                                ? 'bg-brand-dark text-white shadow-lg shadow-brand-dark/20 scale-105'
+                                : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-primary hover:text-brand-primary'
+                            }`}
                     >
                         Tất cả dịch vụ
                     </button>
@@ -2049,11 +2056,10 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                         <button
                             key={category.id}
                             onClick={() => setSelectedCategory(category.id)}
-                            className={`flex-shrink-0 px-6 py-3 rounded-full text-sm font-bold transition-all duration-300 whitespace-nowrap ${
-                                selectedCategory === category.id 
-                                ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/30 scale-105' 
-                                : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-primary hover:text-brand-primary'
-                            }`}
+                            className={`flex-shrink-0 px-6 py-3 rounded-full text-sm font-bold transition-all duration-300 whitespace-nowrap ${selectedCategory === category.id
+                                    ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/30 scale-105'
+                                    : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-primary hover:text-brand-primary'
+                                }`}
                         >
                             {category.name}
                         </button>
@@ -2079,26 +2085,25 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                             const isSelected = selectedServiceIds.includes(service.id);
                             const selectedItem = selectedServices.find(s => s.service.id === service.id);
                             const quantity = selectedItem?.quantity || 1;
-                            
+
                             return (
                                 <div
                                     key={service.id}
                                     onClick={() => handleServiceToggle(service)}
-                                    className={`group relative p-5 rounded-3xl border-2 transition-all duration-300 cursor-pointer overflow-hidden ${
-                                        isSelected 
-                                        ? 'bg-white border-brand-primary shadow-xl ring-4 ring-brand-primary/10 scale-[1.02]' 
-                                        : 'bg-white border-transparent shadow-sm hover:shadow-lg hover:border-brand-secondary hover:-translate-y-1'
-                                    }`}
+                                    className={`group relative p-5 rounded-3xl border-2 transition-all duration-300 cursor-pointer overflow-hidden ${isSelected
+                                            ? 'bg-white border-brand-primary shadow-xl ring-4 ring-brand-primary/10 scale-[1.02]'
+                                            : 'bg-white border-transparent shadow-sm hover:shadow-lg hover:border-brand-secondary hover:-translate-y-1'
+                                        }`}
                                 >
                                     <div className="flex items-center gap-5">
                                         <div className="w-24 h-24 rounded-2xl overflow-hidden flex-shrink-0 relative">
-                                            <img 
-                                                src={service.imageUrl || 'https://via.placeholder.com/150'} 
+                                            <img
+                                                src={service.imageUrl || 'https://via.placeholder.com/150'}
                                                 alt={service.name}
                                                 className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500"
                                             />
                                         </div>
-                                        
+
                                         <div className="flex-1 min-w-0">
                                             <div className="flex justify-between items-start">
                                                 <h3 className={`font-serif font-bold text-lg truncate pr-2 ${isSelected ? 'text-brand-primary' : 'text-gray-800'}`}>
@@ -2106,23 +2111,23 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                                 </h3>
                                             </div>
                                             <p className="text-xs text-gray-500 mt-1 line-clamp-2">{service.description}</p>
-                                            
+
                                             <div className="flex items-center gap-4 mt-3">
                                                 <span className="text-lg font-bold text-brand-dark">{formatPrice(service.discountPrice || service.price)}</span>
                                                 <span className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1">
-                                                    <ClockIcon className="w-3 h-3"/> {service.duration} phút
+                                                    <ClockIcon className="w-3 h-3" /> {service.duration} phút
                                                 </span>
                                             </div>
                                         </div>
                                     </div>
-                                    
+
                                     {/* Số buổi - Separated Section */}
                                     {isSelected && (
                                         <div className="mt-4 pt-4 border-t border-gray-200" onClick={e => e.stopPropagation()}>
                                             <div className="flex items-center justify-between">
                                                 <span className="text-sm font-semibold text-gray-700">Số buổi:</span>
                                                 <div className="flex items-center bg-gray-100 rounded-full p-1 shadow-inner">
-                                                    <button 
+                                                    <button
                                                         onClick={() => handleQuantityChange(service.id, quantity - 1)}
                                                         disabled={quantity <= 1}
                                                         className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm text-gray-600 hover:text-red-500 disabled:opacity-50 transition-colors"
@@ -2130,7 +2135,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                                         <MinusIcon className="w-4 h-4" />
                                                     </button>
                                                     <span className="w-12 text-center font-bold text-gray-800 text-base">{quantity}</span>
-                                                    <button 
+                                                    <button
                                                         onClick={() => handleQuantityChange(service.id, quantity + 1)}
                                                         className="w-8 h-8 rounded-full bg-brand-primary text-white flex items-center justify-center shadow-sm hover:bg-brand-dark transition-colors"
                                                     >
@@ -2171,7 +2176,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                 disabled={selectedServices.length === 0}
                                 className="px-8 py-3 bg-brand-dark text-white rounded-2xl font-bold shadow-lg shadow-brand-dark/30 hover:shadow-xl hover:-translate-y-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2"
                             >
-                                Chọn Ngày Giờ <ChevronRightIcon className="w-4 h-4"/>
+                                Chọn Ngày Giờ <ChevronRightIcon className="w-4 h-4" />
                             </button>
                         </div>
                     </div>
@@ -2186,15 +2191,15 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 {/* Left Card: Date Selection */}
                 <div className="bg-white p-8 rounded-[2rem] shadow-soft-xl border border-gray-100 h-fit relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-brand-secondary to-transparent rounded-bl-[50%] -z-10 transition-transform group-hover:scale-110"></div>
-                    
+
                     <h3 className="text-xl font-serif font-bold text-brand-dark mb-6 flex items-center gap-3">
                         <div className="p-2 bg-brand-secondary/50 rounded-xl text-brand-primary">
-                            <CalendarIcon className="w-6 h-6" /> 
+                            <CalendarIcon className="w-6 h-6" />
                         </div>
                         Chọn Ngày
                     </h3>
 
-                    <div 
+                    <div
                         className="relative w-full cursor-pointer transition-transform hover:scale-[1.01]"
                         onClick={() => {
                             const dateInput = dateInputRef.current;
@@ -2212,10 +2217,10 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none z-10">
                             <CalendarIcon className="w-5 h-5 text-brand-primary" />
                         </div>
-                        
+
                         {/* Visual Display */}
                         <div className="w-full pl-12 pr-12 py-5 bg-gray-50 border-2 border-transparent group-hover:bg-gray-100 rounded-2xl font-bold text-lg text-gray-800 shadow-inner flex items-center h-[72px]">
-                             {selectedDate ? formatDateDisplay(selectedDate) : <span className="text-gray-300">dd-mm-yyyy</span>}
+                            {selectedDate ? formatDateDisplay(selectedDate) : <span className="text-gray-300">dd-mm-yyyy</span>}
                         </div>
 
                         {/* Actual Hidden Date Input */}
@@ -2230,12 +2235,12 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                             min={new Date().toISOString().split('T')[0]}
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                         />
-                        
+
                         <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none bg-white p-1.5 rounded-full shadow-sm text-brand-primary z-10">
                             <ChevronRightIcon className="w-4 h-4" />
                         </div>
                     </div>
-                    
+
                     {selectedDate ? (
                         <div className="mt-6 p-4 bg-green-50 border border-green-100 rounded-2xl flex items-center gap-3 animate-fadeIn">
                             <CheckCircleIcon className="w-5 h-5 text-green-600" />
@@ -2252,9 +2257,9 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
                 {/* Right Card: Time Selection */}
                 <div className={`bg-white p-8 rounded-[2rem] shadow-soft-xl border border-gray-100 h-full flex flex-col relative transition-all duration-500 ${!selectedDate ? 'opacity-80' : 'opacity-100'}`}>
-                     <h3 className="text-xl font-serif font-bold text-brand-dark mb-6 flex items-center gap-3">
+                    <h3 className="text-xl font-serif font-bold text-brand-dark mb-6 flex items-center gap-3">
                         <div className={`p-2 rounded-xl transition-colors ${selectedDate ? 'bg-brand-secondary/50 text-brand-primary' : 'bg-gray-100 text-gray-400'}`}>
-                            <ClockIcon className="w-6 h-6" /> 
+                            <ClockIcon className="w-6 h-6" />
                         </div>
                         Chọn Giờ
                     </h3>
@@ -2280,7 +2285,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                 const isValidGap = isTimeSlotValidForMinimumGap(time);
                                 const isDisabled = isBooked || isBlocked || !isValidGap;
                                 const isSelected = selectedTime === time;
-                                
+
                                 // Determine tooltip/reason for disabled state
                                 let disabledReason = '';
                                 if (isBooked) {
@@ -2290,7 +2295,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                 } else if (!isValidGap) {
                                     disabledReason = 'Không đủ thời gian trước/sau lịch đã đặt';
                                 }
-                                
+
                                 return (
                                     <button
                                         key={time}
@@ -2300,8 +2305,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                         style={{ animationDelay: `${idx * 50}ms` }}
                                         className={`
                                             py-3 rounded-xl text-sm font-bold transition-all duration-300 relative overflow-hidden animate-fadeInUp
-                                            ${isDisabled 
-                                                ? 'bg-gray-50 text-gray-300 cursor-not-allowed border border-gray-100' 
+                                            ${isDisabled
+                                                ? 'bg-gray-50 text-gray-300 cursor-not-allowed border border-gray-100'
                                                 : isSelected
                                                     ? 'bg-gradient-to-br from-brand-primary to-rose-500 text-white shadow-lg shadow-brand-primary/40 scale-105 z-10 border-transparent'
                                                     : 'bg-white border border-gray-200 text-gray-600 hover:border-brand-primary hover:text-brand-primary hover:shadow-md'
@@ -2314,12 +2319,12 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                             })}
                         </div>
                     )}
-                     {/* Scroll indicator if needed, simpler UI for now */}
-                     {selectedDate && availableTimeSlots.length > 0 && (
-                         <div className="mt-4 text-center">
+                    {/* Scroll indicator if needed, simpler UI for now */}
+                    {selectedDate && availableTimeSlots.length > 0 && (
+                        <div className="mt-4 text-center">
                             <div className="w-8 h-1 bg-gray-200 rounded-full mx-auto"></div>
-                         </div>
-                     )}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -2335,9 +2340,9 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                     disabled={!selectedDate || !selectedTime}
                     className="group px-10 py-4 bg-brand-dark text-white rounded-2xl hover:bg-brand-primary disabled:bg-gray-300 disabled:cursor-not-allowed font-bold shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all flex items-center gap-3"
                 >
-                    Tiếp theo 
+                    Tiếp theo
                     <span className="bg-white/20 rounded-full p-1 group-hover:translate-x-1 transition-transform">
-                        <ChevronRightIcon className="w-4 h-4"/>
+                        <ChevronRightIcon className="w-4 h-4" />
                     </span>
                 </button>
             </div>
@@ -2346,8 +2351,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
     const renderStep3 = () => {
         const servicesTotal = selectedServices.reduce((sum, { service, quantity }) => sum + ((service.discountPrice || service.price) * quantity), 0);
-        const discount = selectedPromotion ? 
-            (selectedPromotion.discountType === 'percentage' 
+        const discount = selectedPromotion ?
+            (selectedPromotion.discountType === 'percentage'
                 ? servicesTotal * (selectedPromotion.discountValue / 100)
                 : selectedPromotion.discountValue
             ) : 0;
@@ -2367,12 +2372,12 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
         return (
             <div className="max-w-2xl mx-auto animate-fadeInUp">
-                
+
                 {/* Ticket Card */}
                 <div className="bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-gray-100 relative">
                     {/* Top Decorative Pattern */}
                     <div className="h-3 bg-gradient-to-r from-brand-primary via-rose-400 to-brand-accent"></div>
-                    
+
                     <div className="p-8 pb-0">
                         <div className="text-center mb-8">
                             <h2 className="text-2xl font-serif font-bold text-brand-dark">Phiếu Đặt Hẹn</h2>
@@ -2417,7 +2422,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
 
                     {/* Bottom Section */}
                     <div className="p-8 pt-4 bg-gray-50/50">
-                        
+
                         {/* Promo Code - COMBOBOX style */}
                         <div className="mb-6">
                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ưu đãi</label>
@@ -2430,36 +2435,36 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                     onChange={async (e) => {
                                         const code = e.target.value;
                                         setPromoCode(code);
-                                        
+
                                         if (!code) {
                                             // User selected "-- Chọn mã ưu đãi --" (empty option)
                                             setSelectedPromotion(null);
                                             return;
                                         }
-                                        
+
                                         // Tìm trong cả promotions, applicablePromotions và redeemedVouchers
-                                        const promo = redeemedVouchers.find((v: any) => 
-                                            v.code && code && 
+                                        const promo = redeemedVouchers.find((v: any) =>
+                                            v.code && code &&
                                             v.code.toUpperCase().trim() === code.toUpperCase().trim() &&
                                             v.redeemedCount > 0
-                                        ) || applicablePromotions.find(p => 
-                                            p.code && code && 
+                                        ) || applicablePromotions.find(p =>
+                                            p.code && code &&
                                             p.code.toUpperCase().trim() === code.toUpperCase().trim()
                                         ) || promotions.find(p => {
                                             const isPublicValue: any = p.isPublic;
-                                            const isPublic = isPublicValue === true || 
-                                                           isPublicValue === 1 || 
-                                                           (typeof isPublicValue === 'string' && isPublicValue === '1');
-                                            return p.code && code && 
-                                                   p.code.toUpperCase().trim() === code.toUpperCase().trim() &&
-                                                   isPublic;
+                                            const isPublic = isPublicValue === true ||
+                                                isPublicValue === 1 ||
+                                                (typeof isPublicValue === 'string' && isPublicValue === '1');
+                                            return p.code && code &&
+                                                p.code.toUpperCase().trim() === code.toUpperCase().trim() &&
+                                                isPublic;
                                         });
                                         console.log('🎫 Voucher selected:', { code, found: !!promo, promo });
-                                        
+
                                         if (promo) {
                                             // Check if redeemed voucher still has available count
-                                            const redeemedVoucher = redeemedVouchers.find((v: any) => 
-                                                v.code && code && 
+                                            const redeemedVoucher = redeemedVouchers.find((v: any) =>
+                                                v.code && code &&
                                                 v.code.toUpperCase().trim() === code.toUpperCase().trim()
                                             );
                                             if (redeemedVoucher && (!redeemedVoucher.redeemedCount || redeemedVoucher.redeemedCount <= 0)) {
@@ -2467,7 +2472,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                                 setPromoCode('');
                                                 return;
                                             }
-                                            
+
                                             // Validate voucher with backend immediately
                                             // QUAN TRỌNG: Chỉ validate, KHÔNG trừ voucher. Voucher sẽ chỉ được trừ khi đặt lịch thành công
                                             try {
@@ -2504,68 +2509,68 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                         const today = new Date();
                                         today.setHours(0, 0, 0, 0);
                                         const selectedServiceIds = selectedServices.map(s => s.service.id);
-                                        
+
                                         // Tính tổng giá trị đơn hàng hiện tại
                                         const currentOrderTotal = selectedServices.reduce(
-                                            (sum, { service, quantity }) => sum + ((service.discountPrice || service.price) * quantity), 
+                                            (sum, { service, quantity }) => sum + ((service.discountPrice || service.price) * quantity),
                                             0
                                         );
-                                        
+
                                         // Filter public promotions - SỬ DỤNG ĐẦY ĐỦ ĐIỀU KIỆN
                                         // Hàm isPromotionApplicable đã kiểm tra: isActive, expiryDate, stock, minOrderValue, applicableServiceIds, targetAudience
                                         const filteredPromotions = promotions.filter(p => {
                                             const isPublicValue: any = p.isPublic;
-                                            const isPublic = isPublicValue === true || 
-                                                           isPublicValue === 1 || 
-                                                           (typeof isPublicValue === 'string' && isPublicValue === '1');
+                                            const isPublic = isPublicValue === true ||
+                                                isPublicValue === 1 ||
+                                                (typeof isPublicValue === 'string' && isPublicValue === '1');
                                             if (!isPublic) return false;
-                                            
+
                                             // Sử dụng hàm isPromotionApplicable để kiểm tra đầy đủ điều kiện (bao gồm minOrderValue)
                                             return isPromotionApplicable(p);
                                         });
-                                        
+
                                         // Filter applicable promotions - SỬ DỤNG ĐẦY ĐỦ ĐIỀU KIỆN
                                         // Hàm isPromotionApplicable đã kiểm tra: isActive, expiryDate, stock, minOrderValue, applicableServiceIds, targetAudience
                                         const filteredApplicablePromotions = applicablePromotions.filter(p => {
                                             const isPublicValue: any = p.isPublic;
-                                            const isPublic = isPublicValue === true || 
-                                                           isPublicValue === 1 || 
-                                                           (typeof isPublicValue === 'string' && isPublicValue === '1');
+                                            const isPublic = isPublicValue === true ||
+                                                isPublicValue === 1 ||
+                                                (typeof isPublicValue === 'string' && isPublicValue === '1');
                                             if (!isPublic) return false;
-                                            
+
                                             // Sử dụng hàm isPromotionApplicable để kiểm tra đầy đủ điều kiện (bao gồm minOrderValue)
                                             return isPromotionApplicable(p);
                                         });
-                                        
+
                                         // Filter redeemed vouchers (voucher đổi điểm) - SỬ DỤNG ĐẦY ĐỦ ĐIỀU KIỆN
                                         // QUAN TRỌNG: CHỈ lấy voucher đổi điểm (isPublic = false), KHÔNG lấy voucher public
                                         const filteredRedeemedVouchers = redeemedVouchers.filter((v: any) => {
                                             // CHỈ lấy voucher đổi điểm (isPublic = false)
                                             const isPublicValue: any = v.isPublic;
-                                            const isPublicNormalized = isPublicValue === true || 
-                                                                     isPublicValue === 1 || 
-                                                                     (typeof isPublicValue === 'string' && isPublicValue === '1');
+                                            const isPublicNormalized = isPublicValue === true ||
+                                                isPublicValue === 1 ||
+                                                (typeof isPublicValue === 'string' && isPublicValue === '1');
                                             if (isPublicNormalized) {
                                                 // Loại bỏ voucher public (voucher public không bao giờ xuất hiện trong dropdown này)
                                                 return false;
                                             }
-                                            
+
                                             // Kiểm tra redeemedCount
                                             if (!v.redeemedCount || v.redeemedCount <= 0) return false;
-                                            
+
                                             // Kiểm tra các điều kiện cơ bản
                                             if (v.isActive === false) return false;
-                                            
+
                                             // Kiểm tra hết hạn
                                             const expiryDate = new Date(v.expiryDate);
                                             expiryDate.setHours(0, 0, 0, 0);
                                             if (today > expiryDate) return false;
-                                            
+
                                             // Kiểm tra minOrderValue - QUAN TRỌNG
                                             if (v.minOrderValue && currentOrderTotal < v.minOrderValue) {
                                                 return false; // Không hiển thị nếu đơn hàng chưa đủ giá trị tối thiểu
                                             }
-                                            
+
                                             // Kiểm tra applicableServiceIds
                                             if (v.applicableServiceIds && v.applicableServiceIds.length > 0) {
                                                 let applicableServiceIdsArray: string[] = [];
@@ -2578,18 +2583,18 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                                 } else if (Array.isArray(v.applicableServiceIds)) {
                                                     applicableServiceIdsArray = v.applicableServiceIds;
                                                 }
-                                                
+
                                                 if (applicableServiceIdsArray.length > 0) {
-                                                    const matchesService = selectedServiceIds.some(serviceId => 
+                                                    const matchesService = selectedServiceIds.some(serviceId =>
                                                         applicableServiceIdsArray.includes(serviceId)
                                                     );
                                                     if (!matchesService) return false;
                                                 }
                                             }
-                                            
+
                                             return true;
                                         });
-                                        
+
                                         // Combine all lists
                                         const allAvailablePromotions = [
                                             ...filteredApplicablePromotions,
@@ -2598,7 +2603,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                             }),
                                             ...filteredRedeemedVouchers
                                         ];
-                                        
+
                                         // Remove duplicates by code
                                         const uniquePromotionsMap = new Map<string, Promotion>();
                                         filteredApplicablePromotions.forEach(p => {
@@ -2620,19 +2625,19 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                         return uniquePromotions.map((promo: any) => {
                                             // CHỈ hiển thị "[Voucher đã đổi]" cho voucher đổi điểm (isPublic = false)
                                             const isPublicValue = promo.isPublic;
-                                            const isPublicNormalized = isPublicValue === true || 
-                                                                     isPublicValue === 1 || 
-                                                                     (typeof isPublicValue === 'string' && isPublicValue === '1');
+                                            const isPublicNormalized = isPublicValue === true ||
+                                                isPublicValue === 1 ||
+                                                (typeof isPublicValue === 'string' && isPublicValue === '1');
                                             const isRedeemedVoucher = !isPublicNormalized;
-                                            
+
                                             // Chỉ hiển thị text "[Voucher đã đổi]" cho voucher đổi điểm có redeemedCount
                                             const showRedeemedText = isRedeemedVoucher && promo.redeemedCount && promo.redeemedCount > 0;
-                                            
+
                                             return (
                                                 <option key={promo.id} value={promo.code}>
-                                                    {promo.code} - {promo.title} 
-                                                    {promo.discountType === 'percentage' 
-                                                        ? ` (Giảm ${promo.discountValue}%)` 
+                                                    {promo.code} - {promo.title}
+                                                    {promo.discountType === 'percentage'
+                                                        ? ` (Giảm ${promo.discountValue}%)`
                                                         : ` (Giảm ${formatPrice(promo.discountValue)})`}
                                                     {promo.minOrderValue ? ` (Đơn tối thiểu: ${formatPrice(promo.minOrderValue)})` : ''}
                                                     {(() => {
@@ -2658,15 +2663,15 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                     <ChevronRightIcon className="w-5 h-5 text-gray-400 rotate-90" />
                                 </div>
                             </div>
-                            
+
                             {selectedPromotion && (
                                 <div className="mt-3 flex items-center justify-between bg-green-50 border border-green-100 px-4 py-2 rounded-lg animate-fadeIn">
                                     <div className="flex items-center gap-2 text-green-700">
                                         <CheckCircleIcon className="w-4 h-4" />
                                         <span className="text-xs font-bold">Đã áp dụng: {selectedPromotion.title}</span>
                                     </div>
-                                    <button 
-                                        onClick={() => {setSelectedPromotion(null); setPromoCode('');}} 
+                                    <button
+                                        onClick={() => { setSelectedPromotion(null); setPromoCode(''); }}
                                         className="text-red-500 hover:text-red-700 text-lg leading-none px-2"
                                         title="Hủy áp dụng"
                                     >
@@ -2722,15 +2727,14 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                         <h2 className="text-2xl font-serif font-bold text-gray-800">Phương Thức Thanh Toán</h2>
                         <p className="text-gray-500 mt-2 text-sm">Vui lòng chọn cách thức bạn muốn thanh toán</p>
                     </div>
-                    
+
                     <div className="space-y-4 mb-8">
                         <button
                             onClick={() => setPaymentMethod('VNPay')}
-                            className={`w-full p-4 rounded-2xl border-2 flex items-center gap-4 transition-all duration-300 ${
-                                paymentMethod === 'VNPay' 
-                                ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' 
-                                : 'border-gray-100 hover:border-blue-200 hover:bg-gray-50'
-                            }`}
+                            className={`w-full p-4 rounded-2xl border-2 flex items-center gap-4 transition-all duration-300 ${paymentMethod === 'VNPay'
+                                    ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                                    : 'border-gray-100 hover:border-blue-200 hover:bg-gray-50'
+                                }`}
                         >
                             <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center p-1">
                                 <VNPayIcon className="w-full h-full" />
@@ -2741,14 +2745,13 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                             </div>
                             {paymentMethod === 'VNPay' && <CheckCircleIcon className="w-6 h-6 text-blue-500 ml-auto" />}
                         </button>
-                        
+
                         <button
                             onClick={() => setPaymentMethod('Cash')}
-                            className={`w-full p-4 rounded-2xl border-2 flex items-center gap-4 transition-all duration-300 ${
-                                paymentMethod === 'Cash' 
-                                ? 'border-green-500 bg-green-50 ring-1 ring-green-500' 
-                                : 'border-gray-100 hover:border-green-200 hover:bg-gray-50'
-                            }`}
+                            className={`w-full p-4 rounded-2xl border-2 flex items-center gap-4 transition-all duration-300 ${paymentMethod === 'Cash'
+                                    ? 'border-green-500 bg-green-50 ring-1 ring-green-500'
+                                    : 'border-gray-100 hover:border-green-200 hover:bg-gray-50'
+                                }`}
                         >
                             <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center text-green-600">
                                 💵
@@ -2787,9 +2790,9 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                     <h1 className="text-4xl md:text-5xl font-serif font-bold text-brand-dark mb-3">Đặt Lịch Hẹn</h1>
                     <p className="text-gray-500 font-medium">Chỉ vài bước đơn giản để tận hưởng dịch vụ đẳng cấp.</p>
                 </div>
-                
+
                 {renderStepIndicator()}
-                
+
                 <div className="mt-12 transition-all duration-500 ease-in-out">
                     {currentStep === 1 && renderStep1()}
                     {currentStep === 2 && renderStep2()}
@@ -2800,4 +2803,4 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             </div>
         </div>
     );
-};export default BookingPage;
+}; export default BookingPage;

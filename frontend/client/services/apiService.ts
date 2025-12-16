@@ -218,9 +218,25 @@ export const createService = (data: Partial<Service>) => create<Service>(`${API_
 export const updateService = (id: string, data: Partial<Service>) => update<Service>(`${API_BASE_URL}/services/${id}`, data);
 export const deleteService = (id: string) => remove(`${API_BASE_URL}/services/${id}`);
 
-export const createAppointment = (data: Partial<Appointment>) => create<Appointment>(`${API_BASE_URL}/appointments`, data);
+// Flexible create appointment: backend may return a single Appointment OR an object with appointments array
+export const createAppointment = (data: Partial<Appointment>): Promise<Appointment | { appointments: Appointment[]; treatmentCourseId?: string; message?: string }> =>
+    create(`${API_BASE_URL}/appointments`, data);
 export const updateAppointment = (id: string, data: Partial<Appointment>) => update<Appointment>(`${API_BASE_URL}/appointments/${id}`, data);
 export const cancelAppointment = (id: string) => update<Appointment>(`${API_BASE_URL}/appointments/${id}`, { status: 'cancelled' });
+export const cancelAllAppointmentsByBooking = (appointmentId: string, reason?: string) => 
+    fetch(`${API_BASE_URL}/appointments/cancel-all/${appointmentId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ reason })
+    }).then(handleResponse) as Promise<{ message: string; cancelledCount: number; cancelledIds: string[] }>;
+
+export const cancelTreatmentCourse = (treatmentCourseId: string, reason?: string) =>
+    fetch(`${API_BASE_URL}/appointments/cancel-treatment-course/${treatmentCourseId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ reason })
+    }).then(handleResponse) as Promise<{ message: string; treatmentCourseId: string; cancelledAppointmentCount: number; cancelledAppointmentIds: string[] }>;
+
 export const confirmAppointment = (id: string) => fetch(`${API_BASE_URL}/appointments/${id}/confirm`, {
     method: 'PUT',
     headers: getAuthHeaders()

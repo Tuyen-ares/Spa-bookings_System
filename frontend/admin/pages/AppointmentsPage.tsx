@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import type { Appointment, User, Service, TreatmentCourse, StaffShift } from '../../types';
 import * as apiService from '../../client/services/apiService';
 import { formatDateDDMMYYYY, parseDDMMYYYYToYYYYMMDD } from '../../shared/dateUtils';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 // --- ICONS ---
 import {
@@ -71,6 +72,8 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     const [localUsers, setLocalUsers] = useState<User[]>(allUsers);
     const [localServices, setLocalServices] = useState<Service[]>(allServices);
     const [isLoadingModalData, setIsLoadingModalData] = useState(false);
+    const [activeCoursesForCustomer, setActiveCoursesForCustomer] = useState<TreatmentCourse[]>([]);
+    const courseCacheRef = React.useRef<Record<string, TreatmentCourse[]>>({});
 
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -86,10 +89,21 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     // New state for cancellation reason
     const [appointmentToCancel, setAppointmentToCancel] = useState<Appointment | null>(null);
     const [rejectionReason, setRejectionReason] = useState('');
+    
+    // State for cancel confirmation dialog
+    const [showCancelDialog, setShowCancelDialog] = useState(false);
+    const [isCancellingMultiple, setIsCancellingMultiple] = useState(false);
+    const [cancelMultipleCount, setCancelMultipleCount] = useState(0);
+    const [isCancelLoading, setIsCancelLoading] = useState(false);
 
     // State for assigning therapist when approving appointment
     const [appointmentToApprove, setAppointmentToApprove] = useState<Appointment | null>(null);
     const [selectedTherapistId, setSelectedTherapistId] = useState<string>('');
+
+    // State for reschedule modal
+    const [appointmentToReschedule, setAppointmentToReschedule] = useState<Appointment | null>(null);
+    const [rescheduleDate, setRescheduleDate] = useState('');
+    const [rescheduleTime, setRescheduleTime] = useState('');
 
     // Sync localUsers with allUsers when allUsers changes
     useEffect(() => {
@@ -106,19 +120,19 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     // Get customers who have appointments from today onwards
     const allCustomers = useMemo(() => {
         const clients = localUsers.filter(u => u.role === 'Client');
-        
+
         // Get today's date at midnight for comparison
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const todayStr = today.toISOString().split('T')[0];
-        
+
         // Only return customers who have at least one appointment from today onwards
         const customerIdsWithAppointments = new Set(
             appointments
                 .filter(apt => apt.status !== 'cancelled' && apt.date >= todayStr)
                 .map(apt => apt.userId)
         );
-        
+
         return clients.filter(client => customerIdsWithAppointments.has(client.id));
     }, [localUsers, appointments]);
 
@@ -128,7 +142,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             return staffMembers;
         }
         const searchLower = staffSearch.toLowerCase();
-        return staffMembers.filter(staff => 
+        return staffMembers.filter(staff =>
             (staff.name?.toLowerCase().includes(searchLower) || '') ||
             (staff.phone?.toLowerCase().includes(searchLower) || '')
         );
@@ -140,7 +154,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             return allCustomers;
         }
         const searchLower = customerSearch.toLowerCase();
-        return allCustomers.filter(customer => 
+        return allCustomers.filter(customer =>
             (customer.name?.toLowerCase().includes(searchLower) || '') ||
             (customer.phone?.toLowerCase().includes(searchLower) || '')
         );
@@ -295,6 +309,242 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     // State for selected services (for table display)
     const [selectedServices, setSelectedServices] = useState<{ id: string; name: string; price: number; quantity: number }[]>([]);
 
+    // Time slot helpers (match client booking rules)
+    const WORKING_START_MINUTES = 9 * 60; // 09:00
+    const WORKING_END_MINUTES = 22 * 60; // 22:00
+    const SLOT_INTERVAL = 15; // minutes
+
+    const timeToMinutes = (time?: string): number => {
+        if (!time) return 0;
+        const [hours, minutes] = time.split(':').map(Number);
+        if (Number.isNaN(hours) || Number.isNaN(minutes)) return 0;
+        return hours * 60 + minutes;
+    };
+
+    const minutesToTime = (minutes: number): string => {
+        const hrs = Math.floor(minutes / 60).toString().padStart(2, '0');
+        const mins = (minutes % 60).toString().padStart(2, '0');
+        return `${hrs}:${mins}`;
+    };
+
+    const generateTimeSlots = useMemo(() => {
+        const slots: string[] = [];
+        for (let minutes = WORKING_START_MINUTES; minutes <= WORKING_END_MINUTES; minutes += SLOT_INTERVAL) {
+            slots.push(minutesToTime(minutes));
+        }
+        return slots;
+    }, []);
+
+    const getServiceDuration = useCallback((serviceId: string, quantity: number = 1): number => {
+        const service = localServices.find(s => s.id === serviceId);
+        const duration = service?.duration || 0;
+        return duration * (quantity || 1);
+    }, [localServices]);
+
+    const getAppointmentServiceDuration = useCallback((appointment: Appointment): number => {
+        return getServiceDuration(appointment.serviceId, appointment.quantity || 1);
+    }, [getServiceDuration]);
+
+    const primaryServiceSelection = useMemo(() => {
+        if (selectedServices.length > 0) {
+            const first = selectedServices[0];
+            return { serviceId: first.id, quantity: first.quantity || 1 };
+        }
+        if (newAppointmentForm.serviceId) {
+            return { serviceId: newAppointmentForm.serviceId, quantity: newAppointmentForm.serviceQuantity || 1 };
+        }
+        return null;
+    }, [selectedServices, newAppointmentForm.serviceId, newAppointmentForm.serviceQuantity]);
+
+    const selectedServiceIds = useMemo(() => {
+        if (selectedServices.length > 0) {
+            return selectedServices.map(s => s.id);
+        }
+        if (newAppointmentForm.serviceId) {
+            return [newAppointmentForm.serviceId];
+        }
+        return [];
+    }, [selectedServices, newAppointmentForm.serviceId]);
+
+    const primaryServiceDuration = useMemo(() => {
+        if (!primaryServiceSelection) return 0;
+        return getServiceDuration(primaryServiceSelection.serviceId, primaryServiceSelection.quantity);
+    }, [primaryServiceSelection, getServiceDuration]);
+
+    // Derive the earliest datetime allowed for the next session based on existing treatment course sessions
+    const courseMinAllowedDateTime = useMemo(() => {
+        if (selectedServiceIds.length === 0 || activeCoursesForCustomer.length === 0) return null;
+
+        const now = new Date();
+        let minDateTime: Date | null = null;
+
+        const toDateTime = (dateStr?: string, timeStr?: string): Date | null => {
+            if (!dateStr) return null;
+            // Accept both DD-MM-YYYY and YYYY-MM-DD
+            const iso = dateStr.includes('-') && dateStr.indexOf('-') === 2
+                ? parseDDMMYYYYToYYYYMMDD(dateStr)
+                : dateStr;
+            if (!iso) return null;
+            return new Date(`${iso}T${timeStr || '00:00'}:00`);
+        };
+
+        activeCoursesForCustomer.forEach(course => {
+            const courseServiceId = (course as any).serviceId || course.services?.[0]?.serviceId;
+            if (!courseServiceId || !selectedServiceIds.includes(courseServiceId)) return;
+
+            const sessions = (course as any).sessions || (course as any).TreatmentSessions || [];
+            if (!Array.isArray(sessions) || sessions.length === 0) return;
+
+            // Determine spacing based on frequency
+            let minDaysBetween = 7;
+            if ((course as any).frequencyType === 'sessions_per_week' && (course as any).frequencyValue) {
+                minDaysBetween = Math.max(1, Math.floor(7 / (course as any).frequencyValue));
+            } else if ((course as any).frequencyType === 'weeks_per_session' && (course as any).frequencyValue) {
+                minDaysBetween = Math.max(1, (course as any).frequencyValue * 7);
+            }
+
+            // Find last session that already has an appointment and is not cancelled
+            const sessionsWithAppointments = sessions
+                .map((s: any) => {
+                    const appointment = s.Appointment;
+                    const appointmentDate = appointment?.date || s.sessionDate || s.scheduledDate;
+                    const appointmentTime = appointment?.time || s.sessionTime || s.scheduledTime;
+                    const appointmentStatus = appointment?.status || s.status;
+                    return {
+                        appointmentDate,
+                        appointmentTime,
+                        appointmentStatus,
+                    };
+                })
+                .filter(item => item.appointmentDate && item.appointmentStatus !== 'cancelled');
+
+            if (sessionsWithAppointments.length === 0) return;
+
+            // Get the most recent appointment datetime
+            const lastSession = sessionsWithAppointments.reduce((latest, current) => {
+                const latestDt = toDateTime(latest.appointmentDate, latest.appointmentTime) || now;
+                const currentDt = toDateTime(current.appointmentDate, current.appointmentTime) || now;
+                return currentDt > latestDt ? current : latest;
+            });
+
+            const lastDateTime = toDateTime(lastSession.appointmentDate, lastSession.appointmentTime);
+            if (!lastDateTime) return;
+
+            const allowedDate = new Date(lastDateTime);
+            allowedDate.setDate(allowedDate.getDate() + minDaysBetween);
+
+            if (!minDateTime || allowedDate > minDateTime) {
+                minDateTime = allowedDate;
+            }
+        });
+
+        return minDateTime;
+    }, [selectedServiceIds, activeCoursesForCustomer]);
+
+    const availableTimeSlots = useMemo(() => {
+        const dateIso = parseDDMMYYYYToYYYYMMDD(newAppointmentForm.date || '');
+        const slots = [...generateTimeSlots];
+
+        // If date invalid, return base slots
+        if (!dateIso) return slots;
+
+        const todayIso = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const nowMinutes = timeToMinutes(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+
+        const selectedCustomerId = newAppointmentForm.selectedCustomerId;
+        const appointmentsOnDate = appointments.filter(apt => apt.userId === selectedCustomerId && apt.status !== 'cancelled' && apt.date === dateIso);
+
+        const isTimeSlotBooked = (time: string) => {
+            return appointmentsOnDate.some(apt => apt.time === time);
+        };
+
+        const isTimeSlotBlocked = (time: string) => {
+            if (!primaryServiceDuration) return false;
+
+            const newStart = timeToMinutes(time);
+            const newEnd = newStart + primaryServiceDuration;
+
+            return appointmentsOnDate.some(apt => {
+                const existingDuration = getAppointmentServiceDuration(apt);
+                const existingStart = timeToMinutes(apt.time || '00:00');
+                const existingEnd = existingStart + existingDuration;
+
+                return newStart < existingEnd && newEnd > existingStart;
+            });
+        };
+
+        const isTimeSlotValidForMinimumGap = (time: string) => {
+            if (!primaryServiceDuration) return true;
+            if (appointmentsOnDate.length === 0) return true;
+
+            const newStart = timeToMinutes(time);
+            const newEnd = newStart + primaryServiceDuration;
+
+            return appointmentsOnDate.every(apt => {
+                const existingDuration = getAppointmentServiceDuration(apt);
+                const existingStart = timeToMinutes(apt.time || '00:00');
+                const existingEnd = existingStart + existingDuration;
+
+                if (newStart < existingEnd && newEnd > existingStart) {
+                    return false;
+                }
+
+                if (newStart >= existingEnd) {
+                    return true;
+                }
+
+                if (newEnd <= existingStart) {
+                    const requiredStart = existingStart - primaryServiceDuration;
+                    return newStart <= requiredStart;
+                }
+
+                return false;
+            });
+        };
+
+        return slots.filter(slot => {
+            const slotMinutes = timeToMinutes(slot);
+
+            // Skip past times for today
+            if (dateIso === todayIso && slotMinutes <= nowMinutes) {
+                return false;
+            }
+
+            // Require customer & service to enforce blocking rules
+            if (!selectedCustomerId || !primaryServiceDuration) {
+                return !(dateIso === todayIso && slotMinutes <= nowMinutes);
+            }
+
+            if (isTimeSlotBooked(slot)) return false;
+            if (isTimeSlotBlocked(slot)) return false;
+            if (!isTimeSlotValidForMinimumGap(slot)) return false;
+
+            // Enforce treatment course spacing
+            if (courseMinAllowedDateTime) {
+                const slotDateTime = new Date(`${dateIso}T${slot}:00`);
+                if (slotDateTime < courseMinAllowedDateTime) return false;
+            }
+
+            return true;
+        });
+    }, [appointments, generateTimeSlots, newAppointmentForm.date, newAppointmentForm.selectedCustomerId, primaryServiceDuration, getAppointmentServiceDuration, courseMinAllowedDateTime]);
+
+    // Ensure selected time stays within available slots
+    useEffect(() => {
+        if (availableTimeSlots.length === 0) {
+            setNewAppointmentForm(prev => ({ ...prev, time: '' }));
+            return;
+        }
+
+        setNewAppointmentForm(prev => {
+            if (prev.time && availableTimeSlots.includes(prev.time)) {
+                return prev;
+            }
+            return { ...prev, time: availableTimeSlots[0] };
+        });
+    }, [availableTimeSlots]);
+
     // State for dropdown visibility (for add appointment modal)
     const [showAddModalCustomerDropdown, setShowAddModalCustomerDropdown] = useState(false);
     const [showQuickAddCustomer, setShowQuickAddCustomer] = useState(false);
@@ -345,7 +595,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 setIsLoading(false);
             }
         };
-        
+
         // Fetch on mount if needed
         if (initialAppointments.length === 0) {
             fetchAppointments();
@@ -401,33 +651,43 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     // Handle reject appointment
     const handleReject = (appointment: Appointment) => {
         setAppointmentToCancel(appointment);
+        // Count how many appointments will be cancelled (same bookingGroupId + serviceId + userId)
+        const relatedAppointments = appointments.filter(
+            apt => apt.bookingGroupId === appointment.bookingGroupId &&
+                   apt.serviceId === appointment.serviceId &&
+                   apt.userId === appointment.userId &&
+                   apt.status !== 'cancelled'
+        );
+        setCancelMultipleCount(relatedAppointments.length);
+        setIsCancellingMultiple(relatedAppointments.length > 1);
+        setShowCancelDialog(true);
     };
 
-    const handleRejectConfirm = async () => {
+    const handleConfirmCancellation = async () => {
         if (!appointmentToCancel) return;
-        if (!rejectionReason.trim()) {
-            alert('Vui lòng nhập lý do hủy');
-            return;
-        }
-
+        
+        setIsCancelLoading(true);
         try {
+            // Call new API to cancel all appointments of this booking
+            const result = await apiService.cancelAllAppointmentsByBooking(
+                appointmentToCancel.id,
+                rejectionReason
+            );
+
+            // Update local state
             setAppointments(prev =>
                 prev.map(apt =>
-                    apt.id === appointmentToCancel.id
-                        ? { ...apt, status: 'cancelled', rejectionReason: rejectionReason }
+                    result.cancelledIds.includes(apt.id)
+                        ? { ...apt, status: 'cancelled' as const, rejectionReason: rejectionReason }
                         : apt
                 )
             );
 
-            await apiService.updateAppointment(appointmentToCancel.id, {
-                status: 'cancelled',
-                rejectionReason: rejectionReason,
-            });
-
+            setShowCancelDialog(false);
             setAppointmentToCancel(null);
             setRejectionReason('');
 
-            alert('Đã hủy lịch hẹn thành công!');
+            alert(`Đã hủy ${result.cancelledCount} lịch hẹn thành công!`);
 
             setTimeout(() => {
                 const fetchLatest = async () => {
@@ -437,8 +697,58 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 fetchLatest();
             }, 300);
         } catch (error) {
-            console.error('Error rejecting appointment:', error);
+            console.error('Error cancelling appointments:', error);
             alert('Có lỗi xảy ra khi hủy lịch hẹn');
+        } finally {
+            setIsCancelLoading(false);
+        }
+    };
+
+    // Handle reschedule appointment
+    const handleRescheduleConfirm = async () => {
+        if (!appointmentToReschedule) return;
+
+        const selectedDate = parseDDMMYYYYToYYYYMMDD(rescheduleDate);
+        if (!selectedDate) {
+            alert('Ngày không hợp lệ');
+            return;
+        }
+
+        if (!rescheduleTime) {
+            alert('Vui lòng chọn giờ hẹn');
+            return;
+        }
+
+        try {
+            setAppointments(prev =>
+                prev.map(apt =>
+                    apt.id === appointmentToReschedule.id
+                        ? { ...apt, date: selectedDate, time: rescheduleTime }
+                        : apt
+                )
+            );
+
+            await apiService.updateAppointment(appointmentToReschedule.id, {
+                date: selectedDate,
+                time: rescheduleTime,
+            });
+
+            setAppointmentToReschedule(null);
+            setRescheduleDate('');
+            setRescheduleTime('');
+
+            alert('Đã đổi lịch hẹn thành công!');
+
+            setTimeout(() => {
+                const fetchLatest = async () => {
+                    const data = await apiService.getAppointments();
+                    setAppointments(data);
+                };
+                fetchLatest();
+            }, 300);
+        } catch (error) {
+            console.error('Error rescheduling appointment:', error);
+            alert('Có lỗi xảy ra khi đổi lịch hẹn');
         }
     };
 
@@ -491,22 +801,67 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         }
     }, [showAddModal]);
 
+    // Fetch active treatment courses for selected customer (cached by customer)
+    useEffect(() => {
+        const customerId = newAppointmentForm.selectedCustomerId;
+        if (!showAddModal || !customerId) {
+            setActiveCoursesForCustomer([]);
+            return;
+        }
+
+        const cached = courseCacheRef.current[customerId];
+        if (cached) {
+            setActiveCoursesForCustomer(cached);
+            return;
+        }
+
+        let isMounted = true;
+        const fetchCourses = async () => {
+            try {
+                const courses = await apiService.getTreatmentCourses({
+                    clientId: customerId,
+                    status: 'active',
+                    includeCompleted: false,
+                    includeExpired: false,
+                });
+
+                if (!isMounted) return;
+
+                courseCacheRef.current[customerId] = courses;
+                setActiveCoursesForCustomer(courses);
+            } catch (err) {
+                console.error('Error fetching treatment courses for customer:', err);
+                if (isMounted) {
+                    setActiveCoursesForCustomer([]);
+                }
+            } finally {
+                // No-op
+            }
+        };
+
+        fetchCourses();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [showAddModal, newAppointmentForm.selectedCustomerId]);
+
     const stats = useMemo(() => {
         if (isLoading || error) return { pending: 0, upcoming: 0, completed: 0, cancelled: 0, inProgress: 0 };
-        
+
         // "Đã xác nhận" = số lần admin xác nhận, không phải số appointments
         // Logic: Mỗi bookingGroupId (liệu trình) chỉ đếm 1 lần, dù có nhiều buổi
         // Appointments không có bookingGroupId (single appointments) đếm từng cái một
-        
+
         // Lấy tất cả appointments đã được xác nhận (status: 'upcoming' hoặc 'scheduled')
-        const confirmedAppointments = appointments.filter(a => 
+        const confirmedAppointments = appointments.filter(a =>
             (a.status === 'upcoming' || a.status === 'scheduled')
         );
-        
+
         // Nhóm các appointments đã xác nhận theo bookingGroupId
         const confirmedBookingGroups = new Set<string>();
         let singleConfirmedAppointments = 0; // Appointments không có bookingGroupId
-        
+
         confirmedAppointments.forEach(apt => {
             if (apt.bookingGroupId) {
                 // Có bookingGroupId: nhóm lại, mỗi group chỉ đếm 1 lần
@@ -516,10 +871,10 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 singleConfirmedAppointments++;
             }
         });
-        
+
         // Tổng số lần xác nhận = số booking groups + số single appointments
         const totalConfirmed = confirmedBookingGroups.size + singleConfirmedAppointments;
-        
+
         return {
             pending: appointments.filter(a => a.status === 'pending').length,
             upcoming: totalConfirmed, // Số lần admin xác nhận (mỗi booking group = 1 lần)
@@ -563,14 +918,14 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             setRejectionReason('');
             setAppointmentToApprove(null);
             setSelectedTherapistId('');
-            
+
             // Show success message
             if (newStatus === 'upcoming' && therapistId) {
                 alert('Đã xác nhận lịch hẹn và phân công nhân viên thành công!');
             }
         } catch (err: any) {
             console.error(`Error updating appointment ${appointmentToUpdate.id} status to ${newStatus}:`, err);
-            
+
             // Check if error is about schedule conflict
             const errorMessage = err.response?.data?.message || err.message || String(err);
             if (errorMessage.includes('đã được phân công') || errorMessage.includes('trùng lịch') || errorMessage.includes('conflict')) {
@@ -581,11 +936,12 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         }
     };
 
-    const handleConfirmCancellation = () => {
-        if (appointmentToCancel) {
-            handleAction(appointmentToCancel, 'cancelled', rejectionReason);
-        }
-    };
+    // This function is no longer needed - handleConfirmCancellation is now in handleReject
+    // const handleConfirmCancellation = () => {
+    //     if (appointmentToCancel) {
+    //         handleAction(appointmentToCancel, 'cancelled', rejectionReason);
+    //     }
+    // };
 
     const handleConfirmPayment = async (appointment: Appointment) => {
         try {
@@ -755,6 +1111,46 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         setNewAppointmentForm(prev => ({ ...prev, serviceId: '', serviceQuantity: 1 }));
     };
 
+    // Helper: Check if therapist has time conflict (client-side validation)
+    const hasTherapistTimeConflict = (therapistId: string, appointmentDate: string, appointmentTime: string, serviceDurationMinutes: number): { hasConflict: boolean; conflictInfo?: string } => {
+        const appointmentsOnDate = appointments.filter(
+            apt => apt.therapistId === therapistId && apt.date === appointmentDate && apt.status !== 'cancelled'
+        );
+
+        if (appointmentsOnDate.length === 0) {
+            return { hasConflict: false };
+        }
+
+        // Convert time to minutes
+        const [newHours, newMinutes] = appointmentTime.split(':').map(Number);
+        const newStartMinutes = newHours * 60 + newMinutes;
+        const newEndMinutes = newStartMinutes + serviceDurationMinutes;
+
+        // Check each appointment for overlap
+        for (const existingApt of appointmentsOnDate) {
+            const existingService = localServices.find(s => s.id === existingApt.serviceId);
+            if (!existingService) continue;
+
+            const [existingHours, existingMinutes] = existingApt.time.split(':').map(Number);
+            const existingStartMinutes = existingHours * 60 + existingMinutes;
+            const existingEndMinutes = existingStartMinutes + (existingService.duration || 60);
+
+            // Check overlap
+            const hasOverlap = newStartMinutes < existingEndMinutes && newEndMinutes > existingStartMinutes;
+
+            if (hasOverlap) {
+                const existingEndTime = `${String(Math.floor(existingEndMinutes / 60)).padStart(2, '0')}:${String(existingEndMinutes % 60).padStart(2, '0')}`;
+                const clientName = localUsers.find(u => u.id === existingApt.userId)?.name || 'khách hàng';
+                return {
+                    hasConflict: true,
+                    conflictInfo: `Nhân viên đã được phân công từ ${existingApt.time} - ${existingEndTime} cho khách "${clientName}" (${existingService.name})`
+                };
+            }
+        }
+
+        return { hasConflict: false };
+    };
+
     // Get available staff for selected date
     const availableStaff = useMemo(() => {
         // Return all active staff (admin can assign any staff)
@@ -764,9 +1160,48 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         );
     }, [localUsers]);
 
+    // Calculate which staff have time conflicts for the selected date/time/service
+    const staffConflictInfo = useMemo(() => {
+        const conflictMap: Record<string, { hasConflict: boolean; conflictInfo?: string }> = {};
+
+        // Only calculate if we have date and time (service is optional)
+        const dateIso = parseDDMMYYYYToYYYYMMDD(newAppointmentForm.date || '');
+        
+        if (!dateIso || !newAppointmentForm.time) {
+            return conflictMap;
+        }
+
+        // For each staff member, check if they have time conflict
+        availableStaff.forEach(staff => {
+            // Determine service duration: use first selected service or default to 60 minutes
+            let serviceDuration = 60; // Default duration in minutes
+            
+            if (selectedServices.length > 0) {
+                const primaryService = selectedServices[0];
+                const service = localServices.find(s => s.id === primaryService.id);
+                if (service && service.duration) {
+                    serviceDuration = service.duration;
+                }
+            }
+            
+            const conflict = hasTherapistTimeConflict(
+                staff.id,
+                dateIso,
+                newAppointmentForm.time,
+                serviceDuration
+            );
+            conflictMap[staff.id] = conflict;
+        });
+
+        return conflictMap;
+    }, [availableStaff, newAppointmentForm.date, newAppointmentForm.time, selectedServices, localServices, appointments, localUsers]);
+
     // Handle form submission
     const handleAddAppointment = async () => {
         try {
+            // Debug log
+            console.log('Submit form - selectedServices:', selectedServices, 'length:', selectedServices.length);
+
             // Validation
             if (!newAppointmentForm.selectedCustomerId && (!newAppointmentForm.customerName || !newAppointmentForm.customerPhone)) {
                 alert('Vui lòng chọn khách hàng hoặc nhập thông tin khách hàng mới');
@@ -778,7 +1213,13 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 return;
             }
 
+            if (!newAppointmentForm.time) {
+                alert('Vui lòng chọn giờ hẹn hợp lệ');
+                return;
+            }
+
             if (selectedServices.length === 0) {
+                console.error('No services selected:', selectedServices);
                 alert('Vui lòng chọn ít nhất một dịch vụ');
                 return;
             }
@@ -788,10 +1229,29 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 return;
             }
 
+            // Client-side validation: Check therapist time conflict BEFORE creating appointment
             const selectedDate = parseDDMMYYYYToYYYYMMDD(newAppointmentForm.date);
             if (!selectedDate) {
                 alert('Ngày không hợp lệ');
                 return;
+            }
+
+            // Check conflict for each service to ensure no overlap
+            for (const serviceItem of selectedServices) {
+                const service = localServices.find(s => s.id === serviceItem.id);
+                if (service) {
+                    const conflict = hasTherapistTimeConflict(
+                        newAppointmentForm.therapistId,
+                        selectedDate,
+                        newAppointmentForm.time,
+                        service.duration || 60
+                    );
+
+                    if (conflict.hasConflict) {
+                        alert(`⚠️ Xung đột khung giờ nhân viên:\n\n${conflict.conflictInfo}\n\nVui lòng chọn nhân viên khác hoặc thay đổi thời gian.`);
+                        return;
+                    }
+                }
             }
 
             // Get therapist name
@@ -811,6 +1271,13 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             for (const serviceItem of selectedServices) {
                 const service = localServices.find(s => s.id === serviceItem.id);
                 if (service) {
+                    console.log('Creating appointment for service:', {
+                        serviceId: service.id,
+                        serviceName: service.name,
+                        quantity: serviceItem.quantity,
+                        selectedServiceQuantity: newAppointmentForm.serviceQuantity
+                    });
+
                     // All bookings create treatment courses (quantity >= 1)
                     // Backend will handle treatment course creation automatically
                     appointmentsToCreate.push({
@@ -833,18 +1300,41 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 }
             }
 
+            console.log('Appointments to create:', appointmentsToCreate);
+
             if (appointmentsToCreate.length === 0) {
                 alert('Vui lòng chọn ít nhất một dịch vụ');
                 return;
             }
 
-            // Create all appointments
-            const createdAppointments = await Promise.all(
-                appointmentsToCreate.map(data => apiService.createAppointment(data))
-            );
+            // Create all appointments (each service may create multiple appointments if it's a treatment course)
+            const allCreatedAppointments: Appointment[] = [];
+
+            for (const data of appointmentsToCreate) {
+                const response: any = await apiService.createAppointment(data);
+
+                // Handle response: could be single appointment or array of appointments
+                if (response && Array.isArray(response.appointments)) {
+                    // Treatment course: multiple appointments returned
+                    allCreatedAppointments.push(...response.appointments);
+                    console.log(`✅ Created ${response.appointments.length} appointments for ${data.serviceName} (treatment course)`);
+                } else {
+                    // Single appointment (legacy format support)
+                    allCreatedAppointments.push(response as Appointment);
+                    console.log(`✅ Created 1 appointment for ${data.serviceName}`);
+                }
+            }
 
             // Update appointments list
-            setAppointments(prev => [...prev, ...createdAppointments]);
+            setAppointments(prev => [...prev, ...allCreatedAppointments]);
+
+            // Invalidate treatment course cache for the selected customer
+            // so next fetch will get fresh data including the newly created course
+            if (newAppointmentForm.selectedCustomerId) {
+                delete courseCacheRef.current[newAppointmentForm.selectedCustomerId];
+                setActiveCoursesForCustomer([]); // Clear displayed courses
+                console.log(`✅ Invalidated course cache for customer: ${newAppointmentForm.selectedCustomerId}`);
+            }
 
             // Reset form and close modal
             setNewAppointmentForm({
@@ -868,10 +1358,19 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             setShowQuickAddCustomer(false);
             setShowAddModal(false);
 
-            alert(`Thêm ${createdAppointments.length} lịch hẹn thành công!`);
+            alert(`Thêm ${allCreatedAppointments.length} lịch hẹn thành công!`);
         } catch (err: any) {
             console.error('Error creating appointment:', err);
-            alert(`Thêm lịch hẹn thất bại: ${err.message || String(err)}`);
+
+            // Check if error is about therapist time conflict
+            const errorMessage = err.response?.data?.message || err.message || String(err);
+            const conflictInfo = err.response?.data?.conflict;
+
+            if (errorMessage.includes('Nhân viên') && errorMessage.includes('trùng') || errorMessage.includes('conflict')) {
+                alert(`⚠️ Xung đột khung giờ:\n\n${errorMessage}\n\nVui lòng chọn nhân viên khác hoặc thay đổi thời gian.`);
+            } else {
+                alert(`Thêm lịch hẹn thất bại: ${errorMessage}`);
+            }
         }
     };
 
@@ -956,7 +1455,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                     const month = String(date.getMonth() + 1).padStart(2, '0');
                     const day = String(date.getDate()).padStart(2, '0');
                     const dateKey = `${year}-${month}-${day}`;
-                    
+
                     const dayAppointments = appointmentsByDate.get(dateKey) || [];
                     const isToday = date.toDateString() === new Date().toDateString();
                     const isExpanded = expandedDates.has(dateKey);
@@ -1075,7 +1574,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                     const month = String(date.getMonth() + 1).padStart(2, '0');
                     const day = String(date.getDate()).padStart(2, '0');
                     const dateKey = `${year}-${month}-${day}`;
-                    
+
                     const dayAppointments = (appointmentsByDate.get(dateKey) || []).sort((a, b) => {
                         // Sort by time
                         const timeA = a.time.split(':').map(Number);
@@ -1503,23 +2002,23 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         // Use localUsers first, fallback to allUsers if localUsers is empty
         const usersToSearch = localUsers.length > 0 ? localUsers : allUsers;
         const staff = usersToSearch.filter(u => u.role === 'Staff' && u.status === 'Active');
-        
+
         // If we have an appointment to approve, check for conflicts
         if (appointmentToApprove) {
             const appointmentDate = appointmentToApprove.date;
             const appointmentTime = appointmentToApprove.time;
-            
+
             // Map staff with conflict information
             return staff.map(s => {
                 // Check if this staff has a conflicting appointment (same date, same time, different appointment)
-                const conflictingAppointment = appointments.find(apt => 
+                const conflictingAppointment = appointments.find(apt =>
                     apt.therapistId === s.id &&
                     apt.date === appointmentDate &&
                     apt.time === appointmentTime &&
                     apt.id !== appointmentToApprove.id && // Exclude current appointment
                     (apt.status === 'pending' || apt.status === 'upcoming' || apt.status === 'scheduled' || apt.status === 'in-progress')
                 );
-                
+
                 return {
                     ...s,
                     hasConflict: !!conflictingAppointment,
@@ -1527,7 +2026,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 };
             });
         }
-        
+
         return staff;
     }, [localUsers, allUsers, appointmentToApprove, appointments]);
 
@@ -1600,12 +2099,12 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                 const conflictClientName = conflictClient?.name || 'khách hàng';
                                                 const conflictDate = conflict?.date ? new Date(conflict.date).toLocaleDateString('vi-VN') : '';
                                                 return (
-                                                    <option 
-                                                        key={staff.id} 
+                                                    <option
+                                                        key={staff.id}
                                                         value={staff.id}
                                                         style={hasConflict ? { color: '#dc2626', fontWeight: 'bold' } : {}}
                                                     >
-                                                        {staff.name} {staff.phone ? `(${staff.phone})` : ''} 
+                                                        {staff.name} {staff.phone ? `(${staff.phone})` : ''}
                                                         {hasConflict ? ` ⚠️ Đã bận (${conflictDate} ${conflict?.time} - ${conflictClientName})` : ''}
                                                     </option>
                                                 );
@@ -1670,7 +2169,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                             ) : (() => {
                                 // Use selectedAppointmentDetail if available, otherwise fallback to selectedAppointment
                                 const appointmentToDisplay = selectedAppointmentDetail || selectedAppointment;
-                                
+
                                 // Combine allUsers and localUsers for lookup - prioritize localUsers
                                 const allUsersList = [...localUsers, ...allUsers.filter(u => !localUsers.find(lu => lu.id === u.id))];
 
@@ -1680,6 +2179,9 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                     userId: appointmentToDisplay.userId,
                                     therapistId: appointmentToDisplay.therapistId,
                                     paymentStatus: appointmentToDisplay.paymentStatus,
+                                    sessionNumber: (appointmentToDisplay as any).sessionNumber,
+                                    totalSessions: (appointmentToDisplay as any).totalSessions,
+                                    isCompleted: (appointmentToDisplay as any).isCompleted,
                                     allUsersListLength: allUsersList.length,
                                     localUsersLength: localUsers.length,
                                     allUsersLength: allUsers.length,
@@ -1725,6 +2227,38 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                 return (
                                     <div className="space-y-2 text-sm">
                                         <p><strong>Dịch vụ:</strong> {appointmentToDisplay.serviceName}</p>
+
+                                        {/* Session Number & Completion Status */}
+                                        {(appointmentToDisplay as any).sessionNumber && (
+                                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 my-3">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <p className="text-blue-900 font-semibold">
+                                                        📅 Buổi thứ {(appointmentToDisplay as any).sessionNumber}
+                                                        {(appointmentToDisplay as any).totalSessions &&
+                                                            ` / ${(appointmentToDisplay as any).totalSessions}`
+                                                        }
+                                                    </p>
+                                                    {(appointmentToDisplay as any).isCompleted ? (
+                                                        <span className="flex items-center gap-1 text-green-700 bg-green-100 px-2 py-1 rounded-md text-xs font-semibold">
+                                                            <CheckCircleIcon className="w-4 h-4" />
+                                                            Đã hoàn thành
+                                                        </span>
+                                                    ) : (
+                                                        <span className="flex items-center gap-1 text-orange-700 bg-orange-100 px-2 py-1 rounded-md text-xs font-semibold">
+                                                            <ClockIcon className="w-4 h-4" />
+                                                            Chưa hoàn thành
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-blue-700 text-xs">
+                                                    {(appointmentToDisplay as any).isCompleted
+                                                        ? 'Khách hàng đã hoàn thành buổi liệu trình này'
+                                                        : 'Khách hàng chưa hoàn thành buổi này'
+                                                    }
+                                                </p>
+                                            </div>
+                                        )}
+
                                         <p><strong>Khách hàng:</strong> {clientName}</p>
                                         <p><strong>Số điện thoại:</strong> {clientPhone || 'N/A'}</p>
                                         <p><strong>Thời gian:</strong> {appointmentToDisplay.time}, {new Date(appointmentToDisplay.date).toLocaleDateString('vi-VN')}</p>
@@ -1740,49 +2274,178 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                 );
                             })()}
                         </div>
-                        <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
-                            {selectedAppointment.status === 'pending' && (
-                                <>
-                                    <button
-                                        onClick={() => {
-                                            setAppointmentToApprove(selectedAppointment);
-                                            setSelectedTherapistId(selectedAppointment.therapistId || '');
-                                            setSelectedAppointment(null);
-                                            setSelectedAppointmentDetail(null);
-                                        }}
-                                        className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 text-sm font-semibold"
-                                    >
-                                        Xác nhận
-                                    </button>
-                                    <button onClick={() => { setAppointmentToCancel(selectedAppointment); setSelectedAppointment(null); setSelectedAppointmentDetail(null); }} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold">Từ chối</button>
-                                </>
-                            )}
-                            {(selectedAppointment.status === 'upcoming' || selectedAppointment.status === 'in-progress') && (
-                                <button onClick={() => { setAppointmentToCancel(selectedAppointment); setSelectedAppointment(null); setSelectedAppointmentDetail(null); }} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold">Hủy lịch</button>
-                            )}
-                            <button onClick={() => { setSelectedAppointment(null); setSelectedAppointmentDetail(null); }} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-semibold">Đóng</button>
+                        <div className="bg-gray-50 px-6 py-4 flex justify-between items-center rounded-b-lg">
+                            <div className="flex gap-2">
+                                {selectedAppointment.status !== 'cancelled' && selectedAppointment.status !== 'completed' && (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                setAppointmentToReschedule(selectedAppointment);
+                                                setRescheduleDate(formatDateDDMMYYYY(new Date(selectedAppointment.date)));
+                                                setRescheduleTime(selectedAppointment.time);
+                                                setSelectedAppointment(null);
+                                                setSelectedAppointmentDetail(null);
+                                            }}
+                                            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm font-semibold flex items-center gap-2"
+                                        >
+                                            <CalendarIcon className="w-4 h-4" />
+                                            Đổi lịch
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setAppointmentToCancel(selectedAppointment);
+                                                setSelectedAppointment(null);
+                                                setSelectedAppointmentDetail(null);
+                                            }}
+                                            className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold flex items-center gap-2"
+                                        >
+                                            <XCircleIcon className="w-4 h-4" />
+                                            Hủy lịch
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                            <div className="flex gap-2">
+                                {selectedAppointment.status === 'pending' && (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                setAppointmentToApprove(selectedAppointment);
+                                                setSelectedTherapistId(selectedAppointment.therapistId || '');
+                                                setSelectedAppointment(null);
+                                                setSelectedAppointmentDetail(null);
+                                            }}
+                                            className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 text-sm font-semibold"
+                                        >
+                                            Xác nhận
+                                        </button>
+                                    </>
+                                )}
+                                <button onClick={() => { setSelectedAppointment(null); setSelectedAppointmentDetail(null); }} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-semibold">Đóng</button>
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
 
-            {appointmentToCancel && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setAppointmentToCancel(null)}>
+            {/* Cancel Confirmation Dialog */}
+            <ConfirmDialog
+                isOpen={showCancelDialog}
+                title="⚠️ Hủy Lịch Hẹn"
+                message={
+                    isCancellingMultiple
+                        ? `Bạn sắp hủy ${cancelMultipleCount} lịch hẹn của dịch vụ này cho khách hàng. Hành động này không thể hoàn tác.`
+                        : 'Bạn sắp hủy lịch hẹn này. Hành động này không thể hoàn tác.'
+                }
+                confirmText="Xác nhận hủy"
+                cancelText="Không, quay lại"
+                isDanger={true}
+                isLoading={isCancelLoading}
+                onConfirm={handleConfirmCancellation}
+                onCancel={() => {
+                    setShowCancelDialog(false);
+                    setAppointmentToCancel(null);
+                    setRejectionReason('');
+                }}
+            />
+
+            {/* Cancel Reason Modal */}
+            {appointmentToCancel && !showCancelDialog && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setAppointmentToCancel(null); setRejectionReason(''); }}>
                     <div className="bg-white rounded-lg shadow-xl max-w-md w-full" onClick={e => e.stopPropagation()}>
                         <div className="p-6">
-                            <h3 className="text-xl font-bold text-gray-800 mb-4">Lý do Từ chối / Hủy lịch</h3>
-                            <p className="text-sm text-gray-600 mb-4">Vui lòng nhập lý do từ chối lịch hẹn này. Khách hàng sẽ thấy thông báo này.</p>
+                            <h3 className="text-xl font-bold text-gray-800 mb-4">Lý do Hủy Lịch</h3>
+                            <p className="text-sm text-gray-600 mb-4">
+                                {isCancellingMultiple 
+                                    ? `Vui lòng nhập lý do hủy ${cancelMultipleCount} lịch hẹn. Khách hàng sẽ thấy thông báo này.`
+                                    : 'Vui lòng nhập lý do hủy lịch hẹn này. Khách hàng sẽ thấy thông báo này.'
+                                }
+                            </p>
                             <textarea
                                 value={rejectionReason}
                                 onChange={(e) => setRejectionReason(e.target.value)}
                                 rows={4}
                                 className="w-full p-2 border rounded-md focus:ring-brand-primary focus:border-brand-primary"
-                                placeholder="VD: Khung giờ đã có khách đặt, kỹ thuật viên không có lịch làm việc..."
+                                placeholder="VD: Khách yêu cầu hủy, khung giờ đã có khách đặt, kỹ thuật viên không có lịch làm việc..."
+                                disabled={isCancelLoading}
                             />
                         </div>
                         <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
-                            <button onClick={() => setAppointmentToCancel(null)} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-semibold">Hủy bỏ</button>
-                            <button onClick={handleConfirmCancellation} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold">Xác nhận</button>
+                            <button 
+                                onClick={() => { setAppointmentToCancel(null); setRejectionReason(''); }} 
+                                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-semibold disabled:opacity-50"
+                                disabled={isCancelLoading}
+                            >
+                                Hủy bỏ
+                            </button>
+                            <button 
+                                onClick={() => setShowCancelDialog(true)} 
+                                className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold disabled:opacity-50"
+                                disabled={!rejectionReason.trim() || isCancelLoading}
+                            >
+                                Tiếp tục
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Reschedule Appointment Modal */}
+            {appointmentToReschedule && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setAppointmentToReschedule(null)}>
+                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full" onClick={e => e.stopPropagation()}>
+                        <div className="p-6">
+                            <h3 className="text-xl font-bold text-gray-800 mb-4">Đổi lịch hẹn</h3>
+                            <p className="text-sm text-gray-600 mb-4">Chọn ngày và giờ mới cho lịch hẹn</p>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Ngày hẹn mới <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={rescheduleDate}
+                                        onChange={(e) => setRescheduleDate(e.target.value)}
+                                        placeholder="dd/mm/yyyy"
+                                        className="w-full p-2 border rounded-md focus:ring-brand-primary focus:border-brand-primary"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Giờ hẹn mới <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        value={rescheduleTime}
+                                        onChange={(e) => setRescheduleTime(e.target.value)}
+                                        className="w-full p-2 border rounded-md focus:ring-brand-primary focus:border-brand-primary"
+                                    >
+                                        <option value="">Chọn giờ</option>
+                                        {generateTimeSlots.map(slot => (
+                                            <option key={slot} value={slot}>{slot}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
+                            <button
+                                onClick={() => {
+                                    setAppointmentToReschedule(null);
+                                    setRescheduleDate('');
+                                    setRescheduleTime('');
+                                }}
+                                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-semibold"
+                            >
+                                Hủy bỏ
+                            </button>
+                            <button
+                                onClick={handleRescheduleConfirm}
+                                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm font-semibold"
+                            >
+                                Xác nhận
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1902,9 +2565,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
 
                                     {/* Quick Add Customer */}
                                     <div className="border-t pt-4">
-                                        <label className="block text-sm font-medium text-gray-700 mb-3">
-                                            Thêm nhanh khách hàng
-                                        </label>
+
                                         <div className="space-y-2">
                                             <input
                                                 type="text"
@@ -1927,13 +2588,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                 className="w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
                                                 placeholder="Nhập Email"
                                             />
-                                            <button
-                                                onClick={handleQuickAddCustomer}
-                                                className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center justify-center gap-2 text-sm font-semibold transition-colors"
-                                            >
-                                                <PlusIcon className="w-4 h-4" />
-                                                Thêm nhanh khách hàng
-                                            </button>
+
                                         </div>
                                     </div>
                                 </div>
@@ -2033,12 +2688,22 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                             </div>
                                             {/* Time Input */}
                                             <div className="relative">
-                                                <input
-                                                    type="time"
+                                                <select
                                                     value={newAppointmentForm.time}
                                                     onChange={(e) => setNewAppointmentForm(prev => ({ ...prev, time: e.target.value }))}
-                                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                                />
+                                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white cursor-pointer"
+                                                >
+                                                    {availableTimeSlots.length === 0 ? (
+                                                        <option value="" disabled>Không còn khung giờ khả dụng</option>
+                                                    ) : (
+                                                        availableTimeSlots.map(slot => (
+                                                            <option key={slot} value={slot}>{slot}</option>
+                                                        ))
+                                                    )}
+                                                </select>
+                                                <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                                                    <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -2049,6 +2714,13 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
                                             Dịch vụ <span className="text-red-500">*</span>
                                         </label>
+                                        {selectedServices.length > 0 && (
+                                            <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-md">
+                                                <p className="text-sm text-green-800 font-medium">
+                                                    ✓ Đã chọn {selectedServices.length} dịch vụ
+                                                </p>
+                                            </div>
+                                        )}
                                         <div className="space-y-2">
                                             <div className="flex gap-2">
                                                 <div className="relative flex-1">
@@ -2120,48 +2792,97 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
                                             Chọn nhân viên <span className="text-red-500">*</span>
                                         </label>
-                                        <div className="relative">
-                                            <select
-                                                value={newAppointmentForm.therapistId}
-                                                onChange={(e) => setNewAppointmentForm(prev => ({ ...prev, therapistId: e.target.value }))}
-                                                className="w-full p-2 pr-8 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white cursor-pointer"
+                                        <div className="relative group">
+                                            {/* Custom Dropdown Button */}
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const dropdown = (e.currentTarget as HTMLElement).nextElementSibling as HTMLElement;
+                                                    if (dropdown?.classList.contains('hidden')) {
+                                                        dropdown?.classList.remove('hidden');
+                                                    } else {
+                                                        dropdown?.classList.add('hidden');
+                                                    }
+                                                }}
+                                                className="w-full p-2 pr-8 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white text-left flex items-center justify-between cursor-pointer hover:border-gray-400 transition-colors"
                                             >
-                                                <option value="">Chọn nhân viên</option>
-                                                {isLoadingModalData ? (
-                                                    <option value="" disabled>Đang tải nhân viên...</option>
-                                                ) : availableStaff.length > 0 ? (
-                                                    availableStaff.map(staff => (
-                                                        <option key={staff.id} value={staff.id}>{staff.name}</option>
-                                                    ))
-                                                ) : (
-                                                    localUsers.filter(u => u.role === 'Staff' && u.status === 'Active').length > 0 ? (
-                                                        localUsers.filter(u => u.role === 'Staff' && u.status === 'Active').map(staff => (
-                                                            <option key={staff.id} value={staff.id}>{staff.name}</option>
-                                                        ))
-                                                    ) : (
-                                                        <option value="" disabled>Không có nhân viên</option>
-                                                    )
-                                                )}
-                                            </select>
-                                            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                                                <span className={newAppointmentForm.therapistId ? 'text-gray-900' : 'text-gray-500'}>
+                                                    {newAppointmentForm.therapistId
+                                                        ? availableStaff.find(s => s.id === newAppointmentForm.therapistId)?.name || 'Chọn nhân viên'
+                                                        : 'Chọn nhân viên'}
+                                                </span>
                                                 <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                                            </button>
+
+                                            {/* Dropdown Menu */}
+                                            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-50 hidden max-h-64 overflow-y-auto" data-dropdown="staff">
+                                                {isLoadingModalData ? (
+                                                    <div className="px-4 py-2 text-sm text-gray-500">Đang tải nhân viên...</div>
+                                                ) : availableStaff.length > 0 ? (
+                                                    availableStaff.map(staff => {
+                                                        const conflict = staffConflictInfo[staff.id];
+                                                        const hasConflict = conflict?.hasConflict || false;
+
+                                                        return (
+                                                            <div
+                                                                key={staff.id}
+                                                                onClick={() => {
+                                                                    if (!hasConflict) {
+                                                                        setNewAppointmentForm(prev => ({ ...prev, therapistId: staff.id }));
+                                                                        // Close dropdown
+                                                                        const dropdown = document.querySelector(`[data-dropdown="staff"]`) as HTMLElement;
+                                                                        if (dropdown) dropdown.classList.add('hidden');
+                                                                    }
+                                                                }}
+                                                                className={`px-4 py-2 text-sm border-b transition-colors ${
+                                                                    hasConflict
+                                                                        ? 'bg-red-50 text-red-600 cursor-not-allowed opacity-60'
+                                                                        : 'hover:bg-blue-50 cursor-pointer text-gray-900'
+                                                                } ${newAppointmentForm.therapistId === staff.id ? 'bg-blue-100 font-semibold' : ''}`}
+                                                            >
+                                                                <div className="flex items-center justify-between">
+                                                                    <span>
+                                                                        {staff.name}
+                                                                        {hasConflict && (
+                                                                            <span className="ml-2 text-xs text-red-600 font-semibold">
+                                                                                ⚠️ HIỆN TẠI KHÔNG TRỐNG LỊCH
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                </div>
+                                                                {hasConflict && conflict?.conflictInfo && (
+                                                                    <div className="text-xs text-red-500 mt-1 ml-4 italic">
+                                                                        {conflict.conflictInfo}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <div className="px-4 py-2 text-sm text-gray-500">Không có nhân viên</div>
+                                                )}
                                             </div>
+
+                                            {/* Close dropdown when clicking outside */}
+                                            <style>{`
+                                                [data-dropdown="staff"]:not(.hidden) ~ button {
+                                                    z-index: 40;
+                                                }
+                                            `}</style>
                                         </div>
+
+                                        {/* Show warning if any staff has conflict */}
+                                        {Object.values(staffConflictInfo).some(c => c.hasConflict) && (
+                                            <div className="mt-2 text-xs text-red-600 flex items-start gap-1 bg-red-50 p-2 rounded">
+                                                <span className="mt-0.5 flex-shrink-0">⚠️</span>
+                                                <span>Một số nhân viên đang có lịch khác vào thời gian này (hiển thị màu đỏ, không trống lịch). Vui lòng chọn nhân viên có sẵn hoặc thay đổi thời gian.</span>
+                                            </div>
+                                        )}
                                     </div>
 
-                                    {/* Notes */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Ghi chú
-                                        </label>
-                                        <textarea
-                                            value={newAppointmentForm.notes}
-                                            onChange={(e) => setNewAppointmentForm(prev => ({ ...prev, notes: e.target.value }))}
-                                            rows={3}
-                                            className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="Ghi chú"
-                                        />
-                                    </div>
+
+
                                 </div>
                             </div>
 
@@ -2330,7 +3051,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                         onChange={e => setSearchTerm(e.target.value)}
                                         className="w-full p-2 border rounded-md"
                                     />
-                                    
+
                                     {/* Staff Filter Dropdown */}
                                     <div className="relative staff-dropdown-container">
                                         <div
@@ -2618,46 +3339,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 </div>
             </div>
 
-            {/* Rejection Modal */}
-            {appointmentToCancel && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                        <h2 className="text-xl font-bold text-gray-800 mb-4">Hủy lịch hẹn</h2>
-                        <p className="text-gray-600 mb-4">
-                            Bạn có chắc muốn hủy lịch hẹn của <strong>{(appointmentToCancel as any).userName || 'khách hàng'}</strong>?
-                        </p>
-                        <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Lý do hủy <span className="text-red-500">*</span>
-                            </label>
-                            <textarea
-                                value={rejectionReason}
-                                onChange={(e) => setRejectionReason(e.target.value)}
-                                rows={3}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
-                                placeholder="Nhập lý do hủy lịch..."
-                            />
-                        </div>
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => {
-                                    setAppointmentToCancel(null);
-                                    setRejectionReason('');
-                                }}
-                                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-                            >
-                                Đóng
-                            </button>
-                            <button
-                                onClick={handleRejectConfirm}
-                                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                            >
-                                Xác nhận hủy
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* No old rejection modal - using new ConfirmDialog + reason modal above */}
         </div>
     );
 };

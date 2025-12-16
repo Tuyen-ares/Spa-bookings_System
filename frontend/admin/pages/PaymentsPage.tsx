@@ -1357,7 +1357,7 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
                                                                         <EditIcon className="w-4 h-4" />
                                                                         Chỉnh sửa
                                                                     </button>
-                                                                    {invoice.unpaidAmount > 0 && (
+                                                                    {invoice.isPrinted && !invoice.isConfirmedPaid && (
                                                                         <button
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();

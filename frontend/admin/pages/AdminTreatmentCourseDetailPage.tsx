@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import * as apiService from '../../client/services/apiService';
 import type { TreatmentCourse, User, Service } from '../../types';
 import { formatDateDDMMYYYY } from '../../shared/dateUtils';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 interface TreatmentSession {
     sessionId: string;
@@ -48,6 +49,10 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
         totalSessions: 10,
         sessionsPerWeek: 2
     });
+    
+    // State for cancel treatment course
+    const [showCancelDialog, setShowCancelDialog] = useState(false);
+    const [isCancelLoading, setIsCancelLoading] = useState(false);
 
     useEffect(() => {
         if (id) {
@@ -84,11 +89,11 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                     sessionTime: s.sessionTime
                 }))
             });
-            
+
             // Create a deep copy to ensure React detects the change
             const courseData = JSON.parse(JSON.stringify(data));
             setCourse(courseData);
-            
+
             // Load sessions if available (both formats: sessions and TreatmentSessions)
             if (courseData.sessions) {
                 setSessions(courseData.sessions as any);
@@ -159,7 +164,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
 
     const handleUpdateCourse = async (e: React.FormEvent) => {
         e.preventDefault();
-        
+
         try {
             await apiService.updateTreatmentCourse(id!, editForm);
             alert('Cập nhật thành công!');
@@ -268,7 +273,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         selectedDate.setHours(0, 0, 0, 0);
-        
+
         if (selectedDate < today) {
             alert('Ngày không được chọn dưới ngày hiện tại');
             return;
@@ -311,13 +316,13 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
 
             const responseData = await response.json();
             console.log('✅ Appointment updated successfully:', responseData);
-            
+
             alert('Đã cập nhật lịch hẹn thành công!');
             setShowEditAppointmentModal(false);
             setSelectedSession(null);
             setEditAppointmentForm({ date: '', time: '' });
             setEditAppointmentDateDisplay('');
-            
+
             // Force reload course detail to get fresh data
             // Use a longer delay to ensure backend has fully committed the changes
             setTimeout(async () => {
@@ -325,13 +330,39 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                 await loadCourseDetail();
                 console.log('✅ Course detail reloaded');
             }, 1000);
-            
+
             // Dispatch event to refresh appointments in other pages
             window.dispatchEvent(new CustomEvent('refresh-appointments'));
             window.dispatchEvent(new CustomEvent('appointments-updated'));
         } catch (error: any) {
             console.error('Error updating appointment:', error);
             alert(error.message || 'Không thể cập nhật lịch hẹn');
+        }
+    };
+
+    const handleCancelTreatmentCourse = async () => {
+        if (!course) return;
+        
+        setIsCancelLoading(true);
+        try {
+            const result = await apiService.cancelTreatmentCourse(course.id);
+            
+            // Update local course status
+            setCourse(prev => prev ? { ...prev, status: 'cancelled' } : null);
+            
+            setShowCancelDialog(false);
+            
+            alert(`Đã hủy liệu trình và ${result.cancelledAppointmentCount} lịch hẹn liên quan!`);
+            
+            // Redirect back after 1 second
+            setTimeout(() => {
+                navigate('/admin/treatment-courses');
+            }, 1000);
+        } catch (error) {
+            console.error('Error cancelling treatment course:', error);
+            alert('Có lỗi xảy ra khi hủy liệu trình');
+        } finally {
+            setIsCancelLoading(false);
         }
     };
 
@@ -408,6 +439,15 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                             <span className="text-gray-600">ID: {course.id}</span>
                         </div>
                     </div>
+                    {/* Cancel Button */}
+                    {course.status !== 'cancelled' && (
+                        <button
+                            onClick={() => setShowCancelDialog(true)}
+                            className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold flex items-center gap-2"
+                        >
+                            ❌ Hủy Liệu Trình
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -493,11 +533,10 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                         <div className="pt-2 border-t border-gray-100">
                             <div className="text-sm text-gray-600">Trạng thái thanh toán:</div>
                             <div className="flex items-center gap-2">
-                                <span className={`px-3 py-1 text-sm font-medium rounded-full ${
-                                    (course as any).paymentStatus === 'Paid' 
-                                        ? 'bg-green-100 text-green-800' 
+                                <span className={`px-3 py-1 text-sm font-medium rounded-full ${(course as any).paymentStatus === 'Paid'
+                                        ? 'bg-green-100 text-green-800'
                                         : 'bg-yellow-100 text-yellow-800'
-                                }`}>
+                                    }`}>
                                     {(course as any).paymentStatus === 'Paid' ? '✓ Đã thanh toán' : 'Chưa thanh toán'}
                                 </span>
                                 {(course as any).paymentStatus !== 'Paid' && (
@@ -530,7 +569,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                             <div className="pt-2 border-t border-gray-100">
                                 <div className="text-sm text-gray-600">Tần suất:</div>
                                 <div className="font-medium">
-                                    {(course as any).frequencyType === 'sessions_per_week' 
+                                    {(course as any).frequencyType === 'sessions_per_week'
                                         ? `${(course as any).frequencyValue} lần/tuần`
                                         : `${(course as any).frequencyValue} tuần/lần`}
                                 </div>
@@ -606,15 +645,24 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {[...((course as any).TreatmentSessions || [])]
-                                    .sort((a: any, b: any) => (a.sessionNumber || 0) - (b.sessionNumber || 0))
-                                    .map((session: any) => {
+                                {(() => {
+                                    const sortedSessions = [...((course as any).TreatmentSessions || [])]
+                                        .sort((a: any, b: any) => (a.sessionNumber || 0) - (b.sessionNumber || 0));
+
+                                    // Find the first incomplete session (this is the only one that can be completed)
+                                    const firstIncompleteIndex = sortedSessions.findIndex((s: any) => s.status !== 'completed');
+
+                                    return sortedSessions.map((session: any, index: number) => {
                                         // Priority: Use Appointment.date first (most up-to-date), then sessionDate
                                         // This ensures the date reflects the latest appointment change
                                         const appointmentDate = session.Appointment?.date;
                                         const sessionDate = session.sessionDate;
                                         const displayDate = appointmentDate || sessionDate;
-                                        
+
+                                        // Check if this session can be completed
+                                        // Only the first incomplete session can be completed
+                                        const canComplete = session.status !== 'completed' && index === firstIncompleteIndex;
+
                                         // Format date to YYYY-MM-DD string to avoid timezone issues
                                         let formattedDate = '-';
                                         if (displayDate) {
@@ -630,120 +678,127 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                                                 console.error('Error formatting date:', e, displayDate);
                                             }
                                         }
-                                        
+
                                         return (
-                                    <tr key={`${session.id}-${appointmentDate || sessionDate}`} className="border-b border-gray-100 hover:bg-gray-50">
-                                        <td className="py-3 px-4 text-sm font-medium">{session.sessionNumber}</td>
-                                        <td className="py-3 px-4 text-sm">
-                                            {formattedDate}
-                                        </td>
-                                        <td className="py-3 px-4 text-sm">{session.sessionTime || '-'}</td>
-                                        <td className="py-3 px-4 text-sm">
-                                            {session.Staff?.name || 
-                                             (session.Appointment?.Therapist?.name) ||
-                                             (session.staffId ? 'Chưa phân công' : '-')}
-                                        </td>
-                                        <td className="py-3 px-4 text-sm">
-                                            {session.Appointment ? (
-                                                <span className="text-blue-600">
-                                                    Có lịch hẹn
-                                                    {session.Appointment.Therapist && (
-                                                        <span className="text-xs text-gray-500 block mt-1">
-                                                            ({session.Appointment.Therapist.name})
+                                            <tr key={`${session.id}-${appointmentDate || sessionDate}`} className="border-b border-gray-100 hover:bg-gray-50">
+                                                <td className="py-3 px-4 text-sm font-medium">{session.sessionNumber}</td>
+                                                <td className="py-3 px-4 text-sm">
+                                                    {formattedDate}
+                                                </td>
+                                                <td className="py-3 px-4 text-sm">{session.sessionTime || '-'}</td>
+                                                <td className="py-3 px-4 text-sm">
+                                                    {session.Staff?.name ||
+                                                        (session.Appointment?.Therapist?.name) ||
+                                                        (session.staffId ? 'Chưa phân công' : '-')}
+                                                </td>
+                                                <td className="py-3 px-4 text-sm">
+                                                    {session.Appointment ? (
+                                                        <span className="text-blue-600">
+                                                            Có lịch hẹn
+                                                            {session.Appointment.Therapist && (
+                                                                <span className="text-xs text-gray-500 block mt-1">
+                                                                    ({session.Appointment.Therapist.name})
+                                                                </span>
+                                                            )}
                                                         </span>
+                                                    ) : (
+                                                        <span className="text-gray-400">Chưa có</span>
                                                     )}
-                                                </span>
-                                            ) : (
-                                                <span className="text-gray-400">Chưa có</span>
-                                            )}
-                                        </td>
-                                        <td className="py-3 px-4 text-sm">
-                                            {getSessionStatusBadge(session.status)}
-                                        </td>
-                                        <td className="py-3 px-4 text-sm text-gray-600 max-w-xs">
-                                            <div className="space-y-1">
-                                                {session.customerStatusNotes && (
-                                                    <div className="truncate" title={session.customerStatusNotes}>
-                                                        <span className="text-xs text-gray-500">[Khách hàng]</span> {session.customerStatusNotes}
+                                                </td>
+                                                <td className="py-3 px-4 text-sm">
+                                                    {getSessionStatusBadge(session.status)}
+                                                </td>
+                                                <td className="py-3 px-4 text-sm text-gray-600 max-w-xs">
+                                                    <div className="space-y-1">
+                                                        {session.customerStatusNotes && (
+                                                            <div className="truncate" title={session.customerStatusNotes}>
+                                                                <span className="text-xs text-gray-500">[Khách hàng]</span> {session.customerStatusNotes}
+                                                            </div>
+                                                        )}
+                                                        {session.adminNotes && (
+                                                            <div className="truncate text-blue-600" title={session.adminNotes}>
+                                                                <span className="text-xs text-blue-500">[Nội bộ]</span> {session.adminNotes}
+                                                            </div>
+                                                        )}
+                                                        {!session.customerStatusNotes && !session.adminNotes && (
+                                                            <span className="text-gray-400">-</span>
+                                                        )}
                                                     </div>
-                                                )}
-                                                {session.adminNotes && (
-                                                    <div className="truncate text-blue-600" title={session.adminNotes}>
-                                                        <span className="text-xs text-blue-500">[Nội bộ]</span> {session.adminNotes}
+                                                </td>
+                                                <td className="py-3 px-4 text-sm">
+                                                    <div className="flex gap-2 flex-wrap">
+                                                        {session.status !== 'completed' && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (!canComplete) return;
+                                                                    setSelectedSession(session);
+                                                                    setCompleteForm({
+                                                                        customerStatusNotes: session.customerStatusNotes || '',
+                                                                        adminNotes: session.adminNotes || ''
+                                                                    });
+                                                                    setShowCompleteModal(true);
+                                                                }}
+                                                                disabled={!canComplete}
+                                                                className={`px-3 py-1 text-xs rounded ${canComplete
+                                                                        ? 'bg-green-500 text-white hover:bg-green-600 cursor-pointer'
+                                                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                                    }`}
+                                                                title={canComplete ? 'Hoàn thành buổi này' : 'Vui lòng hoàn thành các buổi trước'}
+                                                            >
+                                                                Hoàn thành
+                                                            </button>
+                                                        )}
+                                                        {session.status !== 'completed' && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setSelectedSession(session);
+                                                                    setSelectedStaffId(session.staffId || session.Appointment?.therapistId || '');
+                                                                    setShowAssignStaffModal(true);
+                                                                }}
+                                                                className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                                                                title={session.Staff?.name || session.Appointment?.Therapist?.name ? "Sửa nhân viên" : "Phân công nhân viên"}
+                                                            >
+                                                                {session.Staff?.name || session.Appointment?.Therapist?.name ? "Chọn nhân viên" : "Phân công"}
+                                                            </button>
+                                                        )}
+                                                        {session.status !== 'completed' && session.Appointment && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setSelectedSession(session);
+                                                                    const appointmentDate = session.Appointment.date;
+                                                                    const appointmentTime = session.Appointment.time;
+                                                                    // Format date to YYYY-MM-DD for input
+                                                                    const dateStr = typeof appointmentDate === 'string'
+                                                                        ? appointmentDate.split('T')[0]
+                                                                        : new Date(appointmentDate).toISOString().split('T')[0];
+                                                                    setEditAppointmentForm({
+                                                                        date: dateStr,
+                                                                        time: appointmentTime || ''
+                                                                    });
+                                                                    // Set display value in DD/MM/YYYY format
+                                                                    if (dateStr) {
+                                                                        const formatted = formatDateDDMMYYYY(new Date(dateStr)).replace(/-/g, '/');
+                                                                        setEditAppointmentDateDisplay(formatted);
+                                                                    } else {
+                                                                        setEditAppointmentDateDisplay('');
+                                                                    }
+                                                                    setShowEditAppointmentModal(true);
+                                                                }}
+                                                                className="px-3 py-1 text-xs bg-purple-500 text-white rounded hover:bg-purple-600"
+                                                                title="Đổi lịch hẹn"
+                                                            >
+                                                                Đổi lịch
+                                                            </button>
+                                                        )}
+                                                        {session.status === 'completed' && (
+                                                            <span className="text-xs text-gray-500">-</span>
+                                                        )}
                                                     </div>
-                                                )}
-                                                {!session.customerStatusNotes && !session.adminNotes && (
-                                                    <span className="text-gray-400">-</span>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="py-3 px-4 text-sm">
-                                            <div className="flex gap-2 flex-wrap">
-                                                {session.status !== 'completed' && (
-                                                    <button
-                                                        onClick={() => {
-                                                            setSelectedSession(session);
-                                                            setCompleteForm({
-                                                                customerStatusNotes: session.customerStatusNotes || '',
-                                                                adminNotes: session.adminNotes || ''
-                                                            });
-                                                            setShowCompleteModal(true);
-                                                        }}
-                                                        className="px-3 py-1 text-xs bg-green-500 text-white rounded hover:bg-green-600"
-                                                    >
-                                                        Hoàn thành
-                                                    </button>
-                                                )}
-                                                {session.status !== 'completed' && (
-                                                    <button
-                                                        onClick={() => {
-                                                            setSelectedSession(session);
-                                                            setSelectedStaffId(session.staffId || session.Appointment?.therapistId || '');
-                                                            setShowAssignStaffModal(true);
-                                                        }}
-                                                        className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
-                                                        title={session.Staff?.name || session.Appointment?.Therapist?.name ? "Sửa nhân viên" : "Phân công nhân viên"}
-                                                    >
-                                                        {session.Staff?.name || session.Appointment?.Therapist?.name ? "Chọn nhân viên" : "Phân công"}
-                                                    </button>
-                                                )}
-                                                {session.status !== 'completed' && session.Appointment && (
-                                                    <button
-                                                        onClick={() => {
-                                                            setSelectedSession(session);
-                                                            const appointmentDate = session.Appointment.date;
-                                                            const appointmentTime = session.Appointment.time;
-                                                            // Format date to YYYY-MM-DD for input
-                                                            const dateStr = typeof appointmentDate === 'string' 
-                                                                ? appointmentDate.split('T')[0] 
-                                                                : new Date(appointmentDate).toISOString().split('T')[0];
-                                                            setEditAppointmentForm({
-                                                                date: dateStr,
-                                                                time: appointmentTime || ''
-                                                            });
-                                                            // Set display value in DD/MM/YYYY format
-                                                            if (dateStr) {
-                                                                const formatted = formatDateDDMMYYYY(new Date(dateStr)).replace(/-/g, '/');
-                                                                setEditAppointmentDateDisplay(formatted);
-                                                            } else {
-                                                                setEditAppointmentDateDisplay('');
-                                                            }
-                                                            setShowEditAppointmentModal(true);
-                                                        }}
-                                                        className="px-3 py-1 text-xs bg-purple-500 text-white rounded hover:bg-purple-600"
-                                                        title="Đổi lịch hẹn"
-                                                    >
-                                                        Đổi lịch
-                                                    </button>
-                                                )}
-                                                {session.status === 'completed' && (
-                                                    <span className="text-xs text-gray-500">-</span>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    );
-                                    })}
+                                                </td>
+                                            </tr>
+                                        );
+                                    });
+                                })()}
                             </tbody>
                         </table>
                     </div>
@@ -787,7 +842,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                     <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
                         <div className="p-6 border-b border-gray-200">
                             <h2 className="text-xl font-bold text-gray-900">
-                                {selectedSession.Staff?.name || selectedSession.Appointment?.Therapist?.name 
+                                {selectedSession.Staff?.name || selectedSession.Appointment?.Therapist?.name
                                     ? `Sửa nhân viên cho buổi ${selectedSession.sessionNumber}`
                                     : `Phân công nhân viên cho buổi ${selectedSession.sessionNumber}`}
                             </h2>
@@ -890,7 +945,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                                         type="number"
                                         min="1"
                                         value={editForm.totalSessions}
-                                        onChange={(e) => setEditForm({...editForm, totalSessions: parseInt(e.target.value)})}
+                                        onChange={(e) => setEditForm({ ...editForm, totalSessions: parseInt(e.target.value) })}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
                                     />
                                 </div>
@@ -903,7 +958,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                                         min="1"
                                         max="7"
                                         value={editForm.sessionsPerWeek}
-                                        onChange={(e) => setEditForm({...editForm, sessionsPerWeek: parseInt(e.target.value)})}
+                                        onChange={(e) => setEditForm({ ...editForm, sessionsPerWeek: parseInt(e.target.value) })}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
                                     />
                                 </div>
@@ -914,7 +969,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                                     <input
                                         type="text"
                                         value={editForm.consultantName}
-                                        onChange={(e) => setEditForm({...editForm, consultantName: e.target.value})}
+                                        onChange={(e) => setEditForm({ ...editForm, consultantName: e.target.value })}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
                                     />
                                 </div>
@@ -924,7 +979,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                                     </label>
                                     <textarea
                                         value={editForm.treatmentGoals}
-                                        onChange={(e) => setEditForm({...editForm, treatmentGoals: e.target.value})}
+                                        onChange={(e) => setEditForm({ ...editForm, treatmentGoals: e.target.value })}
                                         rows={3}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
                                     />
@@ -935,7 +990,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                                     </label>
                                     <textarea
                                         value={editForm.initialSkinCondition}
-                                        onChange={(e) => setEditForm({...editForm, initialSkinCondition: e.target.value})}
+                                        onChange={(e) => setEditForm({ ...editForm, initialSkinCondition: e.target.value })}
                                         rows={3}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
                                     />
@@ -985,7 +1040,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                                         value={editAppointmentForm.date}
                                         onChange={(e) => {
                                             const yyyyMMdd = e.target.value;
-                                            setEditAppointmentForm({...editAppointmentForm, date: yyyyMMdd});
+                                            setEditAppointmentForm({ ...editAppointmentForm, date: yyyyMMdd });
                                             if (yyyyMMdd) {
                                                 const formatted = formatDateDDMMYYYY(new Date(yyyyMMdd)).replace(/-/g, '/');
                                                 setEditAppointmentDateDisplay(formatted);
@@ -1028,7 +1083,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                                 <input
                                     type="time"
                                     value={editAppointmentForm.time}
-                                    onChange={(e) => setEditAppointmentForm({...editAppointmentForm, time: e.target.value})}
+                                    onChange={(e) => setEditAppointmentForm({ ...editAppointmentForm, time: e.target.value })}
                                     min="09:00"
                                     max="22:00"
                                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
@@ -1060,6 +1115,19 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                     </div>
                 </div>
             )}
+            
+            {/* Cancel Treatment Course Dialog */}
+            <ConfirmDialog
+                isOpen={showCancelDialog}
+                title="⚠️ Hủy Liệu Trình"
+                message={`Bạn sắp hủy liệu trình "${course?.serviceName || 'N/A'}" với ${course?.totalSessions} buổi. Tất cả các lịch hẹn liên quan cũng sẽ bị hủy. Hành động này không thể hoàn tác.`}
+                confirmText="Xác nhận hủy"
+                cancelText="Không, quay lại"
+                isDanger={true}
+                isLoading={isCancelLoading}
+                onConfirm={handleCancelTreatmentCourse}
+                onCancel={() => setShowCancelDialog(false)}
+            />
         </div>
     );
 };

@@ -10,7 +10,7 @@ class AppointmentService {
     async findBestTherapist(serviceId, userId, date, time) {
         // 1. Get service info
         const service = await db.Service.findByPk(serviceId, {
-            include: [{ 
+            include: [{
                 model: db.ServiceCategory,
                 attributes: ['id', 'name', 'description', 'displayOrder']
             }]
@@ -44,8 +44,8 @@ class AppointmentService {
                 if (!matchingSlot) continue;
 
                 // Check if service is available in this slot
-                if (matchingSlot.availableServiceIds && 
-                    Array.isArray(matchingSlot.availableServiceIds) && 
+                if (matchingSlot.availableServiceIds &&
+                    Array.isArray(matchingSlot.availableServiceIds) &&
                     matchingSlot.availableServiceIds.length > 0) {
                     if (!matchingSlot.availableServiceIds.includes(serviceId)) continue;
                 }
@@ -115,7 +115,7 @@ class AppointmentService {
      */
     async getAllAppointments(filters = {}) {
         const where = {};
-        
+
         if (filters.status) {
             where.status = filters.status;
         }
@@ -175,6 +175,20 @@ class AppointmentService {
                 {
                     model: db.Service,
                     attributes: ['id', 'name', 'price', 'duration', 'description']
+                },
+                {
+                    model: db.TreatmentSession,
+                    as: 'TreatmentSession',
+                    attributes: ['id', 'sessionNumber', 'treatmentCourseId', 'status'],
+                    required: false,
+                    include: [
+                        {
+                            model: db.TreatmentCourse,
+                            as: 'TreatmentCourse',
+                            attributes: ['id', 'totalSessions', 'completedSessions', 'status', 'paymentStatus'],
+                            required: false
+                        }
+                    ]
                 }
             ]
         });
@@ -183,7 +197,71 @@ class AppointmentService {
             throw new Error('Appointment not found');
         }
 
-        return appointment;
+        // Add to response
+        const result = appointment.toJSON();
+
+        // Calculate session info from treatment course if exists
+        if (result.TreatmentSession && result.TreatmentSession.TreatmentCourse) {
+            const course = result.TreatmentSession.TreatmentCourse;
+            result.sessionNumber = result.TreatmentSession.sessionNumber || 1;
+            result.totalSessions = course.totalSessions || 1;
+            result.isCompleted = appointment.status === 'completed';
+
+            console.log('🔢 Session from TreatmentCourse:', {
+                appointmentId: appointment.id,
+                sessionNumber: result.sessionNumber,
+                totalSessions: result.totalSessions,
+                courseId: course.id,
+                courseStatus: course.status
+            });
+        } else if (appointment.userId && appointment.serviceId) {
+            // Fallback: Calculate from appointments if no treatment course
+            const { Op } = require('sequelize');
+
+            // Count all appointments before this one (by date and time)
+            const previousAppointments = await db.Appointment.count({
+                where: {
+                    userId: appointment.userId,
+                    serviceId: appointment.serviceId,
+                    [Op.or]: [
+                        { date: { [Op.lt]: appointment.date } },
+                        {
+                            date: appointment.date,
+                            time: { [Op.lt]: appointment.time }
+                        },
+                        {
+                            date: appointment.date,
+                            time: appointment.time,
+                            id: { [Op.lt]: appointment.id }
+                        }
+                    ]
+                }
+            });
+
+            // Count total appointments for this service
+            const totalAppointments = await db.Appointment.count({
+                where: {
+                    userId: appointment.userId,
+                    serviceId: appointment.serviceId
+                }
+            });
+
+            // Session number = previous + 1
+            result.sessionNumber = previousAppointments + 1;
+            result.totalSessions = totalAppointments;
+            result.isCompleted = appointment.status === 'completed';
+
+            console.log('🔢 Session calculation (fallback):', {
+                appointmentId: appointment.id,
+                userId: appointment.userId,
+                serviceId: appointment.serviceId,
+                previousAppointments,
+                sessionNumber: result.sessionNumber,
+                totalAppointments: result.totalSessions
+            });
+        }
+
+        return result;
     }
 
     /**
@@ -292,19 +370,17 @@ class AppointmentService {
         });
 
         // Nếu appointment này thuộc về treatment course, cập nhật session
-        if (appointment.treatmentSessionId) {
-            const session = await db.TreatmentSession.findByPk(appointment.treatmentSessionId);
-            if (session) {
-                await session.update({
-                    status: 'completed',
-                    completedDate: new Date(),
-                    treatmentNotes: staffNotes
-                });
+        const session = await db.TreatmentSession.findOne({ where: { appointmentId: id } });
+        if (session) {
+            await session.update({
+                status: 'completed',
+                completedDate: new Date(),
+                treatmentNotes: staffNotes
+            });
 
-                // Cập nhật tiến độ course
-                if (appointment.treatmentCourseId) {
-                    await this.updateCourseProgress(appointment.treatmentCourseId);
-                }
+            // Cập nhật tiến độ course
+            if (session.treatmentCourseId) {
+                await this.updateCourseProgress(session.treatmentCourseId);
             }
         }
 
@@ -334,7 +410,7 @@ class AppointmentService {
 
             const totalSessions = course.totalSessions || 0;
             const progress = totalSessions > 0 ? Math.round((completedCount / totalSessions) * 100) : 0;
-            
+
             let courseStatus = 'in-progress';
             if (completedCount === 0) {
                 courseStatus = 'pending';
