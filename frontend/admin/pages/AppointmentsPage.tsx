@@ -89,7 +89,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     // New state for cancellation reason
     const [appointmentToCancel, setAppointmentToCancel] = useState<Appointment | null>(null);
     const [rejectionReason, setRejectionReason] = useState('');
-    
+
     // State for cancel confirmation dialog
     const [showCancelDialog, setShowCancelDialog] = useState(false);
     const [isCancellingMultiple, setIsCancellingMultiple] = useState(false);
@@ -307,7 +307,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     });
 
     // State for selected services (for table display)
-    const [selectedServices, setSelectedServices] = useState<{ id: string; name: string; price: number; quantity: number }[]>([]);
+    const [selectedServices, setSelectedServices] = useState<{ id: string; name: string; price: number; quantity: number; time: string }[]>([]);
 
     // Time slot helpers (match client booking rules)
     const WORKING_START_MINUTES = 9 * 60; // 09:00
@@ -370,6 +370,16 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         if (!primaryServiceSelection) return 0;
         return getServiceDuration(primaryServiceSelection.serviceId, primaryServiceSelection.quantity);
     }, [primaryServiceSelection, getServiceDuration]);
+
+    // Calculate total duration of ALL selected services (to detect conflicts when multiple services selected)
+    const totalSelectedServicesDuration = useMemo(() => {
+        if (selectedServices.length === 0) return 0;
+        return selectedServices.reduce((total, service) => {
+            const svc = localServices.find(s => s.id === service.id);
+            if (!svc) return total;
+            return total + ((svc.duration || 60) * service.quantity);
+        }, 0);
+    }, [selectedServices, localServices]);
 
     // Derive the earliest datetime allowed for the next session based on existing treatment course sessions
     const courseMinAllowedDateTime = useMemo(() => {
@@ -460,28 +470,66 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         };
 
         const isTimeSlotBlocked = (time: string) => {
-            if (!primaryServiceDuration) return false;
+            // Get current service duration being selected
+            const currentServiceDuration = newAppointmentForm.serviceId ? getServiceDuration(newAppointmentForm.serviceId, newAppointmentForm.serviceQuantity || 1) : 0;
 
             const newStart = timeToMinutes(time);
-            const newEnd = newStart + primaryServiceDuration;
+            const newEnd = newStart + currentServiceDuration;
 
-            return appointmentsOnDate.some(apt => {
-                const existingDuration = getAppointmentServiceDuration(apt);
-                const existingStart = timeToMinutes(apt.time || '00:00');
-                const existingEnd = existingStart + existingDuration;
+            // Check against appointments in DB (only if we have a current service)
+            if (currentServiceDuration > 0) {
+                const blockedByAppointments = appointmentsOnDate.some(apt => {
+                    const existingDuration = getAppointmentServiceDuration(apt);
+                    const existingStart = timeToMinutes(apt.time || '00:00');
+                    const existingEnd = existingStart + existingDuration;
 
-                return newStart < existingEnd && newEnd > existingStart;
+                    return newStart < existingEnd && newEnd > existingStart;
+                });
+
+                if (blockedByAppointments) return true;
+            }
+
+            // Check against already selected services (not yet saved)
+            // This should ALWAYS run to prevent selecting conflicting time slots
+            return selectedServices.some(service => {
+                const serviceDuration = getServiceDuration(service.id, service.quantity);
+                const serviceStart = timeToMinutes(service.time);
+                const serviceEnd = serviceStart + serviceDuration;
+
+                // If no current service selected, check if this time slot falls within any selected service's time range
+                if (currentServiceDuration === 0) {
+                    // Block if the slot is within the service's time range
+                    return newStart >= serviceStart && newStart < serviceEnd;
+                }
+
+                // Otherwise check for overlap between new service and existing services
+                return newStart < serviceEnd && newEnd > serviceStart;
             });
         };
 
         const isTimeSlotValidForMinimumGap = (time: string) => {
-            if (!primaryServiceDuration) return true;
-            if (appointmentsOnDate.length === 0) return true;
+            const currentServiceDuration = newAppointmentForm.serviceId ? getServiceDuration(newAppointmentForm.serviceId, newAppointmentForm.serviceQuantity || 1) : 0;
+
+            // If no appointments and no selected services, all times valid
+            if (appointmentsOnDate.length === 0 && selectedServices.length === 0) return true;
+
+            // If no current service but have selected services, check if slot falls in any service range
+            if (currentServiceDuration === 0 && selectedServices.length > 0) {
+                const newStart = timeToMinutes(time);
+                return !selectedServices.some(service => {
+                    const serviceDuration = getServiceDuration(service.id, service.quantity);
+                    const serviceStart = timeToMinutes(service.time);
+                    const serviceEnd = serviceStart + serviceDuration;
+                    // Block if this slot is within the service's time range
+                    return newStart >= serviceStart && newStart < serviceEnd;
+                });
+            }
 
             const newStart = timeToMinutes(time);
-            const newEnd = newStart + primaryServiceDuration;
+            const newEnd = newStart + currentServiceDuration;
 
-            return appointmentsOnDate.every(apt => {
+            // Check against appointments in DB
+            const validAgainstAppointments = appointmentsOnDate.every(apt => {
                 const existingDuration = getAppointmentServiceDuration(apt);
                 const existingStart = timeToMinutes(apt.time || '00:00');
                 const existingEnd = existingStart + existingDuration;
@@ -495,7 +543,31 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 }
 
                 if (newEnd <= existingStart) {
-                    const requiredStart = existingStart - primaryServiceDuration;
+                    const requiredStart = existingStart - currentServiceDuration;
+                    return newStart <= requiredStart;
+                }
+
+                return false;
+            });
+
+            if (!validAgainstAppointments) return false;
+
+            // Check against selected services
+            return selectedServices.every(service => {
+                const serviceDuration = getServiceDuration(service.id, service.quantity);
+                const serviceStart = timeToMinutes(service.time);
+                const serviceEnd = serviceStart + serviceDuration;
+
+                if (newStart < serviceEnd && newEnd > serviceStart) {
+                    return false;
+                }
+
+                if (newStart >= serviceEnd) {
+                    return true;
+                }
+
+                if (newEnd <= serviceStart) {
+                    const requiredStart = serviceStart - currentServiceDuration;
                     return newStart <= requiredStart;
                 }
 
@@ -511,8 +583,13 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 return false;
             }
 
-            // Require customer & service to enforce blocking rules
-            if (!selectedCustomerId || !primaryServiceDuration) {
+            // If no customer selected, only filter past times
+            if (!selectedCustomerId) {
+                return !(dateIso === todayIso && slotMinutes <= nowMinutes);
+            }
+
+            // If no current service AND no selected services, only filter past times
+            if (!newAppointmentForm.serviceId && selectedServices.length === 0) {
                 return !(dateIso === todayIso && slotMinutes <= nowMinutes);
             }
 
@@ -528,7 +605,20 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
 
             return true;
         });
-    }, [appointments, generateTimeSlots, newAppointmentForm.date, newAppointmentForm.selectedCustomerId, primaryServiceDuration, getAppointmentServiceDuration, courseMinAllowedDateTime]);
+    }, [
+        appointments,
+        generateTimeSlots,
+        newAppointmentForm.date,
+        newAppointmentForm.selectedCustomerId,
+        newAppointmentForm.serviceId,
+        newAppointmentForm.serviceQuantity,
+        primaryServiceDuration,
+        getAppointmentServiceDuration,
+        courseMinAllowedDateTime,
+        selectedServices,
+        totalSelectedServicesDuration,
+        localServices,
+    ]);
 
     // Ensure selected time stays within available slots
     useEffect(() => {
@@ -654,9 +744,9 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         // Count how many appointments will be cancelled (same bookingGroupId + serviceId + userId)
         const relatedAppointments = appointments.filter(
             apt => apt.bookingGroupId === appointment.bookingGroupId &&
-                   apt.serviceId === appointment.serviceId &&
-                   apt.userId === appointment.userId &&
-                   apt.status !== 'cancelled'
+                apt.serviceId === appointment.serviceId &&
+                apt.userId === appointment.userId &&
+                apt.status !== 'cancelled'
         );
         setCancelMultipleCount(relatedAppointments.length);
         setIsCancellingMultiple(relatedAppointments.length > 1);
@@ -665,7 +755,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
 
     const handleConfirmCancellation = async () => {
         if (!appointmentToCancel) return;
-        
+
         setIsCancelLoading(true);
         try {
             // Call new API to cancel all appointments of this booking
@@ -1088,6 +1178,11 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             return;
         }
 
+        if (!newAppointmentForm.time) {
+            alert('Vui lòng chọn khung giờ trước khi thêm dịch vụ');
+            return;
+        }
+
         const service = localServices.find(s => s.id === newAppointmentForm.serviceId);
         if (!service) return;
 
@@ -1104,11 +1199,12 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 name: service.name,
                 price: service.price || 0,
                 quantity: quantity,
+                time: newAppointmentForm.time,
             }]);
         }
 
-        // Reset service selection
-        setNewAppointmentForm(prev => ({ ...prev, serviceId: '', serviceQuantity: 1 }));
+        // Reset service selection AND time (to force recalculation with new services)
+        setNewAppointmentForm(prev => ({ ...prev, serviceId: '', serviceQuantity: 1, time: '' }));
     };
 
     // Helper: Check if therapist has time conflict (client-side validation)
@@ -1166,7 +1262,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
 
         // Only calculate if we have date and time (service is optional)
         const dateIso = parseDDMMYYYYToYYYYMMDD(newAppointmentForm.date || '');
-        
+
         if (!dateIso || !newAppointmentForm.time) {
             return conflictMap;
         }
@@ -1175,7 +1271,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         availableStaff.forEach(staff => {
             // Determine service duration: use first selected service or default to 60 minutes
             let serviceDuration = 60; // Default duration in minutes
-            
+
             if (selectedServices.length > 0) {
                 const primaryService = selectedServices[0];
                 const service = localServices.find(s => s.id === primaryService.id);
@@ -1183,7 +1279,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                     serviceDuration = service.duration;
                 }
             }
-            
+
             const conflict = hasTherapistTimeConflict(
                 staff.id,
                 dateIso,
@@ -2356,7 +2452,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                         <div className="p-6">
                             <h3 className="text-xl font-bold text-gray-800 mb-4">Lý do Hủy Lịch</h3>
                             <p className="text-sm text-gray-600 mb-4">
-                                {isCancellingMultiple 
+                                {isCancellingMultiple
                                     ? `Vui lòng nhập lý do hủy ${cancelMultipleCount} lịch hẹn. Khách hàng sẽ thấy thông báo này.`
                                     : 'Vui lòng nhập lý do hủy lịch hẹn này. Khách hàng sẽ thấy thông báo này.'
                                 }
@@ -2371,15 +2467,15 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                             />
                         </div>
                         <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
-                            <button 
-                                onClick={() => { setAppointmentToCancel(null); setRejectionReason(''); }} 
+                            <button
+                                onClick={() => { setAppointmentToCancel(null); setRejectionReason(''); }}
                                 className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-semibold disabled:opacity-50"
                                 disabled={isCancelLoading}
                             >
                                 Hủy bỏ
                             </button>
-                            <button 
-                                onClick={() => setShowCancelDialog(true)} 
+                            <button
+                                onClick={() => setShowCancelDialog(true)}
                                 className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold disabled:opacity-50"
                                 disabled={!rejectionReason.trim() || isCancelLoading}
                             >
@@ -2454,7 +2550,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             {/* Add Appointment Modal */}
             {showAddModal && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowAddModal(false)}>
-                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl min-w-[960px] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         <div className="p-6">
                             <h3 className="text-xl font-bold text-gray-800 mb-4">Thêm lịch hẹn mới</h3>
 
@@ -2727,14 +2823,20 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                     <select
                                                         value={newAppointmentForm.serviceId}
                                                         onChange={(e) => setNewAppointmentForm(prev => ({ ...prev, serviceId: e.target.value }))}
-                                                        className="w-full p-2 pr-8 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white cursor-pointer"
+                                                        className="w-full min-w-[340px] md:min-w-[420px] p-2 pr-8 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white cursor-pointer"
                                                     >
                                                         <option value="">Chọn dịch vụ</option>
                                                         {isLoadingModalData ? (
                                                             <option value="" disabled>Đang tải dịch vụ...</option>
                                                         ) : localServices.length > 0 ? (
                                                             localServices.map(service => (
-                                                                <option key={service.id} value={service.id}>{service.name}</option>
+                                                                <option
+                                                                    key={service.id}
+                                                                    value={service.id}
+                                                                    title={`${service.name} - ${(service.duration || 60)} phút`}
+                                                                >
+                                                                    {`${service.name} - ${(service.duration || 60)} phút`}
+                                                                </option>
                                                             ))
                                                         ) : (
                                                             <option value="" disabled>Không có dịch vụ</option>
@@ -2835,11 +2937,10 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                                         if (dropdown) dropdown.classList.add('hidden');
                                                                     }
                                                                 }}
-                                                                className={`px-4 py-2 text-sm border-b transition-colors ${
-                                                                    hasConflict
-                                                                        ? 'bg-red-50 text-red-600 cursor-not-allowed opacity-60'
-                                                                        : 'hover:bg-blue-50 cursor-pointer text-gray-900'
-                                                                } ${newAppointmentForm.therapistId === staff.id ? 'bg-blue-100 font-semibold' : ''}`}
+                                                                className={`px-4 py-2 text-sm border-b transition-colors ${hasConflict
+                                                                    ? 'bg-red-50 text-red-600 cursor-not-allowed opacity-60'
+                                                                    : 'hover:bg-blue-50 cursor-pointer text-gray-900'
+                                                                    } ${newAppointmentForm.therapistId === staff.id ? 'bg-blue-100 font-semibold' : ''}`}
                                                             >
                                                                 <div className="flex items-center justify-between">
                                                                     <span>

@@ -223,7 +223,7 @@ export const createAppointment = (data: Partial<Appointment>): Promise<Appointme
     create(`${API_BASE_URL}/appointments`, data);
 export const updateAppointment = (id: string, data: Partial<Appointment>) => update<Appointment>(`${API_BASE_URL}/appointments/${id}`, data);
 export const cancelAppointment = (id: string) => update<Appointment>(`${API_BASE_URL}/appointments/${id}`, { status: 'cancelled' });
-export const cancelAllAppointmentsByBooking = (appointmentId: string, reason?: string) => 
+export const cancelAllAppointmentsByBooking = (appointmentId: string, reason?: string) =>
     fetch(`${API_BASE_URL}/appointments/cancel-all/${appointmentId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),

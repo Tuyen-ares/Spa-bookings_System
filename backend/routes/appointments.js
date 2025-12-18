@@ -442,7 +442,7 @@ router.get('/', async (req, res) => {
 // MUST be before /:id route to avoid being caught by it
 router.delete('/cancel-all/:appointmentId', async (req, res) => {
     const transaction = await db.sequelize.transaction();
-    
+
     try {
         const { appointmentId } = req.params;
         const { reason } = req.body;
@@ -479,6 +479,21 @@ router.delete('/cancel-all/:appointmentId', async (req, res) => {
                 rejectionReason: reason || 'Khách hàng yêu cầu hủy'
             }, { transaction });
             cancelledIds.push(apt.id);
+
+            // Create Notification for customer about cancellation
+            try {
+                await db.Notification.create({
+                    id: `noti-${require('uuid').v4()}`,
+                    userId: apt.userId,
+                    title: `Lịch hẹn bị hủy`,
+                    message: `Lịch hẹn ${(await db.Service.findByPk(apt.serviceId))?.name || 'dịch vụ'} vào ${apt.date} lúc ${apt.time} đã bị hủy.\nLý do hủy: ${apt.rejectionReason || reason || 'Không cung cấp.'}`,
+                    type: 'appointment_cancelled',
+                    isRead: false,
+                    createdAt: new Date()
+                }, { transaction });
+            } catch (e) {
+                console.warn('⚠️  Failed to create cancellation notification:', e.message);
+            }
         }
 
         // If there's a treatment course, update its status
@@ -520,7 +535,7 @@ router.delete('/cancel-all/:appointmentId', async (req, res) => {
 // MUST be before /:id route to avoid being caught by it
 router.delete('/cancel-treatment-course/:treatmentCourseId', async (req, res) => {
     const transaction = await db.sequelize.transaction();
-    
+
     try {
         const { treatmentCourseId } = req.params;
         const { reason } = req.body;
@@ -556,6 +571,21 @@ router.delete('/cancel-treatment-course/:treatmentCourseId', async (req, res) =>
                         rejectionReason: reason || 'Liệu trình bị hủy'
                     }, { transaction });
                     cancelledAppointmentIds.push(appointment.id);
+
+                    // Notify customer
+                    try {
+                        await db.Notification.create({
+                            id: `noti-${require('uuid').v4()}`,
+                            userId: appointment.userId,
+                            title: `Lịch hẹn bị hủy`,
+                            message: `Lịch hẹn ${(await db.Service.findByPk(appointment.serviceId))?.name || 'dịch vụ'} vào ${appointment.date} lúc ${appointment.time} đã bị hủy do liệu trình bị hủy.\nLý do hủy: ${appointment.rejectionReason || reason || 'Không cung cấp.'}`,
+                            type: 'appointment_cancelled',
+                            isRead: false,
+                            createdAt: new Date()
+                        }, { transaction });
+                    } catch (e) {
+                        console.warn('⚠️  Failed to create cancellation notification:', e.message);
+                    }
                 }
             }
         }

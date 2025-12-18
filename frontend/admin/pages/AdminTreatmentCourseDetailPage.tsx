@@ -49,7 +49,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
         totalSessions: 10,
         sessionsPerWeek: 2
     });
-    
+
     // State for cancel treatment course
     const [showCancelDialog, setShowCancelDialog] = useState(false);
     const [isCancelLoading, setIsCancelLoading] = useState(false);
@@ -342,18 +342,18 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
 
     const handleCancelTreatmentCourse = async () => {
         if (!course) return;
-        
+
         setIsCancelLoading(true);
         try {
             const result = await apiService.cancelTreatmentCourse(course.id);
-            
+
             // Update local course status
             setCourse(prev => prev ? { ...prev, status: 'cancelled' } : null);
-            
+
             setShowCancelDialog(false);
-            
+
             alert(`Đã hủy liệu trình và ${result.cancelledAppointmentCount} lịch hẹn liên quan!`);
-            
+
             // Redirect back after 1 second
             setTimeout(() => {
                 navigate('/admin/treatment-courses');
@@ -534,8 +534,8 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                             <div className="text-sm text-gray-600">Trạng thái thanh toán:</div>
                             <div className="flex items-center gap-2">
                                 <span className={`px-3 py-1 text-sm font-medium rounded-full ${(course as any).paymentStatus === 'Paid'
-                                        ? 'bg-green-100 text-green-800'
-                                        : 'bg-yellow-100 text-yellow-800'
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-yellow-100 text-yellow-800'
                                     }`}>
                                     {(course as any).paymentStatus === 'Paid' ? '✓ Đã thanh toán' : 'Chưa thanh toán'}
                                 </span>
@@ -740,8 +740,8 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                                                                 }}
                                                                 disabled={!canComplete}
                                                                 className={`px-3 py-1 text-xs rounded ${canComplete
-                                                                        ? 'bg-green-500 text-white hover:bg-green-600 cursor-pointer'
-                                                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                                    ? 'bg-green-500 text-white hover:bg-green-600 cursor-pointer'
+                                                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                                                                     }`}
                                                                 title={canComplete ? 'Hoàn thành buổi này' : 'Vui lòng hoàn thành các buổi trước'}
                                                             >
@@ -1115,7 +1115,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                     </div>
                 </div>
             )}
-            
+
             {/* Cancel Treatment Course Dialog */}
             <ConfirmDialog
                 isOpen={showCancelDialog}
