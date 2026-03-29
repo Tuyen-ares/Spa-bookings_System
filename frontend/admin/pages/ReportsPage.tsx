@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import type { User, Appointment, Service, Payment } from '../../types';
+import type { User, Appointment, Service, Payment, TreatmentCourse } from '../../types';
 import { PrinterIcon, CurrencyDollarIcon, ChartBarIcon, ClockIcon, CheckCircleIcon } from '../../shared/icons';
 import * as apiService from '../../client/services/apiService';
 import { formatDateDDMMYYYY, parseDDMMYYYYToYYYYMMDD } from '../../shared/dateUtils';
@@ -66,11 +66,12 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
     const [endDate, setEndDate] = useState<string>('');
     const [dateError, setDateError] = useState<string>('');
     const printRef = useRef<HTMLDivElement>(null);
-    
+
     // Local states để fetch dữ liệu nếu props rỗng
     const [localServices, setLocalServices] = useState<Service[]>(allServices || []);
     const [localAppointments, setLocalAppointments] = useState<Appointment[]>(allAppointments || []);
     const [localPayments, setLocalPayments] = useState<Payment[]>(allPayments || []);
+    const [treatmentCourses, setTreatmentCourses] = useState<TreatmentCourse[]>([]); // Cache treatment courses
     const [isLoading, setIsLoading] = useState(false);
 
     // Fetch dữ liệu nếu props rỗng
@@ -78,7 +79,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const fetchData = async () => {
             try {
                 setIsLoading(true);
-                
+
                 if (!allServices || allServices.length === 0) {
                     console.log('ReportsPage - Fetching services from API...');
                     const services = await apiService.getServices();
@@ -108,6 +109,25 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                     console.log('ReportsPage - Using payments from props:', allPayments.length);
                     setLocalPayments(allPayments);
                 }
+
+                // Fetch treatment courses for appointments with bookingGroupId
+                const appointments = allAppointments.length > 0 ? allAppointments : await apiService.getAppointments();
+                const bookingGroupIds = appointments
+                    .filter(apt => apt.bookingGroupId && apt.bookingGroupId.startsWith('group-'))
+                    .map(apt => apt.bookingGroupId!.replace('group-', ''));
+                const uniqueTcIds = Array.from(new Set(bookingGroupIds));
+
+                if (uniqueTcIds.length > 0) {
+                    try {
+                        const fetchedTCs = await Promise.all(
+                            uniqueTcIds.map(id => apiService.getTreatmentCourseById(id))
+                        );
+                        setTreatmentCourses(fetchedTCs);
+                        console.log('✅ ReportsPage - Loaded treatment courses:', fetchedTCs.length);
+                    } catch (tcError) {
+                        console.error('Error fetching treatment courses:', tcError);
+                    }
+                }
             } catch (error) {
                 console.error('Error fetching data for ReportsPage:', error);
             } finally {
@@ -123,7 +143,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         setSelectedDate(formatDateDDMMYYYY(today));
         setSelectedMonth(`${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`);
         setSelectedYear(String(today.getFullYear()));
-        
+
         const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
         setStartDate(formatDateDDMMYYYY(firstDayOfMonth));
         setEndDate(formatDateDDMMYYYY(today));
@@ -247,43 +267,74 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
 
         console.log('ReportsPage - Calculating service stats from payments:', {
             filteredPaymentsCount: filteredPayments.length,
-            servicesCount: localServices.length
+            servicesCount: localServices.length,
+            treatmentCoursesCount: treatmentCourses.length
         });
 
+        // Track processed treatment courses để tránh đếm lặp
+        const processedTCs = new Set<string>();
+
         filteredPayments.forEach(payment => {
-            // Lấy thông tin appointment để biết serviceId và quantity
-            const appointment = payment.appointmentId 
+            // Lấy thông tin appointment để biết serviceId và treatment course
+            const appointment = payment.appointmentId
                 ? localAppointments.find(apt => apt.id === payment.appointmentId)
                 : null;
-            
+
             const serviceId = appointment?.serviceId || 'unknown';
             const service = localServices.find(s => s.id === serviceId);
             const serviceName = payment.serviceName || service?.name || 'Dịch vụ không xác định';
-            const quantity = appointment?.quantity || 1;
-            const pricePerSession = payment.amount / quantity; // Giá thực tế trên 1 buổi (đã bao gồm giảm giá)
-            
+
+            // Xác định số buổi và giá
+            let quantity = 1;
+            let unitPrice = service?.price || 0;
+            let isFromTreatmentCourse = false;
+
+            // Kiểm tra xem có phải payment từ treatment course không
+            if (appointment?.bookingGroupId && appointment.bookingGroupId.startsWith('group-')) {
+                const tcId = appointment.bookingGroupId.replace('group-', '');
+                const tc = treatmentCourses.find(tc => tc.id === tcId);
+
+                if (tc && !processedTCs.has(tcId)) {
+                    // Đánh dấu đã xử lý TC này
+                    processedTCs.add(tcId);
+                    isFromTreatmentCourse = true;
+                    quantity = tc.totalSessions || 1;
+                    unitPrice = service?.price || 0; // Giá gốc của service
+
+                    console.log(`📊 TC stats for ${serviceName}:`, {
+                        tcId,
+                        quantity,
+                        unitPrice,
+                        totalAmount: payment.amount
+                    });
+                } else if (processedTCs.has(tcId)) {
+                    // TC này đã được xử lý rồi, skip payment này
+                    console.log(`⏭️ Skipping duplicate TC payment: ${tcId}`);
+                    return;
+                }
+            }
+
             if (!stats[serviceId]) {
                 stats[serviceId] = {
                     service: service || null,
                     serviceId: serviceId,
                     serviceName: serviceName,
-                    price: service?.price || 0,
-                    pricePerSession: pricePerSession,
+                    price: unitPrice, // Giá gốc của service
+                    pricePerSession: unitPrice,
                     quantity: 0,
                     totalAmount: 0
                 };
             }
-            
+
             stats[serviceId].quantity += quantity;
             stats[serviceId].totalAmount += Number(payment.amount);
-            // Cập nhật giá trung bình trên buổi
-            stats[serviceId].pricePerSession = stats[serviceId].totalAmount / stats[serviceId].quantity;
+            // pricePerSession giữ nguyên là giá gốc, không tính lại
         });
 
         const result = Object.values(stats).sort((a, b) => b.totalAmount - a.totalAmount);
         console.log('ReportsPage - Service stats result:', result);
         return result;
-    }, [filteredPayments, localServices, localAppointments]);
+    }, [filteredPayments, localServices, localAppointments, treatmentCourses]);
 
     // Calculate totals
     const totalAmount = useMemo(() => {
@@ -342,11 +393,11 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
         const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
-        
+
         // Generate filename with date range
         const periodLabel = getPeriodLabel().replace(/[^a-zA-Z0-9]/g, '_');
         const filename = `Bao_Cao_Thong_Ke_Dich_Vu_${periodLabel}_${new Date().toISOString().split('T')[0]}.csv`;
-        
+
         link.setAttribute('href', url);
         link.setAttribute('download', filename);
         link.style.visibility = 'hidden';
@@ -447,7 +498,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                         </div>
                     </div>
                 </div>
-                
+
                 <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all">
                     <div className="flex items-center justify-between">
                         <div>
@@ -459,7 +510,7 @@ const ReportsPage: React.FC<ReportsPageProps> = ({
                         </div>
                     </div>
                 </div>
-                
+
                 <div className="bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition-all">
                     <div className="flex items-center justify-between">
                         <div>

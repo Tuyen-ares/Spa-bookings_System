@@ -14,7 +14,7 @@ class MonthlyVoucherService {
      */
     async getTierPromotionTemplate(tierLevel) {
         const targetAudience = `Tier Level ${tierLevel}`;
-        
+
         // Tìm promotion template cho tier này (chỉ lấy voucher active)
         // Với logic mới, chỉ có 1 voucher active cho mỗi tier
         // Note: Promotion model không có timestamps, nên không có createdAt
@@ -47,14 +47,14 @@ class MonthlyVoucherService {
         const startOfMonth = new Date(currentMonth);
         startOfMonth.setDate(1);
         startOfMonth.setHours(0, 0, 0, 0);
-        
+
         const endOfMonth = new Date(currentMonth);
         endOfMonth.setMonth(endOfMonth.getMonth() + 1);
         endOfMonth.setDate(0); // Ngày cuối cùng của tháng
         endOfMonth.setHours(23, 59, 59, 999);
 
-        console.log(`   🔍 [Check Received] Checking if user ${userId} received promotion ${promotionId} this month`);
-        console.log(`      Month range: ${startOfMonth.toISOString()} to ${endOfMonth.toISOString()}`);
+        // console.log(`   🔍 [Check Received] Checking if user ${userId} received promotion ${promotionId} this month`);
+        // console.log(`      Month range: ${startOfMonth.toISOString()} to ${endOfMonth.toISOString()}`);
 
         // Kiểm tra xem có PromotionUsage nào được tạo trong tháng này không
         const existingUsage = await db.PromotionUsage.findOne({
@@ -67,11 +67,11 @@ class MonthlyVoucherService {
             }
         });
 
-        if (existingUsage) {
-            console.log(`   ⚠️ [Check Received] User đã nhận voucher này trong tháng này (usedAt: ${existingUsage.usedAt})`);
-        } else {
-            console.log(`   ✅ [Check Received] User chưa nhận voucher này trong tháng này`);
-        }
+        // if (existingUsage) {
+        //     console.log(`   ⚠️ [Check Received] User đã nhận voucher này trong tháng này (usedAt: ${existingUsage.usedAt})`);
+        // } else {
+        //     console.log(`   ✅ [Check Received] User chưa nhận voucher này trong tháng này`);
+        // }
 
         return !!existingUsage;
     }
@@ -87,15 +87,15 @@ class MonthlyVoucherService {
         try {
             const tierNames = { 1: 'Đồng', 2: 'Bạc', 3: 'Kim cương' };
             const tierName = tierNames[tierLevel] || `Tier ${tierLevel}`;
-            
-            console.log(`\n🔍 [Send Voucher] Bắt đầu gửi voucher cho user ${userId}, Tier Level ${tierLevel} (${tierName})`);
-            
+
+            // console.log(`\n🔍 [Send Voucher] Bắt đầu gửi voucher cho user ${userId}, Tier Level ${tierLevel} (${tierName})`);
+
             // Lấy promotion template cho tier này
             const promotion = await this.getTierPromotionTemplate(tierLevel);
-            
+
             if (!promotion) {
-                console.log(`   ❌ [Send Voucher] Không tìm thấy voucher template cho Tier Level ${tierLevel} (${tierName})`);
-                console.log(`   💡 [Hint] Cần tạo voucher với targetAudience = "Tier Level ${tierLevel}" trong admin panel`);
+                // console.log(`   ❌ [Send Voucher] Không tìm thấy voucher template cho Tier Level ${tierLevel} (${tierName})`);
+                // console.log(`   💡 [Hint] Cần tạo voucher với targetAudience = "Tier Level ${tierLevel}" trong admin panel`);
                 return {
                     success: false,
                     message: `Không tìm thấy voucher template cho Tier Level ${tierLevel} (${tierName}). Vui lòng tạo voucher cho hạng này trong admin panel.`,
@@ -104,14 +104,14 @@ class MonthlyVoucherService {
                     tierName
                 };
             }
-            
-            console.log(`   ✅ [Send Voucher] Tìm thấy voucher: ${promotion.title} (${promotion.code})`);
+
+            // console.log(`   ✅ [Send Voucher] Tìm thấy voucher: ${promotion.title} (${promotion.code})`);
 
             // Kiểm tra xem đã nhận voucher tháng này chưa
             const hasReceived = await this.hasReceivedVoucherThisMonth(userId, promotion.id, currentMonth);
-            
+
             if (hasReceived) {
-                console.log(`   ⏭️ [Send Voucher] User ${userId} đã nhận voucher ${promotion.code} tháng này rồi, bỏ qua`);
+                // console.log(`   ⏭️ [Send Voucher] User ${userId} đã nhận voucher ${promotion.code} tháng này rồi, bỏ qua`);
                 return {
                     success: false,
                     message: `User đã nhận voucher tháng này rồi`,
@@ -126,7 +126,7 @@ class MonthlyVoucherService {
             today.setHours(0, 0, 0, 0);
             const expiryDate = new Date(promotion.expiryDate);
             expiryDate.setHours(0, 0, 0, 0);
-            
+
             if (today > expiryDate) {
                 return {
                     success: false,
@@ -232,7 +232,7 @@ class MonthlyVoucherService {
             const validWallets = wallets.filter(w => activeClientIds.has(w.userId));
 
             console.log(`   Tìm thấy ${validWallets.length} khách VIP`);
-            
+
             // Thống kê theo tier
             const tierNamesMap = { 1: 'Đồng', 2: 'Bạc', 3: 'Kim cương' };
             const tierStats = {};

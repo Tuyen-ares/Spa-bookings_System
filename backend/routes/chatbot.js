@@ -1,15 +1,29 @@
 // backend/routes/chatbot.js
 const express = require('express');
 const router = express.Router();
+const db = require('../config/database');
+const { Op } = require('sequelize');
 
 // Use REST API directly instead of SDK (more reliable)
 // API key will be loaded from environment variable GEMINI_API_KEY
-// Use gemini-2.0-flash (latest model) as default
-// Other options: gemini-pro, gemini-1.5-pro
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
-// Try v1beta first, fallback to v1 if needed
+// Default model (requested): gemini-2.5-flash
+// Other options: gemini-2.0-flash, gemini-pro, gemini-1.5-flash
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// Use v1beta API (supports system instruction in contents array)
 const GEMINI_API_VERSION = process.env.GEMINI_API_VERSION || 'v1beta';
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/${GEMINI_API_VERSION}/models/${GEMINI_MODEL}:generateContent`;
+
+// Candidate models to try if default fails (404/429)
+const MODEL_CANDIDATES = (process.env.GEMINI_MODEL_CANDIDATES
+    ? process.env.GEMINI_MODEL_CANDIDATES.split(',').map(s => s.trim()).filter(Boolean)
+    : [GEMINI_MODEL, 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-pro']);
+
+// API version candidates to try when receiving 404 (model not found for version)
+const VERSION_CANDIDATES = Array.from(new Set([
+    GEMINI_API_VERSION || 'v1beta',
+    'v1',
+    'v1beta'
+]));
 
 // Get API key dynamically (in case it's updated)
 const getApiKey = () => process.env.GEMINI_API_KEY;
@@ -32,13 +46,13 @@ if (!getApiKey()) {
 // Format services and treatment courses for system instruction
 const formatServicesAndCourses = (services = [], treatmentCourses = []) => {
     let info = '';
-    
+
     // Create a map of services by ID for quick lookup
     const servicesMap = new Map();
     services.forEach(service => {
         servicesMap.set(service.id, service);
     });
-    
+
     if (services && services.length > 0) {
         info += '\n\n=== DANH SÁCH DỊCH VỤ ===\n';
         services.forEach((service, index) => {
@@ -46,7 +60,7 @@ const formatServicesAndCourses = (services = [], treatmentCourses = []) => {
             if (service.isActive === false) {
                 return;
             }
-            
+
             const price = service.discountPrice ? service.discountPrice : service.price;
             const originalPrice = service.discountPrice ? service.price : null;
             info += `${index + 1}. ${service.name}\n`;
@@ -66,10 +80,10 @@ const formatServicesAndCourses = (services = [], treatmentCourses = []) => {
             info += '\n';
         });
     }
-    
+
     // Filter template courses (courses without clientId) for customer consultation
     const templateCourses = treatmentCourses ? treatmentCourses.filter(course => !course.clientId) : [];
-    
+
     if (templateCourses.length > 0) {
         info += '\n\n=== DANH SÁCH LIỆU TRÌNH ===\n';
         templateCourses.forEach((course, index) => {
@@ -83,7 +97,7 @@ const formatServicesAndCourses = (services = [], treatmentCourses = []) => {
             if (course.sessionTime) {
                 info += `   - Giờ cố định: ${course.sessionTime}\n`;
             }
-            
+
             // Get service price information
             const relatedService = servicesMap.get(course.serviceId);
             if (relatedService) {
@@ -92,18 +106,20 @@ const formatServicesAndCourses = (services = [], treatmentCourses = []) => {
                 info += `   - Giá mỗi buổi: ${servicePrice.toLocaleString('vi-VN')} VNĐ\n`;
                 info += `   - Tổng giá liệu trình: ${totalPrice.toLocaleString('vi-VN')} VNĐ (${course.totalSessions} buổi)\n`;
             }
-            
+
             info += '\n';
         });
     }
-    
+
     return info;
 };
 
 // Generate system instruction
 const generateSystemInstruction = (services = [], treatmentCourses = []) => {
-    const servicesInfo = formatServicesAndCourses(services, treatmentCourses);
-    
+    // Use shorter instruction when no data to reduce token usage
+    const hasData = (services?.length || 0) > 0 || (treatmentCourses?.length || 0) > 0;
+    const servicesInfo = hasData ? formatServicesAndCourses(services, treatmentCourses) : '';
+
     return `
 You are a friendly and helpful virtual assistant for Anh Thơ Spa, a beauty and wellness center in Vietnam.
 Your name is Thơ.
@@ -160,6 +176,26 @@ RULES:
 `;
 };
 
+// Local fallback responder when Gemini is unavailable (e.g., quota 429)
+const localResponder = (history = [], services = [], treatmentCourses = []) => {
+    const lastUser = [...(history || [])].reverse().find(h => h.sender === 'user');
+    const intro = '**Xin chào!** Chatbot đang quá tải, mình trả lời nhanh như sau:';
+
+    const blocks = [];
+    if ((services?.length || 0) > 0) {
+        const top = services.slice(0, 3).map(s => `* **${s.name}** — ${s.duration} phút, giá khoảng ${(s.discountPrice ?? s.price)?.toLocaleString('vi-VN')} VNĐ`).join('\n');
+        blocks.push('Một số dịch vụ nổi bật:\n' + top);
+    }
+    if ((treatmentCourses?.length || 0) > 0) {
+        const topC = treatmentCourses.slice(0, 3).map(c => `* **${c.serviceName}** — ${c.totalSessions} buổi, mỗi buổi ${c.sessionDuration || 60} phút`).join('\n');
+        blocks.push('Một vài liệu trình phổ biến:\n' + topC);
+    }
+
+    const tail = '\nNếu cần hỗ trợ chi tiết hoặc đặt lịch, vui lòng vào mục Đặt lịch hoặc gọi hotline: **098-765-4321**.';
+    const questionEcho = lastUser ? `\n\nBạn vừa hỏi: "${lastUser.text}"` : '';
+    return `${intro}\n\n${blocks.join('\n\n')}${questionEcho}${tail}`.trim();
+};
+
 // GET /api/chatbot/test - Test endpoint
 router.get('/test', (req, res) => {
     res.json({
@@ -181,7 +217,7 @@ router.post('/chat', async (req, res) => {
         console.log('API key length:', apiKey?.length || 0);
         console.log('Model:', GEMINI_MODEL);
         console.log('Request body keys:', Object.keys(req.body));
-        
+
         if (!apiKey) {
             console.error('ERROR: Chatbot service not available - missing API key');
             console.error('Process env keys:', Object.keys(process.env).filter(k => k.includes('GEMINI') || k.includes('API')));
@@ -191,7 +227,7 @@ router.post('/chat', async (req, res) => {
             });
         }
 
-        const { history, services = [], treatmentCourses = [] } = req.body;
+        const { history } = req.body;
 
         if (!history || !Array.isArray(history)) {
             console.error('ERROR: Invalid request - history is missing or not an array');
@@ -203,29 +239,71 @@ router.post('/chat', async (req, res) => {
 
         console.log('Processing chat request:');
         console.log('- History length:', history.length);
-        console.log('- Services count:', services?.length || 0);
-        console.log('- Treatment courses count:', treatmentCourses?.length || 0);
+
+        // Always fetch freshest data from server to ensure coverage of all services
+        // This avoids relying on possibly stale or partial client-provided arrays
+        let services = [];
+        let treatmentCourses = [];
+        try {
+            services = await db.Service.findAll({
+                include: [{
+                    model: db.ServiceCategory,
+                    attributes: ['id', 'name']
+                }],
+                order: [['name', 'ASC']]
+            });
+            console.log('- Loaded services from DB:', services.length);
+        } catch (e) {
+            console.error('Failed to load services from DB:', e.message);
+        }
+        try {
+            // Prefer template-like courses (no client association) if any exist in DB
+            // Note: schema may not include isTemplate; we fallback to clientId NULL if available
+            treatmentCourses = await db.TreatmentCourse.findAll({
+                where: {
+                    [Op.or]: [
+                        // @ts-ignore optional field in some deployments
+                        { isTemplate: true },
+                        { clientId: { [Op.is]: null } }
+                    ]
+                },
+                order: [['createdAt', 'DESC']],
+                attributes: [
+                    'id', 'serviceId', 'serviceName', 'totalSessions', 'durationWeeks',
+                    'frequencyType', 'frequencyValue', 'notes', 'createdAt'
+                ]
+            });
+            console.log('- Loaded template treatment courses from DB:', treatmentCourses.length);
+        } catch (e) {
+            console.warn('No template treatment courses available or fetch failed:', e.message);
+            treatmentCourses = [];
+        }
 
         const systemInstruction = generateSystemInstruction(services, treatmentCourses);
         console.log('System instruction length:', systemInstruction.length);
 
         // Convert history to Gemini format
-        const contents = history.map(message => ({
-            role: message.sender === 'user' ? 'user' : 'model',
-            parts: [{ text: message.text }],
-        }));
+        // Put system instruction as FIRST message in contents (correct v1beta format)
+        const contents = [
+            {
+                role: 'user',
+                parts: [{ text: systemInstruction }]
+            },
+            ...history.map(message => ({
+                role: message.sender === 'user' ? 'user' : 'model',
+                parts: [{ text: message.text }],
+            }))
+        ];
 
-        console.log('Calling Gemini API via REST...');
+        console.log('Calling Gemini API via REST with fallback...');
         console.log('Using model:', GEMINI_MODEL);
         console.log('API version:', GEMINI_API_VERSION);
         console.log('API URL:', GEMINI_API_URL);
-        
-        // Call Gemini API using REST API directly (as per official documentation)
+
+        // Call Gemini API using REST API directly (v1beta format)
+        // NOTE: Do NOT use systemInstruction field at root level - put it in contents array
         const requestBody = {
             contents: contents,
-            systemInstruction: {
-                parts: [{ text: systemInstruction }]
-            },
             generationConfig: {
                 temperature: 0.7,
                 topK: 40,
@@ -233,115 +311,67 @@ router.post('/chat', async (req, res) => {
                 maxOutputTokens: 1024,
             }
         };
-        
+
         console.log('Request body size:', JSON.stringify(requestBody).length, 'bytes');
-        
-        let geminiResponse;
-        let lastError;
-        
-        // Try v1beta first, then fallback to v1 if model not found
-        const apiVersions = [GEMINI_API_VERSION, 'v1'];
-        
-        for (const apiVersion of apiVersions) {
-            const apiUrl = `https://generativelanguage.googleapis.com/${apiVersion}/models/${GEMINI_MODEL}:generateContent`;
-            
-            try {
-                console.log(`Trying API version: ${apiVersion}`);
-                geminiResponse = await fetch(`${apiUrl}?key=${apiKey}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(requestBody)
-                });
 
-                if (geminiResponse.ok) {
-                    console.log(`✅ Success with API version: ${apiVersion}`);
-                    break; // Success, exit loop
-                } else {
-                    const errorText = await geminiResponse.text();
-                    console.warn(`⚠️ API version ${apiVersion} failed:`, errorText);
-                    
-                    try {
-                        const errorData = JSON.parse(errorText);
-                        if (errorData.error?.message?.includes('not found') && apiVersion === 'v1beta' && apiVersions.length > 1) {
-                            // Model not found in v1beta, try v1
-                            lastError = errorData.error.message;
-                            continue;
-                        }
-                    } catch (e) {
-                        // If parsing fails, continue to next version
+        const tryCall = async (model, apiVersion) => {
+            const apiUrl = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent`;
+            console.log(`Calling Gemini API: ${apiUrl}`);
+            const response = await fetch(`${apiUrl}?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+            return response;
+        };
+
+        let lastErrorText = null;
+        for (const model of MODEL_CANDIDATES) {
+            for (const ver of VERSION_CANDIDATES) {
+                try {
+                    const resp = await tryCall(model, ver);
+                    if (!resp.ok) {
+                        const text = await resp.text();
+                        lastErrorText = text;
+                        console.error(`Gemini API error (${model}, ${ver}):`, text);
+                        // If model not found for version or rate limited, try next combination
+                        if (resp.status === 404 || resp.status === 429) continue;
+                        // Other errors: break out of version loop
+                        break;
                     }
-                    
-                    lastError = errorText;
-                }
-            } catch (fetchError) {
-                console.error(`Error with API version ${apiVersion}:`, fetchError.message);
-                lastError = fetchError.message;
-                if (apiVersion === apiVersions[apiVersions.length - 1]) {
-                    // Last version, throw error
-                    throw fetchError;
+                    const data = await resp.json();
+                    console.log(`Gemini API response received successfully from model: ${model}, version: ${ver}`);
+                    let replyText = null;
+                    if (data.candidates && data.candidates.length > 0) {
+                        const candidate = data.candidates[0];
+                        if (candidate.content?.parts?.length > 0) {
+                            replyText = candidate.content.parts[0].text;
+                        }
+                    }
+                    if (!replyText && data.text) replyText = data.text;
+                    if (!replyText) replyText = 'Xin lỗi, không nhận được phản hồi từ AI. Vui lòng thử lại.';
+                    return res.json({ reply: replyText, success: true, modelUsed: model, apiVersionUsed: ver });
+                } catch (e) {
+                    console.error(`Error calling model ${model} with version ${ver}:`, e);
+                    lastErrorText = e?.message || String(e);
+                    // try next version
                 }
             }
         }
 
-        if (!geminiResponse || !geminiResponse.ok) {
-            const errorText = lastError || await geminiResponse?.text() || 'Unknown error';
-            console.error('Gemini API error response:', errorText);
-            let errorMessage = `Gemini API error: ${geminiResponse?.status || 'Unknown'} ${geminiResponse?.statusText || 'Unknown'}`;
-            
-            try {
-                const errorData = typeof errorText === 'string' ? JSON.parse(errorText) : errorText;
-                if (errorData.error?.message) {
-                    errorMessage = errorData.error.message;
-                }
-            } catch (e) {
-                // If parsing fails, use the text as is
-                if (typeof errorText === 'string') {
-                    errorMessage = errorText;
-                }
-            }
-            
-            throw new Error(errorMessage);
-        }
-
-        const geminiData = await geminiResponse.json();
-        console.log('Gemini API response received successfully');
-        console.log('Response structure:', Object.keys(geminiData));
-        
-        // Extract text from response - handle different response formats
-        let replyText = null;
-        
-        if (geminiData.candidates && geminiData.candidates.length > 0) {
-            const candidate = geminiData.candidates[0];
-            if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-                replyText = candidate.content.parts[0].text;
-            }
-        }
-        
-        if (!replyText && geminiData.text) {
-            replyText = geminiData.text;
-        }
-        
-        if (!replyText) {
-            console.error('No text found in Gemini response:', JSON.stringify(geminiData, null, 2));
-            replyText = 'Xin lỗi, không nhận được phản hồi từ AI. Vui lòng thử lại.';
-        }
-        
-        res.json({
-            reply: replyText,
-            success: true
-        });
+        console.warn('All Gemini model attempts failed. Activating local fallback.');
+        const fallbackText = localResponder(history, services, treatmentCourses);
+        return res.json({ reply: fallbackText, success: true, source: 'fallback', lastError: lastErrorText });
 
     } catch (error) {
         console.error('=== ERROR in chatbot route ===');
         console.error('Error message:', error.message);
         console.error('Error stack:', error.stack);
         console.error('Error name:', error.name);
-        
+
         // Provide more specific error messages
         let userMessage = 'Xin lỗi, tôi đang gặp sự cố. Vui lòng thử lại sau hoặc liên hệ với chúng tôi qua hotline: 098-765-4321.';
-        
+
         if (error.message.includes('API key')) {
             userMessage = 'Xin lỗi, dịch vụ chatbot hiện không khả dụng do lỗi cấu hình. Vui lòng liên hệ với chúng tôi qua hotline: 098-765-4321.';
         } else if (error.message.includes('quota') || error.message.includes('limit')) {
@@ -349,7 +379,7 @@ router.post('/chat', async (req, res) => {
         } else if (error.message.includes('network') || error.message.includes('fetch')) {
             userMessage = 'Xin lỗi, không thể kết nối đến dịch vụ AI. Vui lòng kiểm tra kết nối mạng và thử lại.';
         }
-        
+
         res.status(500).json({
             error: error.message || 'Internal server error',
             message: userMessage

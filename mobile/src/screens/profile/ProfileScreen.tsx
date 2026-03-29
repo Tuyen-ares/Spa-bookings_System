@@ -34,9 +34,9 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
         setLoading(true);
         const currentUser = await getCurrentUser();
         if (!currentUser) return;
-        
+
         setUser(currentUser);
-        
+
         // Load wallet and notifications count
         const [walletData, unreadNotifs] = await Promise.all([
           getWallet(currentUser.id).catch(() => null),
@@ -60,13 +60,13 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
       // Return default tier (Thành viên - level 0)
       return TIERS.find(t => t.level === 0) || TIERS[0];
     }
-    
+
     // Use tierLevel from wallet if available (synced from backend)
     if (wallet.tierLevel !== undefined && wallet.tierLevel !== null) {
       const tier = TIERS.find(t => t.level === wallet.tierLevel);
       if (tier) return tier;
     }
-    
+
     // Fallback: Calculate tier from totalSpent if tierLevel is not available
     const totalSpent = parseFloat(wallet.totalSpent?.toString() || '0') || 0;
     const sortedTiers = [...TIERS].sort((a, b) => (b.minSpendingRequired || 0) - (a.minSpendingRequired || 0));
@@ -104,9 +104,9 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
       try {
         const currentUser = await getCurrentUser();
         if (!currentUser) return;
-        
+
         setUser(currentUser);
-        
+
         // Refresh wallet and notifications
         const [walletData, unreadNotifs] = await Promise.all([
           getWallet(currentUser.id).catch(() => null),
@@ -152,7 +152,7 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
 
       {/* Rewards Card */}
       {wallet && (
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.rewardsCard}
           onPress={() => navigation.navigate('Rewards')}
         >
@@ -175,7 +175,7 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
       <View style={styles.section}>
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Thông tin cá nhân</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.editButton}
             onPress={() => navigation.navigate('EditProfile')}
           >
@@ -246,7 +246,7 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Tùy chọn</Text>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.optionButton}
           onPress={() => navigation.navigate('Notifications')}
         >
@@ -260,7 +260,7 @@ export const ProfileScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
           <Ionicons name="chevron-forward" size={20} color="#ccc" style={{ marginLeft: 'auto' }} />
         </TouchableOpacity>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.optionButton}
           onPress={() => navigation.navigate('ChangePassword')}
         >

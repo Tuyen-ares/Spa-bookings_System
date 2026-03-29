@@ -52,7 +52,7 @@ const Hero = () => {
     useEffect(() => {
         const timer = setInterval(() => {
             setCurrentSlide((prev) => (prev + 1) % heroSlides.length);
-        }, 3000); 
+        }, 3000);
         return () => clearInterval(timer);
     }, []);
 
@@ -67,7 +67,7 @@ const Hero = () => {
                     <div className="absolute inset-0 bg-black/10"></div>
                 </div>
             ))}
-            
+
             <div className="relative z-10 container mx-auto px-4 h-full flex flex-col justify-center items-center text-center">
                 {heroSlides.map((slide, index) => (
                     <div
@@ -76,14 +76,14 @@ const Hero = () => {
                     >
                         {/* Crystal Clear Glass Effect */}
                         <div className="relative bg-gradient-to-br from-white/10 to-white/0 backdrop-blur-[1px] border border-white/30 p-8 md:p-12 rounded-[3rem] shadow-2xl overflow-hidden">
-                            
+
                             <div className="absolute inset-0 bg-gradient-to-tr from-white/10 via-transparent to-transparent pointer-events-none"></div>
-                            
+
                             <div className="relative z-10 flex flex-col items-center">
                                 <div className="inline-block px-5 py-1.5 mb-5 border border-white/50 rounded-full bg-white/10 backdrop-blur-md text-white text-[10px] font-extrabold tracking-[0.2em] uppercase animate-fadeInUp shadow-sm">
                                     Welcome to Anh Thơ Spa
                                 </div>
-                                
+
                                 <h1 className="text-3xl md:text-5xl lg:text-6xl font-serif font-extrabold text-white mb-5 leading-tight drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)] animate-slideUpFade animation-delay-200">
                                     {slide.title}
                                 </h1>
@@ -102,7 +102,7 @@ const Hero = () => {
                     </div>
                 ))}
             </div>
-             <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex gap-3">
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex gap-3">
                 {heroSlides.map((_, index) => (
                     <button
                         key={index}
@@ -235,48 +235,48 @@ const AnimatedStatItem = ({ end, suffix, label, delay = 0, gradientColors }: { e
     );
 };
 
-const StatsSection = () => {
+const StatsSection: React.FC<{ servicesCount: number }> = ({ servicesCount }) => {
     return (
         <div className="relative z-20 -mt-24 container mx-auto px-4 animate-fadeInUp">
             {/* Animated Gradient Border Wrapper */}
             <div className="relative p-[3px] rounded-[3rem] overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.2)] hover:shadow-[0_25px_70px_-15px_rgba(225,29,72,0.3)] transition-shadow duration-500 max-w-7xl mx-auto">
-                
+
                 {/* Moving Gradient Layer (The Border) */}
                 <div className="absolute inset-0 bg-[length:400%_400%] bg-gradient-to-r from-cyan-400 via-brand-primary to-purple-600 animate-gradient-slow opacity-80"></div>
-                
+
                 {/* Inner White Content */}
                 <div className="relative bg-white/95 backdrop-blur-xl rounded-[2.8rem] p-8 md:p-12 overflow-hidden">
-                    
+
                     {/* Subtle Background Pattern */}
                     <div className="absolute inset-0 bg-[url('/img/general/noise.png')] opacity-20 mix-blend-soft-light"></div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 relative z-10 divide-y md:divide-y-0 md:divide-x divide-gray-100">
-                        <AnimatedStatItem 
-                            end={5} 
-                            suffix="+" 
-                            label="Năm Kinh Nghiệm" 
-                            delay={0} 
+                        <AnimatedStatItem
+                            end={5}
+                            suffix="+"
+                            label="Năm Kinh Nghiệm"
+                            delay={0}
                             gradientColors="from-cyan-400 via-blue-600 to-purple-600"
                         />
-                        <AnimatedStatItem 
-                            end={10000} 
-                            suffix="+" 
-                            label="Khách Hàng Vui Vẻ" 
-                            delay={200} 
+                        <AnimatedStatItem
+                            end={10000}
+                            suffix="+"
+                            label="Khách Hàng Vui Vẻ"
+                            delay={200}
                             gradientColors="from-rose-400 via-fuchsia-500 to-indigo-500"
                         />
-                        <AnimatedStatItem 
-                            end={30} 
-                            suffix="+" 
-                            label="Dịch Vụ Đa Dạng" 
-                            delay={400} 
+                        <AnimatedStatItem
+                            end={servicesCount || 30}
+                            suffix="+"
+                            label="Dịch Vụ Đa Dạng"
+                            delay={400}
                             gradientColors="from-amber-400 via-orange-500 to-red-500"
                         />
-                        <AnimatedStatItem 
-                            end={100} 
-                            suffix="%" 
-                            label="Mỹ Phẩm Tự Nhiên" 
-                            delay={600} 
+                        <AnimatedStatItem
+                            end={100}
+                            suffix="%"
+                            label="Mỹ Phẩm Tự Nhiên"
+                            delay={600}
                             gradientColors="from-emerald-400 via-teal-500 to-cyan-500"
                         />
                     </div>
@@ -294,33 +294,33 @@ const ServicesOverviewSection = () => {
     };
 
     const categories = [
-        { 
-            label: 'Nail', 
+        {
+            label: 'Nail',
             category: 'Nail',
             imgUrl: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=300&q=80'
         },
-        { 
-            label: 'Massage', 
+        {
+            label: 'Massage',
             category: 'MASSAGE THƯ GIÃN',
             imgUrl: 'https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?auto=format&fit=crop&w=300&q=80'
         },
-        { 
-            label: 'Chăm Sóc Da', 
+        {
+            label: 'Chăm Sóc Da',
             category: 'CHĂM SÓC DA',
             imgUrl: 'https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?auto=format&fit=crop&w=300&q=80'
         },
-        { 
-            label: 'Chăm Sóc Cơ Thể', 
+        {
+            label: 'Chăm Sóc Cơ Thể',
             category: 'CHĂM SÓC CƠ THỂ',
             imgUrl: 'https://images.unsplash.com/photo-1515377905703-c4788e51af15?auto=format&fit=crop&w=300&q=80'
         },
-        { 
-            label: 'Chăm Sóc Tóc', 
+        {
+            label: 'Chăm Sóc Tóc',
             category: 'CHĂM SÓC TÓC',
             imgUrl: 'https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=300&q=80'
-        }, 
-        { 
-            label: 'Triệt Lông', 
+        },
+        {
+            label: 'Triệt Lông',
             category: 'WAXING',
             imgUrl: 'https://images.unsplash.com/photo-1512290923902-8a9f81dc236c?auto=format&fit=crop&w=300&q=80'
         },
@@ -332,23 +332,23 @@ const ServicesOverviewSection = () => {
 
             <div className="container mx-auto px-4 relative z-10">
                 <div className="text-center mb-12">
-                     <span className="text-brand-primary font-bold tracking-widest uppercase text-xs bg-white px-4 py-1.5 rounded-full shadow-md border border-brand-secondary">Danh mục</span>
+                    <span className="text-brand-primary font-bold tracking-widest uppercase text-xs bg-white px-4 py-1.5 rounded-full shadow-md border border-brand-secondary">Danh mục</span>
                     <h2 className="text-4xl md:text-5xl font-serif font-extrabold text-brand-dark mt-4 mb-4">
                         Dịch vụ của Anh Thơ
                     </h2>
                 </div>
-                
+
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8 mb-12 max-w-7xl mx-auto">
                     {categories.map((item, idx) => (
-                        <div 
-                            key={idx} 
+                        <div
+                            key={idx}
                             onClick={() => handleNavigate(item.category)}
                             className="flex flex-col items-center text-center group cursor-pointer"
                         >
                             <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden shadow-lg border-4 border-white mb-4 group-hover:shadow-2xl group-hover:border-brand-primary/30 transition-all duration-500 transform group-hover:-translate-y-2">
-                                <img 
-                                    src={item.imgUrl} 
-                                    alt={item.label} 
+                                <img
+                                    src={item.imgUrl}
+                                    alt={item.label}
                                     className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700"
                                     loading="lazy"
                                 />
@@ -367,12 +367,12 @@ const ServicesOverviewSection = () => {
                         Dịch vụ trọn gói nhà Anh Thơ bao gồm từ 2 đến 3 dịch vụ lẻ kết hợp với nhau để đem lại trải nghiệm và ưu đãi tốt nhất.
                         Tất cả các dịch vụ Trọn gói đều được miễn phí xông hơi khô hoặc xông hơi ướt thảo dược.
                     </p>
-                    <Link 
-                        to="/services" 
+                    <Link
+                        to="/services"
                         className="group inline-flex items-center justify-center px-8 py-3 bg-ocean-gradient text-white text-xs font-bold uppercase tracking-widest rounded-full shadow-lg hover:shadow-cyan-700/50 hover:-translate-y-1 transition-all duration-300"
                     >
                         XEM CHI TIẾT
-                         <ArrowRightIcon className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1"/>
+                        <ArrowRightIcon className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
                     </Link>
                 </div>
             </div>
@@ -400,7 +400,7 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                 setLocalServices(allServices);
                 return;
             }
-            
+
             try {
                 setIsLoadingServices(true);
                 const fetchedServices = await apiService.getServices();
@@ -438,7 +438,7 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
             try {
                 setIsLoadingReviews(true);
                 const fetchedReviews = await apiService.getReviews({});
-                
+
                 // Fetch user profile pictures for each review based on userId
                 const reviewsWithUserData = await Promise.all(
                     fetchedReviews.map(async (review) => {
@@ -458,7 +458,7 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                         return review;
                     })
                 );
-                
+
                 setRecentReviews(reviewsWithUserData);
             } catch (error) {
                 console.error("Failed to fetch reviews:", error);
@@ -479,7 +479,7 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
     const featuredServices = useMemo(() => {
         // Lọc các dịch vụ về chăm sóc da (không sắp xếp, chỉ lấy 4 dịch vụ đầu tiên)
         if (!servicesToUse || servicesToUse.length === 0) return [];
-        
+
         const toBoolean = (value: any, defaultValue: boolean = false): boolean => {
             if (value === undefined || value === null) return defaultValue;
             if (typeof value === 'boolean') return value;
@@ -490,15 +490,15 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
             }
             return defaultValue;
         };
-        
+
         // Lọc dịch vụ chăm sóc da
         const skinCareServices = servicesToUse.filter(s => {
             if (!toBoolean(s.isActive, true)) return false;
-            
+
             const name = s.name ? String(s.name).toLowerCase() : "";
             const description = s.description ? String(s.description).toLowerCase() : "";
             const categoryName = s.categoryId ? String(s.categoryId).toLowerCase() : "";
-            
+
             // Từ khóa liên quan đến chăm sóc da
             const skinCareKeywords = [
                 'chăm sóc da', 'cham soc da', 'da mặt', 'da mat',
@@ -508,51 +508,51 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                 'trị mụn', 'tri mun', 'acne', 'whitening', 'làm trắng',
                 'chống lão hóa', 'chong lao hoa', 'anti-aging', 'collagen'
             ];
-            
+
             // Kiểm tra tên, mô tả hoặc category
-            const hasSkinCareKeyword = skinCareKeywords.some(keyword => 
-                name.includes(keyword) || 
+            const hasSkinCareKeyword = skinCareKeywords.some(keyword =>
+                name.includes(keyword) ||
                 description.includes(keyword) ||
                 categoryName.includes('chăm sóc da') ||
                 categoryName.includes('skin care')
             );
-            
+
             return hasSkinCareKeyword;
         });
-        
+
         // Chỉ lấy 4 dịch vụ đầu tiên (không sắp xếp)
         return skinCareServices.slice(0, 4);
     }, [servicesToUse]);
-    
+
     const comboServices = useMemo(() => {
         if (!servicesToUse || servicesToUse.length === 0) return [];
         return servicesToUse
-        .filter((s) => {
-            const isActive = s.isActive !== false;
-            const name = s.name ? String(s.name).toLowerCase() : "";
-            const categoryIdentifier = s.categoryId !== undefined && s.categoryId !== null ? String(s.categoryId).toLowerCase() : "";
-            const isComboByName = name.includes("gói") || name.includes("combo");
-            const isComboByCategory = categoryIdentifier === "spa package" || categoryIdentifier.includes("spa package");
-            return isActive && (isComboByName || isComboByCategory);
-        })
-        .slice(0, 12);
+            .filter((s) => {
+                const isActive = s.isActive !== false;
+                const name = s.name ? String(s.name).toLowerCase() : "";
+                const categoryIdentifier = s.categoryId !== undefined && s.categoryId !== null ? String(s.categoryId).toLowerCase() : "";
+                const isComboByName = name.includes("gói") || name.includes("combo");
+                const isComboByCategory = categoryIdentifier === "spa package" || categoryIdentifier.includes("spa package");
+                return isActive && (isComboByName || isComboByCategory);
+            })
+            .slice(0, 12);
     }, [servicesToUse]);
-    
+
     const comboDeals = useMemo(() => {
         if (!servicesToUse || servicesToUse.length === 0) return [];
         return servicesToUse
-        .filter((s) => {
-            const isActive = s.isActive !== false;
-            const name = s.name ? String(s.name).toLowerCase() : "";
-            const category = s.categoryId !== undefined && s.categoryId !== null ? String(s.categoryId).toLowerCase() : "";
-            const hasDiscount = Boolean(s.discountPrice);
-            const isComboByName = name.includes("gói") || name.includes("combo");
-            const isComboByCategory = category === "spa package" || category.includes("spa package");
-            return isActive && (isComboByName || isComboByCategory) && hasDiscount;
-        })
-        .slice(0, 12);
+            .filter((s) => {
+                const isActive = s.isActive !== false;
+                const name = s.name ? String(s.name).toLowerCase() : "";
+                const category = s.categoryId !== undefined && s.categoryId !== null ? String(s.categoryId).toLowerCase() : "";
+                const hasDiscount = Boolean(s.discountPrice);
+                const isComboByName = name.includes("gói") || name.includes("combo");
+                const isComboByCategory = category === "spa package" || category.includes("spa package");
+                return isActive && (isComboByName || isComboByCategory) && hasDiscount;
+            })
+            .slice(0, 12);
     }, [servicesToUse]);
-  
+
     const featuredPromotions = useMemo(() => {
         return allPromotions.filter(promo => {
             if (promo.isPublic === false) return false;
@@ -572,7 +572,7 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
             const handleResize = () => {
                 if (window.innerWidth < 768) setItemsPerView(1);
                 else if (window.innerWidth < 1024) setItemsPerView(2);
-                else setItemsPerView(4); 
+                else setItemsPerView(4);
             };
             window.addEventListener('resize', handleResize);
             handleResize();
@@ -594,7 +594,7 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
     const SectionHeader = ({ title, subtitle, badgeText }: { title: string, subtitle: string, badgeText?: string }) => (
         <div className="mb-8 max-w-2xl">
             {badgeText && (
-                 <span className="inline-block px-3 py-1 mb-3 border border-brand-primary/30 rounded-full bg-brand-secondary text-brand-primary text-[10px] font-extrabold tracking-widest uppercase shadow-sm">
+                <span className="inline-block px-3 py-1 mb-3 border border-brand-primary/30 rounded-full bg-brand-secondary text-brand-primary text-[10px] font-extrabold tracking-widest uppercase shadow-sm">
                     {badgeText}
                 </span>
             )}
@@ -606,20 +606,20 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
     return (
         <div className="animate-fadeInUp bg-gray-50 font-sans overflow-x-hidden selection:bg-brand-primary selection:text-white">
             <Hero />
-            <StatsSection />
+            <StatsSection servicesCount={localServices.length} />
 
             {/* Philosophy / Intro Section */}
             <section className="py-16 relative overflow-hidden">
-                 <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-cyan-300/20 rounded-full mix-blend-multiply filter blur-[100px] animate-pulse"></div>
-                 <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-300/20 rounded-full mix-blend-multiply filter blur-[100px] animate-pulse animation-delay-500"></div>
+                <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-cyan-300/20 rounded-full mix-blend-multiply filter blur-[100px] animate-pulse"></div>
+                <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-300/20 rounded-full mix-blend-multiply filter blur-[100px] animate-pulse animation-delay-500"></div>
 
                 <div className="container mx-auto px-4 grid lg:grid-cols-2 gap-12 items-center relative z-10">
                     <div className="relative group max-w-lg mx-auto lg:mx-0">
                         <div className="absolute -inset-3 bg-gradient-to-tr from-cyan-400 to-blue-500 rounded-[2rem] rotate-2 opacity-30 blur-xl transition-all duration-500 group-hover:rotate-1 group-hover:opacity-50"></div>
                         <img src="../../../assets/IMG/hinhGiaoDien/about-anhthospa.jpg" alt="About Anh Tho Spa" className="relative rounded-[2rem] shadow-xl w-full h-auto object-cover z-10 border-4 border-white" loading="lazy" />
-                        
+
                         {/* Floating Glass Badge */}
-                         <div className="absolute -bottom-6 -right-6 z-20 bg-white/90 backdrop-blur-xl p-4 rounded-2xl shadow-lg max-w-[200px] border border-white animate-bounce-slow">
+                        <div className="absolute -bottom-6 -right-6 z-20 bg-white/90 backdrop-blur-xl p-4 rounded-2xl shadow-lg max-w-[200px] border border-white animate-bounce-slow">
                             <div className="flex items-center gap-3 mb-1">
                                 <div className="p-2 bg-yellow-100 rounded-full text-yellow-600">
                                     <SparklesIcon className="w-4 h-4" />
@@ -635,7 +635,7 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                     <div>
                         <span className="text-brand-primary font-bold tracking-widest uppercase text-xs bg-white px-3 py-1 rounded-full shadow-sm border border-brand-secondary">Về Chúng Tôi</span>
                         <h2 className="text-3xl sm:text-4xl font-serif font-extrabold text-brand-text mb-4 mt-4 leading-tight">
-                             Đánh Thức Vẻ Đẹp <br/> <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-primary to-blue-800">Tiềm Ẩn Của Bạn</span>
+                            Đánh Thức Vẻ Đẹp <br /> <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-primary to-blue-800">Tiềm Ẩn Của Bạn</span>
                         </h2>
                         <p className="text-base text-gray-700 mb-6 leading-relaxed font-medium">
                             Tại Anh Thơ Spa, chúng tôi tin rằng vẻ đẹp thực sự đến từ sự cân bằng. Sứ mệnh của chúng tôi là mang đến không gian yên tĩnh để bạn tạm gác lại âu lo.
@@ -652,22 +652,22 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                         </ul>
                         <Link to="/about" className="group inline-flex items-center justify-center px-8 py-3 bg-brand-dark text-white text-sm font-bold rounded-full hover:bg-brand-primary transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-1">
                             <span>Tìm Hiểu Thêm</span>
-                            <ArrowRightIcon className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1"/>
+                            <ArrowRightIcon className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
                         </Link>
                     </div>
                 </div>
             </section>
-            
+
             <ServicesOverviewSection />
-            
+
             {/* Featured Services */}
             <section className="py-12 bg-white relative">
                 <div className="container mx-auto px-4 relative z-10">
                     <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
                         <SectionHeader title="Dịch Vụ Về Chăm Sóc Da" subtitle="Các dịch vụ chăm sóc da được yêu thích nhất." badgeText="Skin Care" />
-                        
+
                         {featuredServices.length > serviceCarousel.itemsPerView && (
-                             <div className="hidden md:flex gap-2 mb-4">
+                            <div className="hidden md:flex gap-2 mb-4">
                                 <button onClick={serviceCarousel.prev} disabled={serviceCarousel.currentIndex === 0} className="w-10 h-10 rounded-full border-2 border-gray-200 flex items-center justify-center hover:border-brand-primary hover:bg-brand-primary hover:text-white text-gray-400 transition-all disabled:opacity-30"><ChevronLeftIcon className="w-5 h-5" /></button>
                                 <button onClick={serviceCarousel.next} disabled={serviceCarousel.currentIndex >= serviceCarousel.maxIndex} className="w-10 h-10 rounded-full border-2 border-gray-200 flex items-center justify-center hover:border-brand-primary hover:bg-brand-primary hover:text-white text-gray-400 transition-all disabled:opacity-30"><ChevronRightIcon className="w-5 h-5" /></button>
                             </div>
@@ -689,7 +689,7 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                             ))}
                         </div>
                     )}
-                     <div className="mt-8 text-center">
+                    <div className="mt-8 text-center">
                         <Link to="/services" className="inline-block px-8 py-2.5 border-2 border-brand-dark text-brand-dark font-bold rounded-full hover:bg-brand-dark hover:text-white transition-all duration-300 text-sm">
                             Xem Tất Cả
                         </Link>
@@ -699,37 +699,37 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
 
             {/* Combo Services */}
             {comboServices.length > 0 && (
-            <section className="py-12 relative bg-gradient-to-b from-brand-secondary to-white">
-                <div className="container mx-auto px-4 relative z-10">
-                     <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
-                        <SectionHeader title="Các Gói Dịch Vụ" subtitle="Sự kết hợp hoàn hảo giữa các liệu trình." badgeText="Packages" />
-                        
-                        {comboServices.length > comboCarousel.itemsPerView && (
-                             <div className="flex gap-2 mb-4">
-                                <button onClick={comboCarousel.prev} disabled={comboCarousel.currentIndex === 0} className="w-10 h-10 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center hover:border-brand-primary hover:bg-brand-primary hover:text-white text-gray-400 transition-all disabled:opacity-30"><ChevronLeftIcon className="w-5 h-5" /></button>
-                                <button onClick={comboCarousel.next} disabled={comboCarousel.currentIndex >= comboCarousel.maxIndex} className="w-10 h-10 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center hover:border-brand-primary hover:bg-brand-primary hover:text-white text-gray-400 transition-all disabled:opacity-30"><ChevronRightIcon className="w-5 h-5" /></button>
-                            </div>
-                        )}
-                    </div>
+                <section className="py-12 relative bg-gradient-to-b from-brand-secondary to-white">
+                    <div className="container mx-auto px-4 relative z-10">
+                        <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
+                            <SectionHeader title="Các Gói Dịch Vụ" subtitle="Sự kết hợp hoàn hảo giữa các liệu trình." badgeText="Packages" />
 
-                    <div className="relative overflow-hidden -mx-4 px-4 py-4">
-                        <div 
-                            className="flex transition-transform duration-700 ease-out" 
-                            style={{ transform: `translateX(-${comboCarousel.currentIndex * (100 / comboCarousel.itemsPerView)}%)` }}
-                        >
-                            {comboServices.map(service => (
-                                <div 
-                                    key={service.id} 
-                                    className="flex-shrink-0 px-3"
-                                    style={{ flexBasis: `${100 / comboCarousel.itemsPerView}%` }}
-                                >
-                                    <ServiceCard service={service} />
+                            {comboServices.length > comboCarousel.itemsPerView && (
+                                <div className="flex gap-2 mb-4">
+                                    <button onClick={comboCarousel.prev} disabled={comboCarousel.currentIndex === 0} className="w-10 h-10 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center hover:border-brand-primary hover:bg-brand-primary hover:text-white text-gray-400 transition-all disabled:opacity-30"><ChevronLeftIcon className="w-5 h-5" /></button>
+                                    <button onClick={comboCarousel.next} disabled={comboCarousel.currentIndex >= comboCarousel.maxIndex} className="w-10 h-10 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center hover:border-brand-primary hover:bg-brand-primary hover:text-white text-gray-400 transition-all disabled:opacity-30"><ChevronRightIcon className="w-5 h-5" /></button>
                                 </div>
-                            ))}
+                            )}
+                        </div>
+
+                        <div className="relative overflow-hidden -mx-4 px-4 py-4">
+                            <div
+                                className="flex transition-transform duration-700 ease-out"
+                                style={{ transform: `translateX(-${comboCarousel.currentIndex * (100 / comboCarousel.itemsPerView)}%)` }}
+                            >
+                                {comboServices.map(service => (
+                                    <div
+                                        key={service.id}
+                                        className="flex-shrink-0 px-3"
+                                        style={{ flexBasis: `${100 / comboCarousel.itemsPerView}%` }}
+                                    >
+                                        <ServiceCard service={service} />
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
-                </div>
-            </section>
+                </section>
             )}
 
             {/* Monthly Combo Deals Section */}
@@ -745,9 +745,9 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                                 <h2 className="text-3xl md:text-4xl font-serif font-extrabold text-brand-dark mb-3">Ưu Đãi Tháng</h2>
                                 <p className="text-gray-600 text-base font-medium">Cơ hội trải nghiệm dịch vụ 5 sao với mức giá hấp dẫn.</p>
                             </div>
-                            
+
                             {comboDeals.length > dealCarousel.itemsPerView && (
-                                 <div className="flex gap-2">
+                                <div className="flex gap-2">
                                     <button onClick={dealCarousel.prev} disabled={dealCarousel.currentIndex === 0} className="w-10 h-10 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center hover:border-brand-accent hover:bg-brand-accent hover:text-white text-gray-400 transition-all disabled:opacity-30"><ChevronLeftIcon className="w-5 h-5" /></button>
                                     <button onClick={dealCarousel.next} disabled={dealCarousel.currentIndex >= dealCarousel.maxIndex} className="w-10 h-10 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center hover:border-brand-accent hover:bg-brand-accent hover:text-white text-gray-400 transition-all disabled:opacity-30"><ChevronRightIcon className="w-5 h-5" /></button>
                                 </div>
@@ -755,13 +755,13 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                         </div>
 
                         <div className="relative overflow-hidden -mx-4 px-4 py-4">
-                            <div 
-                                className="flex transition-transform duration-700 ease-out" 
+                            <div
+                                className="flex transition-transform duration-700 ease-out"
                                 style={{ transform: `translateX(-${dealCarousel.currentIndex * (100 / dealCarousel.itemsPerView)}%)` }}
                             >
                                 {comboDeals.map(service => (
-                                    <div 
-                                        key={service.id} 
+                                    <div
+                                        key={service.id}
                                         className="flex-shrink-0 px-3"
                                         style={{ flexBasis: `${100 / dealCarousel.itemsPerView}%` }}
                                     >
@@ -772,8 +772,8 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                                 ))}
                             </div>
                         </div>
-                         <div className="text-center mt-8">
-                            <Link to="/promotions" className="inline-flex items-center gap-2 text-brand-accent font-bold text-base hover:text-brand-dark transition-colors border-b-2 border-brand-accent pb-0.5 hover:border-brand-dark">Xem ưu đãi <ArrowRightIcon className="w-4 h-4"/></Link>
+                        <div className="text-center mt-8">
+                            <Link to="/promotions" className="inline-flex items-center gap-2 text-brand-accent font-bold text-base hover:text-brand-dark transition-colors border-b-2 border-brand-accent pb-0.5 hover:border-brand-dark">Xem ưu đãi <ArrowRightIcon className="w-4 h-4" /></Link>
                         </div>
                     </div>
                 </section>
@@ -785,7 +785,7 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                     <div className="container mx-auto px-4">
                         <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
                             <SectionHeader title="Chương Trình Khuyến Mãi" subtitle="Quà tặng đặc biệt tri ân khách hàng." badgeText="Hot Deals" />
-                            
+
                             {featuredPromotions.length > promoCarousel.itemsPerView && (
                                 <div className="flex gap-2 mb-4">
                                     <button onClick={promoCarousel.prev} disabled={promoCarousel.currentIndex === 0} className="w-10 h-10 rounded-full border-2 border-gray-200 flex items-center justify-center hover:border-brand-primary hover:bg-brand-primary hover:text-white text-gray-400 transition-all disabled:opacity-30"><ChevronLeftIcon className="w-5 h-5" /></button>
@@ -800,13 +800,13 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                             </div>
                         ) : (
                             <div className="relative overflow-hidden -mx-4 px-4 py-4">
-                                <div 
-                                    className="flex transition-transform duration-700 ease-out -mx-4" 
+                                <div
+                                    className="flex transition-transform duration-700 ease-out -mx-4"
                                     style={{ transform: `translateX(-${promoCarousel.currentIndex * (100 / promoCarousel.itemsPerView)}%)` }}
                                 >
                                     {featuredPromotions.map((promotion) => (
-                                        <div 
-                                            key={promotion.id} 
+                                        <div
+                                            key={promotion.id}
                                             className="flex-shrink-0 px-3"
                                             style={{ flexBasis: `${100 / promoCarousel.itemsPerView}%` }}
                                         >
@@ -819,16 +819,16 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                     </div>
                 </section>
             )}
-            
+
             {/* Testimonials */}
-             <section className="py-16 relative bg-fixed bg-center bg-cover" style={{ backgroundImage: "url('/img/general/testimonials-bg.jpg')" }}>
+            <section className="py-16 relative bg-fixed bg-center bg-cover" style={{ backgroundImage: "url('/img/general/testimonials-bg.jpg')" }}>
                 <div className="absolute inset-0 bg-white/90 backdrop-blur-[2px]"></div>
-                
+
                 <div className="container mx-auto px-4 relative z-10">
                     <div className="text-center mb-12">
                         <span className="text-brand-primary font-bold tracking-widest uppercase text-xs border border-brand-primary/20 px-3 py-1.5 rounded-full bg-white/50">Testimonials</span>
                         <h2 className="text-3xl md:text-4xl font-serif font-extrabold text-brand-dark mt-4 mb-4">Lời Nói Từ Trái Tim</h2>
-                         <p className="text-gray-600 text-lg font-medium max-w-2xl mx-auto leading-relaxed">Niềm tin và sự hài lòng của khách hàng là thước đo thành công.</p>
+                        <p className="text-gray-600 text-lg font-medium max-w-2xl mx-auto leading-relaxed">Niềm tin và sự hài lòng của khách hàng là thước đo thành công.</p>
                     </div>
 
                     {isLoadingReviews ? (
@@ -837,17 +837,17 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
                             {recentReviews.slice(0, 3).map((review) => (
                                 <div key={review.id} className="bg-white p-8 rounded-[1.5rem] border border-gray-100 shadow-lg hover:shadow-xl transition-all duration-500 hover:-translate-y-1 relative">
-                                     <div className="absolute -top-5 right-6 w-10 h-10 bg-brand-primary text-white rounded-full flex items-center justify-center shadow-md">
+                                    <div className="absolute -top-5 right-6 w-10 h-10 bg-brand-primary text-white rounded-full flex items-center justify-center shadow-md">
                                         <span className="text-2xl font-serif">"</span>
-                                     </div>
-                                     
-                                     <div className="flex items-center gap-3 mb-4">
+                                    </div>
+
+                                    <div className="flex items-center gap-3 mb-4">
                                         <div className="w-12 h-12 rounded-full border-2 border-brand-secondary overflow-hidden bg-gray-200 flex items-center justify-center">
                                             {review.userImageUrl ? (
-                                                <img 
+                                                <img
                                                     src={review.userImageUrl.startsWith('http') ? review.userImageUrl : `http://localhost:3001${review.userImageUrl}`}
                                                     alt={review.userName}
-                                                    className="w-full h-full object-cover object-center" 
+                                                    className="w-full h-full object-cover object-center"
                                                     style={{ objectPosition: 'center 30%' }}
                                                     onError={(e) => {
                                                         e.currentTarget.style.display = 'none';
@@ -864,12 +864,12 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                                             )}
                                         </div>
                                         <div>
-                                             <h4 className="font-bold text-lg text-brand-text">{review.userName}</h4>
-                                             <div className="flex text-yellow-400 mt-0.5">
+                                            <h4 className="font-bold text-lg text-brand-text">{review.userName}</h4>
+                                            <div className="flex text-yellow-400 mt-0.5">
                                                 {[...Array(5)].map((_, i) => <StarIcon key={i} className={`w-4 h-4 ${i < review.rating ? 'fill-current' : 'text-gray-300'}`} />)}
                                             </div>
                                         </div>
-                                     </div>
+                                    </div>
                                     <p className="text-gray-600 text-base italic leading-relaxed font-medium">"{review.comment}"</p>
                                     <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
                                         <p className="text-[10px] text-brand-primary font-bold uppercase tracking-wider">{review.serviceName}</p>
@@ -879,22 +879,22 @@ export const HomePage: React.FC<HomePageProps> = ({ allServices, allPromotions, 
                             ))}
                         </div>
                     ) : (
-                         <div className="text-center text-gray-500">Chưa có đánh giá nào.</div>
+                        <div className="text-center text-gray-500">Chưa có đánh giá nào.</div>
                     )}
                 </div>
             </section>
 
-             {/* CTA Section - Compact */}
+            {/* CTA Section - Compact */}
             <section className="py-16 bg-white relative overflow-hidden">
                 <div className="container mx-auto px-4">
                     <div className="relative rounded-[2rem] overflow-hidden shadow-xl">
-                         <div className="absolute inset-0 bg-gradient-to-r from-cyan-800 to-blue-800"></div>
-                         
-                         <div className="absolute top-0 left-0 w-full h-full bg-[url('/img/general/spa-pattern.png')] opacity-10 mix-blend-overlay"></div>
-                         <div className="absolute top-0 left-1/4 w-64 h-64 bg-white/10 rounded-full blur-[60px] animate-pulse"></div>
-                         <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-purple-400/20 rounded-full blur-[60px] animate-pulse animation-delay-500"></div>
+                        <div className="absolute inset-0 bg-gradient-to-r from-cyan-800 to-blue-800"></div>
 
-                         <div className="relative z-10 px-6 py-16 md:py-24 text-center">
+                        <div className="absolute top-0 left-0 w-full h-full bg-[url('/img/general/spa-pattern.png')] opacity-10 mix-blend-overlay"></div>
+                        <div className="absolute top-0 left-1/4 w-64 h-64 bg-white/10 rounded-full blur-[60px] animate-pulse"></div>
+                        <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-purple-400/20 rounded-full blur-[60px] animate-pulse animation-delay-500"></div>
+
+                        <div className="relative z-10 px-6 py-16 md:py-24 text-center">
                             <h2 className="text-3xl md:text-5xl font-serif font-extrabold text-white mb-6 drop-shadow-md">
                                 Sẵn Sàng Cho Một Trải Nghiệm Mới?
                             </h2>

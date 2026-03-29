@@ -179,7 +179,7 @@ class AppointmentService {
                 {
                     model: db.TreatmentSession,
                     as: 'TreatmentSession',
-                    attributes: ['id', 'sessionNumber', 'treatmentCourseId', 'status'],
+                    attributes: ['id', 'sessionNumber', 'treatmentCourseId', 'status', 'adminNotes', 'customerStatusNotes'],
                     required: false,
                     include: [
                         {
@@ -195,6 +195,44 @@ class AppointmentService {
 
         if (!appointment) {
             throw new Error('Appointment not found');
+        }
+
+        // Fetch previous session notes if this is a treatment session
+        if (appointment.TreatmentSession && appointment.TreatmentSession.sessionNumber > 1 && appointment.TreatmentSession.treatmentCourseId) {
+            try {
+                const previousSession = await db.TreatmentSession.findOne({
+                    where: {
+                        treatmentCourseId: appointment.TreatmentSession.treatmentCourseId,
+                        sessionNumber: appointment.TreatmentSession.sessionNumber - 1
+                    },
+                    attributes: ['id', 'adminNotes', 'customerStatusNotes']
+                });
+
+                if (previousSession) {
+                    // Add previous session notes to the response
+                    if (!appointment.TreatmentSession) {
+                        appointment.TreatmentSession = {};
+                    }
+                    appointment.TreatmentSession.previousSessionNotes = {
+                        adminNotes: previousSession.adminNotes,
+                        customerStatusNotes: previousSession.customerStatusNotes
+                    };
+                }
+            } catch (error) {
+                console.error('Error fetching previous session notes:', error);
+                // Continue without error - previous notes are optional
+            }
+        }
+
+        // If this is the last session, also fetch the current session notes for display
+        if (appointment.TreatmentSession && appointment.TreatmentSession.TreatmentCourse) {
+            const isLastSession = appointment.TreatmentSession.sessionNumber === appointment.TreatmentSession.TreatmentCourse.totalSessions;
+            if (!appointment.TreatmentSession.currentSessionNotes && isLastSession) {
+                appointment.TreatmentSession.currentSessionNotes = {
+                    adminNotes: appointment.TreatmentSession.adminNotes,
+                    customerStatusNotes: appointment.TreatmentSession.customerStatusNotes
+                };
+            }
         }
 
         // Add to response

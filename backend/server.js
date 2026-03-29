@@ -1,5 +1,9 @@
 // backend/server.js
 require('dotenv').config({ path: __dirname + '/.env' }); // Load .env from backend directory
+
+// Set timezone to UTC+7 (Vietnam)
+process.env.TZ = 'Asia/Ho_Chi_Minh';
+
 const express = require('express');
 const cors = require('cors');
 const db = require('./config/database'); // Import Sequelize configuration
@@ -59,7 +63,8 @@ db.sequelize.sync(syncOptions) // Removed `force: true` to make data persistent
     const treatmentCourseRoutes = require('./routes/treatmentCourses');
     const monthlyVoucherRoutes = require('./routes/monthlyVouchers');
     const treatmentSessionRoutes = require('./routes/treatmentSessions');
-    
+    const analyticsRoutes = require('./routes/analytics');
+
     // Use unprotected auth routes first
     app.use('/api/auth', authRoutes);
 
@@ -77,6 +82,7 @@ db.sequelize.sync(syncOptions) // Removed `force: true` to make data persistent
     app.use('/api/notifications', notificationRoutes);
     app.use('/api/chatbot', chatbotRoutes);
     app.use('/api/monthly-vouchers', monthlyVoucherRoutes);
+    app.use('/api/analytics', analyticsRoutes);
 
 
     // Simple root route
@@ -93,7 +99,7 @@ db.sequelize.sync(syncOptions) // Removed `force: true` to make data persistent
       console.log(`Mobile app (Android emulator) should use: http://10.0.2.2:${PORT}/api`);
       console.log(`Mobile app (iOS Simulator) should use: http://localhost:${PORT}/api`);
       console.log(`Mobile app (Physical device) should use: http://192.168.80.1:${PORT}/api`);
-      
+
       // Verify email connection
       try {
         const emailService = require('./services/emailService');
@@ -107,11 +113,11 @@ db.sequelize.sync(syncOptions) // Removed `force: true` to make data persistent
         console.warn('⚠️  Email service verification failed:', error.message);
         console.warn('⚠️  Email verification feature will not work until SMTP is configured.');
       }
-      
+
       // Setup cron job for monthly voucher distribution
       const cron = require('node-cron');
       const monthlyVoucherService = require('./services/monthlyVoucherService');
-      
+
       // Chạy vào 00:00 ngày 1 mỗi tháng
       // Cron expression: '0 0 1 * *' = minute 0, hour 0, day 1, every month
       const cronJob = cron.schedule('0 0 1 * *', async () => {
@@ -135,10 +141,10 @@ db.sequelize.sync(syncOptions) // Removed `force: true` to make data persistent
         scheduled: true,
         timezone: "Asia/Ho_Chi_Minh"
       });
-      
+
       // Store cron job reference for potential manual trigger
       app.locals.monthlyVoucherCronJob = cronJob;
-      
+
       console.log('✅ Cron job đã được thiết lập: Gửi voucher hàng tháng vào 00:00 ngày 1 mỗi tháng (GMT+7)');
       console.log('   Cron expression: 0 0 1 * *');
       console.log('   Timezone: Asia/Ho_Chi_Minh');

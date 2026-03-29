@@ -55,7 +55,7 @@ const HomeStack = () => {
       <Stack.Screen
         name="Notifications"
         component={NotificationsScreen}
-        options={{ title: 'Thông báo' }}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );
@@ -248,7 +248,7 @@ export const MainNavigator = () => {
   // Notification Badge Component
   const NotificationBadge: React.FC<{ count: number }> = ({ count }) => {
     if (count === 0) return null;
-    
+
     return (
       <View style={styles.badge}>
         <Text style={styles.badgeText}>{count > 99 ? '99+' : count}</Text>

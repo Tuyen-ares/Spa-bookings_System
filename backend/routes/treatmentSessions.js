@@ -110,7 +110,7 @@ router.put('/:id', async (req, res) => {
 
     try {
         const session = await db.TreatmentSession.findByPk(id);
-        
+
         if (!session) {
             return res.status(404).json({ message: 'Treatment session not found' });
         }
@@ -122,11 +122,11 @@ router.put('/:id', async (req, res) => {
                 { model: db.User, as: 'Client' }
             ]
         });
-        
+
         const oldStaffId = session.staffId;
         const oldAppointmentId = session.appointmentId;
         const isChangingStaff = oldStaffId && updates.staffId && oldStaffId !== updates.staffId;
-        
+
         // Nếu phân công staff và session có ngày/giờ, tạo/cập nhật appointment và staff shift
         // Cần xử lý trước khi update session để có thể kiểm tra appointmentId cũ
         if (updates.staffId && session.sessionDate && session.sessionTime) {
@@ -141,7 +141,7 @@ router.put('/:id', async (req, res) => {
                 }
 
                 let appointment;
-                
+
                 // Nếu session đã có appointment, cập nhật appointment hiện có
                 if (session.appointmentId) {
                     appointment = await db.Appointment.findByPk(session.appointmentId);
@@ -209,7 +209,7 @@ router.put('/:id', async (req, res) => {
                     const [hours] = time.split(':').map(Number);
                     let startHour = 9;
                     let endHour = 16;
-                    
+
                     if (hours >= 9 && hours < 16) {
                         startHour = 9;
                         endHour = 16;
@@ -220,7 +220,7 @@ router.put('/:id', async (req, res) => {
                         startHour = Math.max(9, Math.min(hours, 22));
                         endHour = Math.min(22, startHour + 4);
                     }
-                    
+
                     return {
                         start: `${String(startHour).padStart(2, '0')}:00`,
                         end: `${String(endHour).padStart(2, '0')}:00`
@@ -249,7 +249,7 @@ router.put('/:id', async (req, res) => {
                             if (appointmentIdToExclude) {
                                 whereClause.id = { [Op.ne]: appointmentIdToExclude };
                             }
-                            
+
                             const otherAppointments = await db.Appointment.count({
                                 where: whereClause
                             });
@@ -271,7 +271,7 @@ router.put('/:id', async (req, res) => {
                 // Tạo/update staff shift cho nhân viên mới
                 const appointmentDate = session.sessionDate;
                 const appointmentTime = session.sessionTime;
-                
+
                 // Check if new staff already has a shift for this date
                 const existingShift = await db.StaffShift.findOne({
                     where: {
@@ -285,7 +285,7 @@ router.put('/:id', async (req, res) => {
                     // Auto-create shift for the new staff
                     const shiftType = getShiftTypeFromTime(appointmentTime);
                     const shiftHours = getShiftHoursFromTime(appointmentTime);
-                    
+
                     await db.StaffShift.create({
                         id: `shift-${uuidv4()}`,
                         staffId: updates.staffId,
@@ -301,26 +301,26 @@ router.put('/:id', async (req, res) => {
                     const existingShiftType = existingShift.shiftType;
                     const requiredShiftType = getShiftTypeFromTime(appointmentTime);
                     const requiredHours = getShiftHoursFromTime(appointmentTime);
-                    
+
                     if (existingShiftType !== requiredShiftType) {
                         const existingHours = existingShift.shiftHours || {};
                         const appointmentHour = parseInt(appointmentTime.split(':')[0]);
                         const existingStart = existingHours.start ? parseInt(existingHours.start.split(':')[0]) : 9;
                         const existingEnd = existingHours.end ? parseInt(existingHours.end.split(':')[0]) : 16;
-                        
+
                         if (appointmentHour < existingStart || appointmentHour >= existingEnd) {
                             const mergedHours = {
                                 start: Math.min(existingStart, parseInt(requiredHours.start.split(':')[0])),
                                 end: Math.max(existingEnd, parseInt(requiredHours.end.split(':')[0]))
                             };
-                            
+
                             await existingShift.update({
                                 shiftType: 'custom',
                                 shiftHours: {
                                     start: `${String(mergedHours.start).padStart(2, '0')}:00`,
                                     end: `${String(mergedHours.end).padStart(2, '0')}:00`
                                 },
-                                notes: existingShift.notes ? 
+                                notes: existingShift.notes ?
                                     `${existingShift.notes}; Cập nhật để bao gồm buổi ${session.sessionNumber} liệu trình` :
                                     `Cập nhật để bao gồm buổi ${session.sessionNumber} liệu trình`
                             });
@@ -330,13 +330,13 @@ router.put('/:id', async (req, res) => {
                 }
 
                 // Tạo thông báo cho khách hàng
-                const notificationTitle = isChangingStaff 
+                const notificationTitle = isChangingStaff
                     ? 'Đã thay đổi nhân viên cho buổi liệu trình'
                     : 'Đã phân công nhân viên cho buổi liệu trình';
                 const notificationMessage = isChangingStaff
                     ? `Buổi ${session.sessionNumber} của liệu trình ${course.serviceName || service.name} đã được thay đổi nhân viên vào ${session.sessionDate} lúc ${session.sessionTime}`
                     : `Buổi ${session.sessionNumber} của liệu trình ${course.serviceName || service.name} đã được phân công nhân viên vào ${session.sessionDate} lúc ${session.sessionTime}`;
-                
+
                 await createNotification(
                     course.clientId,
                     'appointment_confirmed',
@@ -346,20 +346,57 @@ router.put('/:id', async (req, res) => {
                 );
 
                 console.log(`✅ Created notification for client ${course.clientId} (${isChangingStaff ? 'staff changed' : 'staff assigned'})`);
+
+                // Tạo thông báo cho nhân viên cũ (nếu đang thay đổi nhân viên)
+                if (isChangingStaff && oldStaffId) {
+                    try {
+                        const oldStaff = await db.User.findByPk(oldStaffId);
+                        const newStaff = await db.User.findByPk(updates.staffId);
+                        if (oldStaff) {
+                            await createNotification(
+                                oldStaffId,
+                                'appointment_confirmed',
+                                'Thông báo thay đổi phân công',
+                                `Lịch hẹn ngày ${new Date(session.sessionDate).toLocaleDateString('vi-VN')} lúc ${session.sessionTime} - Dịch vụ ${course.serviceName || service.name} của khách hàng ${course.Client?.name || 'Khách hàng'} đã được phân công cho nhân viên ${newStaff?.name || 'khác'}`,
+                                appointment.id
+                            );
+                            console.log(`✅ Created notification for old staff ${oldStaff.name} about reassignment`);
+                        }
+                    } catch (oldStaffNotifError) {
+                        console.error('Error creating notification for old staff:', oldStaffNotifError);
+                    }
+                }
+
+                // Tạo thông báo cho nhân viên mới
+                try {
+                    const newStaff = await db.User.findByPk(updates.staffId);
+                    if (newStaff) {
+                        await createNotification(
+                            updates.staffId,
+                            'appointment_confirmed',
+                            'Phân công lịch hẹn mới',
+                            `Được phân công - Ngày ${new Date(session.sessionDate).toLocaleDateString('vi-VN')} lúc ${session.sessionTime} - Dịch vụ: ${course.serviceName || service.name} - Khách hàng: ${course.Client?.name || 'Khách hàng'}`,
+                            appointment.id
+                        );
+                        console.log(`✅ Created notification for new staff ${newStaff.name} for appointment assignment`);
+                    }
+                } catch (newStaffNotifError) {
+                    console.error('Error creating notification for new staff:', newStaffNotifError);
+                }
             } catch (appointmentError) {
                 console.error('Error creating appointment/staff shift for treatment session:', appointmentError);
                 // Don't fail the session update if appointment creation fails
             }
         }
-        
+
         // Update session sau khi đã xử lý appointment
         await session.update({
             ...updates,
         });
-        
+
         // Đảm bảo: Nếu session có staffId và sessionDate/sessionTime nhưng chưa có appointmentId, tạo appointment
         const updatedSession = await db.TreatmentSession.findByPk(id);
-        
+
         if (updatedSession && updatedSession.staffId && updatedSession.sessionDate && updatedSession.sessionTime && !updatedSession.appointmentId) {
             try {
                 // Load course with associations
@@ -369,7 +406,7 @@ router.put('/:id', async (req, res) => {
                         { model: db.User, as: 'Client' }
                     ]
                 });
-                
+
                 if (course && course.Client && course.Service) {
                     const appointment = await db.Appointment.create({
                         id: `appt-${uuidv4()}`,
@@ -384,7 +421,7 @@ router.put('/:id', async (req, res) => {
                         notesForTherapist: `Buổi ${updatedSession.sessionNumber} của liệu trình ${course.Service.name || course.serviceName}`,
                         bookingGroupId: `group-${course.id}`,
                     });
-                    
+
                     await updatedSession.update({ appointmentId: appointment.id });
                     console.log(`✅ Auto-created appointment ${appointment.id} for session ${updatedSession.id} (buổi ${updatedSession.sessionNumber}) - session has staff but no appointment`);
                 }
@@ -415,7 +452,7 @@ router.put('/:id', async (req, res) => {
                             { model: db.User, as: 'Client' }
                         ]
                     });
-                    
+
                     if (course && course.Client && course.Service) {
                         const appointment = await db.Appointment.create({
                             id: `apt-${uuidv4()}`,
@@ -430,7 +467,7 @@ router.put('/:id', async (req, res) => {
                             notesForTherapist: `Buổi ${session.sessionNumber} của liệu trình ${course.Service.name || course.serviceName}`,
                             bookingGroupId: `group-${course.id}`,
                         });
-                        
+
                         // Link appointment to session
                         await session.update({ appointmentId: appointment.id });
                         console.log(`✅ Created and linked appointment ${appointment.id} for completed treatment session ${session.id}`);
@@ -514,7 +551,7 @@ router.put('/:id/complete', async (req, res) => {
                         { model: db.User, as: 'Client' }
                     ]
                 });
-                
+
                 if (course && course.Client && course.Service) {
                     const appointment = await db.Appointment.create({
                         id: `apt-${uuidv4()}`,
@@ -529,7 +566,7 @@ router.put('/:id/complete', async (req, res) => {
                         notesForTherapist: `Buổi ${session.sessionNumber} của liệu trình ${course.Service.name || course.serviceName}`,
                         bookingGroupId: `group-${course.id}`,
                     });
-                    
+
                     // Link appointment to session
                     await session.update({ appointmentId: appointment.id });
                     console.log(`✅ Created and linked appointment ${appointment.id} for completed treatment session ${session.id}`);
@@ -559,7 +596,7 @@ router.put('/:id/complete', async (req, res) => {
             });
 
             // Cập nhật completedSessions
-            await course.update({ 
+            await course.update({
                 completedSessions: totalCompleted,
                 nextAppointmentDate: (nextSession && nextSession.scheduledDate) ? nextSession.scheduledDate : null
             });
@@ -567,7 +604,7 @@ router.put('/:id/complete', async (req, res) => {
             // Kiểm tra xem đã hoàn thành tất cả buổi chưa
             if (totalCompleted >= course.totalSessions) {
                 await course.update({ status: 'completed' });
-                
+
                 // Thông báo hoàn thành liệu trình
                 if (course.clientId) {
                     await createNotification(

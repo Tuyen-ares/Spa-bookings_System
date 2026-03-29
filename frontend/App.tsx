@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
 
 // Global components and services
@@ -61,6 +61,8 @@ import StaffProfilePage from './staff/pages/StaffProfilePage';
 const AppContent: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const lastFetchRef = useRef<number>(0);
+    const ADMIN_REFRESH_TTL = 60_000; // 60s throttle to avoid spamming fetches when switching admin pages
 
     const [currentUser, setCurrentUser] = useState<User | null>(() => {
         try {
@@ -127,6 +129,7 @@ const AppContent: React.FC = () => {
             setAllPayments(payments);
             setAllProducts(products);
             setAllSales(sales);
+            lastFetchRef.current = Date.now();
 
         } catch (error) {
             console.error("Failed to fetch initial app data:", error);
@@ -152,6 +155,9 @@ const AppContent: React.FC = () => {
             setAllSales([]);
         } finally {
             setIsLoading(false);
+            if (!lastFetchRef.current) {
+                lastFetchRef.current = Date.now();
+            }
         }
     }, []);
 
@@ -166,8 +172,14 @@ const AppContent: React.FC = () => {
         const userRole = currentUser?.role ? (currentUser.role).toString().toLowerCase() : '';
 
         if (isAdminRoute && userRole === 'admin') {
-            console.log('🔄 Admin page navigation detected, reloading data...');
-            fetchData();
+            const now = Date.now();
+            const elapsed = now - (lastFetchRef.current || 0);
+            if (!lastFetchRef.current || elapsed > ADMIN_REFRESH_TTL) {
+                console.log('🔄 Admin navigation detected, refreshing data (throttled)...');
+                fetchData();
+            } else {
+                console.log('⏩ Skipping refresh (recent fetch within throttle window)');
+            }
         }
     }, [location.pathname, currentUser, fetchData]);
 

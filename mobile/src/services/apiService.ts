@@ -1,9 +1,9 @@
 import axios, { AxiosInstance } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import type { 
-  User, 
-  Appointment, 
+import type {
+  User,
+  Appointment,
   Service,
   ServiceCategory,
   Promotion,
@@ -29,9 +29,8 @@ const getApiBaseUrl = () => {
   // For Android emulator, use 10.0.2.2 instead of localhost
   // For physical device, use your computer's LAN IP (e.g., 192.168.1.7)
   if (Platform.OS === 'android') {
-    // Check if running on emulator (can't detect perfectly, but try common emulator IP)
-    // For Android emulator, use 10.0.2.2 to access host machine's localhost
-    return 'http://10.0.2.2:3001/api';
+    // Android emulator -> host machine at port 3002 (backend)
+    return 'http://10.0.2.2:3002/api';
   }
   // For iOS simulator or physical device, use LAN IP
   return 'http://192.168.1.7:3001/api';
@@ -45,13 +44,13 @@ export const getImageUrl = (imagePath: string | null | undefined): string => {
     console.log('getImageUrl: No image path, using fallback');
     return 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=400&h=300&fit=crop';
   }
-  
+
   // If already a full URL (including picsum, unsplash, etc.), return as is
   if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
     console.log('getImageUrl: Full URL detected:', imagePath);
     return imagePath;
   }
-  
+
   // Convert relative path to full URL using backend server
   const baseUrl = API_BASE_URL.replace('/api', ''); // Remove /api suffix
   const fullUrl = `${baseUrl}${imagePath.startsWith('/') ? imagePath : '/' + imagePath}`;
@@ -61,22 +60,69 @@ export const getImageUrl = (imagePath: string | null | undefined): string => {
 
 let apiClient: AxiosInstance;
 
+// Helper to ensure apiClient is initialized
+const ensureApiClient = async (): Promise<AxiosInstance> => {
+  if (!apiClient) {
+    console.log('⚠️ apiClient not initialized, initializing now...');
+    await initializeApi();
+  }
+  return apiClient;
+};
+
 // Initialize API client
 export const initializeApi = async () => {
   const token = await AsyncStorage.getItem('token');
-  
+
+  console.log('🔧 Initializing API client with base URL:', API_BASE_URL);
+  console.log('🔧 Token exists:', !!token);
+
   apiClient = axios.create({
     baseURL: API_BASE_URL,
     headers: {
       'Content-Type': 'application/json',
       ...(token && { 'Authorization': `Bearer ${token}` })
-    }
+    },
+    timeout: 30000, // 30 second timeout
   });
+
+  // Add request interceptor for debugging
+  apiClient.interceptors.request.use(
+    (config) => {
+      console.log('📡 API Request:', {
+        method: config.method?.toUpperCase(),
+        url: config.url,
+        baseURL: config.baseURL,
+        fullURL: `${config.baseURL}${config.url}`,
+        data: config.data,
+        headers: config.headers
+      });
+      return config;
+    },
+    (error) => {
+      console.error('❌ Request interceptor error:', error);
+      return Promise.reject(error);
+    }
+  );
 
   // Add response interceptor for error handling
   apiClient.interceptors.response.use(
-    (response) => response,
+    (response) => {
+      console.log('✅ API Response:', {
+        status: response.status,
+        url: response.config.url,
+        data: response.data
+      });
+      return response;
+    },
     async (error) => {
+      console.error('❌ API Error Response:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        url: error.config?.url,
+        data: error.response?.data,
+        message: error.message
+      });
+
       if (error.response?.status === 401) {
         // Token expired, clear storage
         await AsyncStorage.removeItem('token');
@@ -91,24 +137,32 @@ export const initializeApi = async () => {
 
 // --- AUTHENTICATION ---
 export const login = async (credentials: LoginCredentials): Promise<AuthResponse> => {
-  const response = await apiClient.post('/auth/login', credentials);
+  const client = await ensureApiClient();
+  const response = await client.post('/auth/login', credentials);
   const data = response.data;
-  
+
   // Save token & user to AsyncStorage
   await AsyncStorage.setItem('token', data.token);
   await AsyncStorage.setItem('user', JSON.stringify(data.user));
-  
+
+  // Reinitialize API client with new token
+  await initializeApi();
+
   return data;
 };
 
 export const register = async (data: RegisterData): Promise<AuthResponse> => {
-  const response = await apiClient.post('/auth/register', data);
+  const client = await ensureApiClient();
+  const response = await client.post('/auth/register', data);
   const result = response.data;
-  
+
   // Save token & user to AsyncStorage
   await AsyncStorage.setItem('token', result.token);
   await AsyncStorage.setItem('user', JSON.stringify(result.user));
-  
+
+  // Reinitialize API client with new token
+  await initializeApi();
+
   return result;
 };
 
@@ -153,7 +207,10 @@ export const getAppointmentById = async (id: string): Promise<Appointment> => {
 };
 
 export const createAppointment = async (data: Partial<Appointment>) => {
-  const response = await apiClient.post('/appointments', data);
+  const client = await ensureApiClient();
+  console.log('📅 Creating appointment with data:', data);
+  const response = await client.post('/appointments', data);
+  console.log('✅ Appointment created:', response.data);
   return response.data;
 };
 
@@ -228,13 +285,29 @@ export const updateUser = async (id: string, data: Partial<User>) => {
 };
 
 // --- PAYMENTS ---
+export const getUserPayments = async (userId: string) => {
+  const client = await ensureApiClient();
+  const response = await client.get(`/payments/user/${userId}`);
+  return response.data;
+};
+
 export const processPayment = async (
-  appointmentId: string, 
-  method: string, 
+  appointmentId: string,
+  method: string,
   amount: number,
   promotionCode?: string
 ) => {
-  const response = await apiClient.post('/payments/process', {
+  const client = await ensureApiClient();
+
+  console.log('💳 processPayment called with:', {
+    appointmentId,
+    method,
+    amount,
+    promotionCode,
+    apiBaseURL: API_BASE_URL
+  });
+
+  const response = await client.post('/payments/process', {
     appointmentId,
     method,
     amount,

@@ -167,8 +167,8 @@ const TreatmentCourseCard: React.FC<{
     return (
         <div
             className={`bg-white p-6 rounded-lg shadow-lg border-2 transition-all hover:shadow-xl ${isCompleted
-                    ? 'border-green-400 bg-green-50'
-                    : 'border-brand-primary hover:border-brand-dark'
+                ? 'border-green-400 bg-green-50'
+                : 'border-brand-primary hover:border-brand-dark'
                 }`}
         >
             <div className="flex justify-between items-start mb-4">
@@ -288,8 +288,8 @@ const TreatmentCourseCard: React.FC<{
                                         >
                                             <StarIcon
                                                 className={`w-8 h-8 transition-colors ${star <= (hoverRating || rating)
-                                                        ? 'text-yellow-400 fill-current'
-                                                        : 'text-gray-300'
+                                                    ? 'text-yellow-400 fill-current'
+                                                    : 'text-gray-300'
                                                     }`}
                                             />
                                         </button>
@@ -373,6 +373,7 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
     const [activeTab, setActiveTab] = useState<'upcoming' | 'history' | 'courses'>('upcoming');
     const [viewingAppointment, setViewingAppointment] = useState<(Appointment & { dateTime: Date }) | null>(null);
     const [appointmentToCancel, setAppointmentToCancel] = useState<(Appointment & { dateTime: Date }) | null>(null);
+    const [isCancellingAll, setIsCancellingAll] = useState(false);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
     // Filter & Sort States
@@ -506,17 +507,46 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
 
     const handleCancelAppointment = async () => {
         if (!appointmentToCancel) return;
+
+        setIsCancellingAll(true);
         try {
-            const cancelledAppointment = await apiService.cancelAppointment(appointmentToCancel.id);
-            setLocalAppointments(prev =>
-                prev.map(app => (app.id === cancelledAppointment.id ? cancelledAppointment : app))
+            const response = await apiService.cancelAllAppointmentsByBooking(
+                appointmentToCancel.id,
+                'Khách hàng yêu cầu hủy toàn bộ dịch vụ'
             );
-            setToastMessage('Đã hủy lịch hẹn thành công!');
+
+            const cancelledIdSet = new Set(response?.cancelledIds || []);
+
+            setLocalAppointments(prev =>
+                prev.map(app => {
+                    const sameGroup = appointmentToCancel.bookingGroupId
+                        && app.bookingGroupId === appointmentToCancel.bookingGroupId
+                        && app.serviceId === appointmentToCancel.serviceId
+                        && app.userId === appointmentToCancel.userId;
+
+                    const shouldCancel = cancelledIdSet.has(app.id)
+                        || (sameGroup && !['cancelled', 'completed'].includes(app.status));
+
+                    if (shouldCancel) {
+                        return {
+                            ...app,
+                            status: 'cancelled',
+                            rejectionReason: 'Khách hàng yêu cầu hủy toàn bộ dịch vụ'
+                        };
+                    }
+
+                    return app;
+                })
+            );
+
+            setToastMessage(response?.message || 'Đã hủy các lịch hẹn còn lại của dịch vụ.');
             setTimeout(() => setToastMessage(null), 3000);
-            setAppointmentToCancel(null);
         } catch (error) {
-            console.error("Failed to cancel appointment:", error);
+            console.error("Failed to cancel appointments:", error);
             alert("Hủy lịch hẹn thất bại.");
+        } finally {
+            setIsCancellingAll(false);
+            setAppointmentToCancel(null);
         }
     };
 
@@ -534,7 +564,8 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                 return { ...app, date: originalDate, dateTime };
             })
             .filter(app => {
-                const isUpcomingStatus = ['upcoming', 'pending', 'in-progress'].includes(app.status);
+                // Treat 'scheduled' and 'completed' as upcoming so khách hàng vẫn thấy lịch đã duyệt/đã hoàn thành (dù ngày ở tương lai)
+                const isUpcomingStatus = ['upcoming', 'pending', 'in-progress', 'scheduled', 'completed'].includes(app.status);
                 const isFutureDate = app.dateTime >= now;
                 return isUpcomingStatus && isFutureDate;
             });
@@ -707,9 +738,10 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
             // CHỈ hiển thị courses có ít nhất một appointment đã được admin chấp nhận
             // (status là 'confirmed', 'scheduled', 'upcoming', 'in-progress')
             // KHÔNG hiển thị courses chỉ có appointments với status 'pending' hoặc tất cả đều 'cancelled'
+            // KHÔNG hiển thị courses bị admin hủy (status = 'cancelled')
             return courses.filter(course => {
-                // Kiểm tra course status
-                if (course.status !== 'active' && course.status !== 'pending') {
+                // Kiểm tra course status - loại bỏ cancelled
+                if (course.status === 'cancelled' || (course.status !== 'active' && course.status !== 'pending')) {
                     return false;
                 }
 
@@ -856,6 +888,25 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
         });
         return map;
     };
+
+    const cancelGroupStats = useMemo(() => {
+        if (!appointmentToCancel) return null;
+
+        const sameGroupApps = localAppointments.filter(app =>
+            app.bookingGroupId === appointmentToCancel.bookingGroupId
+            && app.serviceId === appointmentToCancel.serviceId
+            && app.userId === appointmentToCancel.userId
+        );
+
+        const completedCount = sameGroupApps.filter(app => app.status === 'completed').length;
+        const cancellableCount = sameGroupApps.filter(app => !['cancelled', 'completed'].includes(app.status)).length;
+
+        return {
+            totalCount: sameGroupApps.length,
+            completedCount,
+            cancellableCount
+        };
+    }, [appointmentToCancel, localAppointments]);
 
     return (
         <div className="bg-brand-secondary min-h-screen">
@@ -1105,9 +1156,12 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                                                 </div>
                                                                 <div className="space-y-1">
                                                                     {dayAppointments.map(app => {
-                                                                        const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                                                            app.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
-                                                                                app.status === 'in-progress' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800';
+                                                                        const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800'
+                                                                            : (app.status === 'upcoming' || app.status === 'scheduled') ? 'bg-blue-100 text-blue-800'
+                                                                                : app.status === 'in-progress' ? 'bg-purple-100 text-purple-800'
+                                                                                    : app.status === 'completed' ? 'bg-green-100 text-green-800'
+                                                                                        : app.status === 'cancelled' ? 'bg-red-100 text-red-800'
+                                                                                            : 'bg-gray-100 text-gray-800';
                                                                         return (
                                                                             <div
                                                                                 key={app.id}
@@ -1191,9 +1245,12 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                                                 </div>
                                                                 <div className="space-y-1">
                                                                     {dayAppointments.map(app => {
-                                                                        const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                                                            app.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
-                                                                                app.status === 'in-progress' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800';
+                                                                        const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800'
+                                                                            : (app.status === 'upcoming' || app.status === 'scheduled') ? 'bg-blue-100 text-blue-800'
+                                                                                : app.status === 'in-progress' ? 'bg-purple-100 text-purple-800'
+                                                                                    : app.status === 'completed' ? 'bg-green-100 text-green-800'
+                                                                                        : app.status === 'cancelled' ? 'bg-red-100 text-red-800'
+                                                                                            : 'bg-gray-100 text-gray-800';
                                                                         return (
                                                                             <div
                                                                                 key={app.id}
@@ -1275,9 +1332,12 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                                                 </div>
                                                                 <div className="space-y-1">
                                                                     {dayAppointments.map(app => {
-                                                                        const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                                                            app.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
-                                                                                app.status === 'in-progress' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800';
+                                                                        const statusColor = app.status === 'pending' ? 'bg-yellow-100 text-yellow-800'
+                                                                            : (app.status === 'upcoming' || app.status === 'scheduled') ? 'bg-blue-100 text-blue-800'
+                                                                                : app.status === 'in-progress' ? 'bg-purple-100 text-purple-800'
+                                                                                    : app.status === 'completed' ? 'bg-green-100 text-green-800'
+                                                                                        : app.status === 'cancelled' ? 'bg-red-100 text-red-800'
+                                                                                            : 'bg-gray-100 text-gray-800';
                                                                         return (
                                                                             <div
                                                                                 key={app.id}
@@ -1371,8 +1431,8 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                                 onClick={() => setHistoryCurrentPage(prev => Math.max(1, prev - 1))}
                                                 disabled={historyCurrentPage === 1}
                                                 className={`px-4 py-2 text-sm font-semibold rounded-md ${historyCurrentPage === 1
-                                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                                                     }`}
                                             >
                                                 ‹ Trước
@@ -1397,8 +1457,8 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                                                 <button
                                                                     onClick={() => setHistoryCurrentPage(page)}
                                                                     className={`px-3 py-2 text-sm font-semibold rounded-md ${historyCurrentPage === page
-                                                                            ? 'bg-brand-primary text-white'
-                                                                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                                        ? 'bg-brand-primary text-white'
+                                                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                                                                         }`}
                                                                 >
                                                                     {page}
@@ -1412,8 +1472,8 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                                 onClick={() => setHistoryCurrentPage(prev => Math.min(historyTotalPages, prev + 1))}
                                                 disabled={historyCurrentPage === historyTotalPages}
                                                 className={`px-4 py-2 text-sm font-semibold rounded-md ${historyCurrentPage === historyTotalPages
-                                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                                                     }`}
                                             >
                                                 Sau ›
@@ -1437,8 +1497,8 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                 <button
                                     onClick={() => setCoursesFilterStatus('active')}
                                     className={`px-6 py-3 text-base font-semibold rounded-lg transition-colors ${coursesFilterStatus === 'active'
-                                            ? 'bg-brand-primary text-white border-2 border-brand-primary'
-                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-2 border-transparent'
+                                        ? 'bg-brand-primary text-white border-2 border-brand-primary'
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-2 border-transparent'
                                         }`}
                                 >
                                     Liệu trình đang thực hiện
@@ -1446,8 +1506,8 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                 <button
                                     onClick={() => setCoursesFilterStatus('completed')}
                                     className={`px-6 py-3 text-base font-semibold rounded-lg transition-colors ${coursesFilterStatus === 'completed'
-                                            ? 'bg-brand-primary text-white border-2 border-brand-primary'
-                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-2 border-transparent'
+                                        ? 'bg-brand-primary text-white border-2 border-brand-primary'
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-2 border-transparent'
                                         }`}
                                 >
                                     Liệu trình đã xong
@@ -1490,14 +1550,14 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
 
                         <div className="mb-4">
                             <span className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold rounded-full border ${viewingAppointment.status === 'pending'
-                                    ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
-                                    : viewingAppointment.status === 'scheduled' || viewingAppointment.status === 'upcoming'
-                                        ? 'bg-green-100 text-green-800 border-green-300'
-                                        : viewingAppointment.status === 'in-progress'
-                                            ? 'bg-blue-100 text-blue-800 border-blue-300'
-                                            : viewingAppointment.status === 'completed'
-                                                ? 'bg-gray-100 text-gray-800 border-gray-300'
-                                                : 'bg-red-100 text-red-800 border-red-300'
+                                ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
+                                : viewingAppointment.status === 'scheduled' || viewingAppointment.status === 'upcoming'
+                                    ? 'bg-green-100 text-green-800 border-green-300'
+                                    : viewingAppointment.status === 'in-progress'
+                                        ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                        : viewingAppointment.status === 'completed'
+                                            ? 'bg-green-100 text-green-800 border-green-300'
+                                            : 'bg-red-100 text-red-800 border-red-300'
                                 }`}>
                                 {viewingAppointment.status === 'pending' && '⏳ Chờ xác nhận'}
                                 {(viewingAppointment.status === 'scheduled' || viewingAppointment.status === 'upcoming') && '✓ Đã xác nhận'}
@@ -1512,6 +1572,16 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                 <p className="text-sm text-gray-500">Dịch vụ</p>
                                 <p className="text-lg font-bold text-brand-primary">{viewingAppointment.serviceName}</p>
                             </div>
+                            {(viewingAppointment as any).TreatmentSession && (
+                                <div className="pb-3 border-b">
+                                    <p className="text-sm text-gray-500">Buổi trong liệu trình</p>
+                                    <p className="font-semibold text-gray-800">
+                                        Buổi {(viewingAppointment as any).TreatmentSession.sessionNumber}
+                                        {(viewingAppointment as any).TreatmentSession.TreatmentCourse?.totalSessions ?
+                                            ` / ${(viewingAppointment as any).TreatmentSession.TreatmentCourse.totalSessions}` : ''}
+                                    </p>
+                                </div>
+                            )}
                             <div className="grid grid-cols-2 gap-4 pb-3 border-b">
                                 <div>
                                     <p className="text-sm text-gray-500">Ngày hẹn</p>
@@ -1532,12 +1602,12 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                 <div>
                                     <p className="text-sm text-gray-500">Trạng thái thanh toán</p>
                                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${viewingAppointment.status === 'cancelled'
-                                            ? 'bg-gray-100 text-gray-600'
-                                            : viewingAppointment.status === 'completed'
+                                        ? 'bg-gray-100 text-gray-600'
+                                        : viewingAppointment.status === 'completed'
+                                            ? 'bg-green-100 text-green-800'
+                                            : viewingAppointment.paymentStatus === 'Paid'
                                                 ? 'bg-green-100 text-green-800'
-                                                : viewingAppointment.paymentStatus === 'Paid'
-                                                    ? 'bg-green-100 text-green-800'
-                                                    : 'bg-yellow-100 text-yellow-800'
+                                                : 'bg-yellow-100 text-yellow-800'
                                         }`}>
                                         {viewingAppointment.status === 'cancelled'
                                             ? 'Chưa thanh toán'
@@ -1553,6 +1623,24 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                                 <div>
                                     <p className="text-sm text-gray-500">Ghi chú của bạn</p>
                                     <p className="font-semibold text-gray-800 italic bg-gray-50 p-2 rounded-md">"{viewingAppointment.notesForTherapist}"</p>
+                                </div>
+                            )}
+
+                            {/* Ghi chú buổi trước (nếu là buổi liệu trình) */}
+                            {(viewingAppointment as any).TreatmentSession?.previousSessionNotes?.customerStatusNotes && (
+                                <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                                    <p className="text-sm font-semibold text-blue-700 mb-2">📋 Ghi chú buổi trước:</p>
+                                    <div>
+                                        <span className="text-xs bg-green-600 text-white px-2 py-1 rounded">Dành cho bạn</span>
+                                        <p className="text-sm text-gray-800 mt-1">{(viewingAppointment as any).TreatmentSession.previousSessionNotes.customerStatusNotes}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {(viewingAppointment as any).TreatmentSession?.customerStatusNotes && (
+                                <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                                    <p className="text-sm font-semibold text-green-700 mb-2">📌 Ghi chú từ admin</p>
+                                    <p className="text-sm text-gray-800">{(viewingAppointment as any).TreatmentSession.customerStatusNotes}</p>
                                 </div>
                             )}
                         </div>
@@ -1585,17 +1673,33 @@ export const AppointmentsPage: React.FC<AppointmentsPageProps> = ({
                             <XCircleIcon className="w-10 h-10 text-red-600" />
                         </div>
                         <h2 className="text-2xl font-bold text-brand-dark mb-4">Xác nhận Hủy Lịch hẹn</h2>
-                        <p className="text-md text-brand-text mb-6">
+                        <p className="text-md text-brand-text mb-4">
                             Bạn có chắc chắn muốn hủy lịch hẹn cho dịch vụ <br />
                             <strong className="text-brand-primary">{appointmentToCancel.serviceName}</strong> <br />
                             vào lúc {appointmentToCancel.time} ngày {appointmentToCancel.dateTime.toLocaleDateString('vi-VN')}?
                         </p>
+
+                        {cancelGroupStats && (
+                            <div className="bg-red-50 border border-red-200 rounded-md p-4 text-sm text-left mb-6">
+                                <p className="font-semibold text-red-700 mb-2">Lưu ý: Dịch vụ này thuộc chuỗi đặt nhiều buổi.</p>
+                                <ul className="list-disc list-inside text-red-800 space-y-1">
+                                    <li>Số buổi trong chuỗi: {cancelGroupStats.totalCount}</li>
+                                    <li>Buổi sẽ bị hủy: {cancelGroupStats.cancellableCount} (chưa hoàn thành)</li>
+                                    <li>Buổi đã hoàn thành: {cancelGroupStats.completedCount} (giữ nguyên, không hủy)</li>
+                                </ul>
+                                <p className="mt-2 text-red-700">Khi xác nhận, tất cả các buổi chưa hoàn thành của dịch vụ này sẽ bị hủy.</p>
+                            </div>
+                        )}
                         <div className="flex justify-center gap-4">
                             <button onClick={() => setAppointmentToCancel(null)} className="bg-gray-200 text-gray-800 font-bold py-2 px-6 rounded-lg hover:bg-gray-300">
                                 Không
                             </button>
-                            <button onClick={handleCancelAppointment} className="bg-red-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-red-700">
-                                Xác nhận Hủy
+                            <button
+                                onClick={handleCancelAppointment}
+                                disabled={isCancellingAll}
+                                className={`bg-red-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-red-700 ${isCancellingAll ? 'opacity-70 cursor-not-allowed' : ''}`}
+                            >
+                                {isCancellingAll ? 'Đang hủy...' : 'Xác nhận hủy toàn bộ'}
                             </button>
                         </div>
                     </div>

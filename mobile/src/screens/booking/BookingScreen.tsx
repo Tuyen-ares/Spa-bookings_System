@@ -27,7 +27,7 @@ type PaymentMethod = 'VNPay' | 'Cash';
 
 export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
   const { serviceId } = (route.params as { serviceId?: string }) || {};
-  
+
   const [currentStep, setCurrentStep] = useState(1);
   const [services, setServices] = useState<Service[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -92,7 +92,7 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
       setServices(servicesData.filter((s: Service) => s.isActive !== false));
       setCurrentUser(user);
       setPromotions(promotionsData.filter((p: Promotion) => p.isActive));
-      
+
       // Load redeemed vouchers if user exists
       if (user) {
         try {
@@ -125,7 +125,7 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
     setShowPaymentModal(false);
     setShowSuccessModal(false);
     setSuccessAppointment(null);
-    
+
     // Reload redeemed vouchers when resetting (in case voucher was refunded)
     if (currentUser) {
       apiService.getMyRedeemedVouchers(currentUser.id)
@@ -150,12 +150,12 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const loadUserAppointments = async () => {
     if (!currentUser) return;
-    
+
     try {
       setLoadingAppointments(true);
       const appointments = await apiService.getUserAppointments(currentUser.id);
       setUserAppointments(appointments || []);
-      
+
       // Debug: Log appointments for selected date
       if (selectedDate) {
         const dateStr = formatDateLocal(selectedDate);
@@ -216,36 +216,36 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
 
     // Use local date format, not UTC (toISOString() causes timezone issues)
     const dateStr = formatDateLocal(selectedDate);
-      
-      // Filter appointments on same date with status not cancelled
-      const sameDayAppointments = userAppointments.filter((apt: any) => {
-        const aptDate = apt.date || apt.appointmentDate;
+
+    // Filter appointments on same date with status not cancelled
+    const sameDayAppointments = userAppointments.filter((apt: any) => {
+      const aptDate = apt.date || apt.appointmentDate;
       // Normalize appointment date (remove time part if present)
       const normalizedAptDate = aptDate ? aptDate.split('T')[0] : '';
       const matches = normalizedAptDate === dateStr && apt.status !== 'cancelled';
-      
+
       if (matches) {
         console.log(`🔍 [Mobile] Found appointment on ${dateStr}: ${apt.time} (Service: ${apt.serviceId})`);
       }
-      
+
       return matches;
-      });
+    });
 
-      if (sameDayAppointments.length === 0) return true;
+    if (sameDayAppointments.length === 0) return true;
 
-      // Convert time to minutes for comparison
-      const [hours, minutes] = time.split(':').map(Number);
-      const selectedStartMinutes = hours * 60 + minutes;
-      const selectedEndMinutes = selectedStartMinutes + serviceDuration;
+    // Convert time to minutes for comparison
+    const [hours, minutes] = time.split(':').map(Number);
+    const selectedStartMinutes = hours * 60 + minutes;
+    const selectedEndMinutes = selectedStartMinutes + serviceDuration;
 
     // Check for conflicts with each existing appointment
-      for (const apt of sameDayAppointments) {
-        const aptTime = apt.time || apt.appointmentDate?.split('T')[1]?.substring(0, 5) || '00:00';
-        const [aptHours, aptMinutes] = aptTime.split(':').map(Number);
-        const aptStartMinutes = aptHours * 60 + aptMinutes;
+    for (const apt of sameDayAppointments) {
+      const aptTime = apt.time || apt.appointmentDate?.split('T')[1]?.substring(0, 5) || '00:00';
+      const [aptHours, aptMinutes] = aptTime.split(':').map(Number);
+      const aptStartMinutes = aptHours * 60 + aptMinutes;
       // Try to get duration from Service object, or use default 60
       const aptDuration = apt.Service?.duration || services.find(s => s.id === apt.serviceId)?.duration || 60;
-        const aptEndMinutes = aptStartMinutes + aptDuration;
+      const aptEndMinutes = aptStartMinutes + aptDuration;
 
       // Logic đúng theo yêu cầu:
       // 1. Nếu đặt lịch SAU một appointment đã có: Phải sau khi appointment đó kết thúc (newStart >= existingEnd)
@@ -256,8 +256,8 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
       // Kiểm tra overlap (không được overlap)
       if (selectedStartMinutes < aptEndMinutes && selectedEndMinutes > aptStartMinutes) {
         // Có overlap → không hợp lệ
-          return false;
-        }
+        return false;
+      }
 
       // Nếu appointment mới đứng SAU appointment đã đặt (selectedStart >= aptEnd)
       // → Chỉ cần không overlap, không cần gap
@@ -321,66 +321,80 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
   // Helper: Check if promotion is applicable (similar to web)
   const isPromotionApplicable = (promo: Promotion): boolean => {
     if (!currentUser) return false;
-    
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     // 1. Must be active
     if (promo.isActive === false) return false;
-    
+
     // 2. Not expired
     const expiryDate = new Date(promo.expiryDate);
     expiryDate.setHours(0, 0, 0, 0);
     if (expiryDate < today) return false;
-    
+
     // 3. Check stock availability - CHỈ cho voucher public, KHÔNG cho voucher đổi điểm
     const promoAny = promo as any;
     const isPublicValue: any = promoAny.isPublic;
     const normalizedIsPublic = isPublicValue === true ||
-                               isPublicValue === 1 ||
-                               (typeof isPublicValue === 'string' && isPublicValue === '1');
-    
+      isPublicValue === 1 ||
+      (typeof isPublicValue === 'string' && isPublicValue === '1');
+
     if (normalizedIsPublic && promo.stock !== null && promo.stock !== undefined && promo.stock <= 0) {
       return false;
     }
-    
+
     // 4. Calculate current order total
     if (!selectedService) return false;
     const currentOrderTotal = selectedService.price * numberOfSessions;
-    
+
     // 5. Check minimum order value
     if (promo.minOrderValue && currentOrderTotal < promo.minOrderValue) return false;
-    
+
     // 6. Check if promo applies to selected service
     if (promo.applicableServiceIds && promo.applicableServiceIds.length > 0) {
       if (!promo.applicableServiceIds.includes(selectedService.id)) return false;
     }
-    
-    // 7. Check if user has already used this voucher
+
+    // 7. Check minimum sessions (parsed from termsAndConditions JSON: { "minSessions": 10 })
+    if (promo.termsAndConditions) {
+      try {
+        const terms = JSON.parse(promo.termsAndConditions);
+        if (terms && typeof terms.minSessions === 'number' && terms.minSessions > 0) {
+          if (numberOfSessions < terms.minSessions) {
+            return false;
+          }
+        }
+      } catch (e) {
+        // ignore if termsAndConditions is plain text
+      }
+    }
+
+    // 8. Check if user has already used this voucher
     if (promo.targetAudience === 'Birthday') {
       // Birthday vouchers: Check if used this year
-      const hasUsedBirthdayVoucher = redeemedVouchers.some(rv => 
+      const hasUsedBirthdayVoucher = redeemedVouchers.some(rv =>
         rv.targetAudience === 'Birthday' && rv.redeemedCount > 0
       );
       if (hasUsedBirthdayVoucher) return false;
     }
-    
+
     if (promo.targetAudience === 'New Clients') {
       // New client vouchers: Check if already used
-      const hasUsedNewClientVoucher = redeemedVouchers.some(rv => 
+      const hasUsedNewClientVoucher = redeemedVouchers.some(rv =>
         rv.targetAudience === 'New Clients' && rv.redeemedCount > 0
       );
       if (hasUsedNewClientVoucher) return false;
     }
-    
+
     // For other vouchers (Bronze, Silver, Gold, etc.): Check if user has used this specific voucher
     if (promo.targetAudience !== 'Birthday' && promo.targetAudience !== 'New Clients') {
-      const hasUsedThisVoucher = redeemedVouchers.some(rv => 
+      const hasUsedThisVoucher = redeemedVouchers.some(rv =>
         rv.id === promo.id && rv.redeemedCount > 0
       );
       if (hasUsedThisVoucher) return false;
     }
-    
+
     return true;
   };
 
@@ -393,17 +407,17 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
     try {
       // Check in both promotions and redeemedVouchers
       let promo = promotions.find(p => p.code.toLowerCase() === promoCode.toLowerCase());
-      
+
       // If not found in promotions, check in redeemedVouchers
       if (!promo) {
-        const redeemedPromo = redeemedVouchers.find((rv: any) => 
+        const redeemedPromo = redeemedVouchers.find((rv: any) =>
           rv.code && rv.code.toLowerCase() === promoCode.toLowerCase()
         );
         if (redeemedPromo) {
           promo = redeemedPromo as Promotion;
         }
       }
-      
+
       if (!promo) {
         Alert.alert('Lỗi', 'Mã khuyến mãi không hợp lệ');
         return;
@@ -446,7 +460,7 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
           console.log('Promotion applied successfully:', result);
           // Update promotion in local state
           if (result.promotion) {
-            setPromotions(prev => prev.map(p => 
+            setPromotions(prev => prev.map(p =>
               p.id === result.promotion.id ? result.promotion : p
             ));
           }
@@ -484,12 +498,27 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
         promotionId: selectedPromotion?.id || null, // Include promotion ID if selected
       };
 
-      const appointment = await apiService.createAppointment(appointmentData);
-      
+      const appointmentResponse = await apiService.createAppointment(appointmentData);
+
+      console.log('📥 Create appointment response:', appointmentResponse);
+
+      // Backend returns { appointments: [...], treatmentCourseId, message }
+      // Extract the first appointment from the response
+      const appointment = appointmentResponse.appointments?.[0] || appointmentResponse;
+
+      if (!appointment || !appointment.id) {
+        console.error('❌ Invalid appointment response:', appointmentResponse);
+        throw new Error('Failed to get appointment ID from server response');
+      }
+
+      console.log('✅ Appointment created with ID:', appointment.id);
+      console.log('   Treatment Course ID:', appointmentResponse.treatmentCourseId);
+      console.log('   Total Appointments:', appointmentResponse.appointments?.length || 1);
+
       // QUAN TRỌNG: Đợi một chút để đảm bảo backend đã commit update PromotionUsage
       // Sau đó mới refresh để frontend lấy dữ liệu mới nhất
       await new Promise(resolve => setTimeout(resolve, 500)); // Đợi 500ms
-      
+
       // Reload redeemed vouchers ngay lập tức để cập nhật state
       if (currentUser) {
         try {
@@ -501,47 +530,150 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
         }
       }
 
-      // Calculate discounted amount
-      const serviceTotal = selectedService.price * numberOfSessions;
+      // Calculate discounted amount (force numeric to avoid NaN -> 400 error)
+      const servicePrice = Number(selectedService.price) || 0;
+      const promoValue = selectedPromotion ? Number(selectedPromotion.discountValue) || 0 : 0;
+      const serviceTotal = servicePrice * numberOfSessions;
       const discount = selectedPromotion
         ? selectedPromotion.discountType === 'percentage'
-          ? serviceTotal * (selectedPromotion.discountValue / 100)
-          : selectedPromotion.discountValue
+          ? serviceTotal * (promoValue / 100)
+          : promoValue
         : 0;
-      const amount = Math.max(0, serviceTotal - discount); // Final amount with discount applied
+      const amount = Math.max(0, Math.round(serviceTotal - discount)); // VNPay expects integer VND
+
+      // DEBUG: Log payment details before processing
+      console.log('=== Payment Debug Info ===');
+      console.log('Appointment ID:', appointment.id);
+      console.log('Payment Method:', paymentMethod);
+      console.log('Amount:', amount, { servicePrice, numberOfSessions, serviceTotal, discount });
+      console.log('Promo Code:', selectedPromotion?.code);
+      console.log('Service ID:', selectedService.id);
+      console.log('User ID:', currentUser.id);
+      console.log('========================');
+
+      // Validate payment parameters before API call
+      if (!appointment.id) {
+        throw new Error('Appointment ID is missing');
+      }
+      if (!amount || amount <= 0) {
+        throw new Error(`Invalid amount: ${amount}`);
+      }
+      if (!paymentMethod || (paymentMethod !== 'VNPay' && paymentMethod !== 'Cash')) {
+        throw new Error(`Invalid payment method: ${paymentMethod}`);
+      }
+
+      console.log('✅ Payment validation passed, calling API...');
 
       if (paymentMethod === 'VNPay') {
         // Process VNPay payment with promotion code
+        console.log('📤 Calling processPayment API with:', {
+          appointmentId: appointment.id,
+          method: 'VNPay',
+          amount: amount,
+          promotionCode: selectedPromotion?.code
+        });
+
         const result = await apiService.processPayment(
-          appointment.id, 
-          'VNPay', 
+          appointment.id,
+          'VNPay',
           amount,
           selectedPromotion?.code // Pass promotion code to backend
         );
-        
+
+        console.log('📥 processPayment API response:', result);
+
         if (result.paymentUrl) {
           // Open VNPay payment page in browser
           const supported = await Linking.canOpenURL(result.paymentUrl);
           if (supported) {
             await Linking.openURL(result.paymentUrl);
+
+            // Start polling payment status
+            const paymentId = result.paymentId;
+            let pollCount = 0;
+            const maxPolls = 60; // Poll for 5 minutes (60 * 5s = 300s)
+
+            const pollInterval = setInterval(async () => {
+              try {
+                pollCount++;
+                console.log(`🔄 Polling payment status... (${pollCount}/${maxPolls})`);
+
+                // Check payment status
+                const payments = await apiService.getUserPayments(currentUser.id);
+                const payment = payments.find((p: any) => p.id === paymentId);
+
+                if (payment && payment.status === 'Completed') {
+                  clearInterval(pollInterval);
+                  console.log('✅ Payment completed!');
+
+                  // Show success dialog
+                  Alert.alert(
+                    '🎉 Thanh toán thành công!',
+                    `Đã thanh toán ${formatCurrency(amount)} cho dịch vụ ${selectedService.name}\n\n` +
+                    `Lịch hẹn của bạn đã được xác nhận và thanh toán.`,
+                    [
+                      {
+                        text: 'Xem lịch hẹn',
+                        onPress: () => {
+                          resetBookingState();
+                          navigation.navigate('AppointmentsTab');
+                        }
+                      }
+                    ]
+                  );
+                } else if (payment && payment.status === 'Failed') {
+                  clearInterval(pollInterval);
+                  console.log('❌ Payment failed');
+
+                  Alert.alert(
+                    'Thanh toán thất bại',
+                    'Giao dịch không thành công. Vui lòng thử lại.',
+                    [
+                      {
+                        text: 'Xem lịch hẹn',
+                        onPress: () => {
+                          resetBookingState();
+                          navigation.navigate('AppointmentsTab');
+                        }
+                      }
+                    ]
+                  );
+                } else if (pollCount >= maxPolls) {
+                  clearInterval(pollInterval);
+                  console.log('⏱️ Polling timeout');
+
+                  Alert.alert(
+                    'Đang xử lý thanh toán',
+                    'Chúng tôi đang xác nhận thanh toán của bạn. Vui lòng kiểm tra lại sau ít phút.',
+                    [
+                      {
+                        text: 'Xem lịch hẹn',
+                        onPress: () => {
+                          resetBookingState();
+                          navigation.navigate('AppointmentsTab');
+                        }
+                      }
+                    ]
+                  );
+                }
+              } catch (error) {
+                console.error('Error polling payment status:', error);
+              }
+            }, 5000); // Poll every 5 seconds
+
+            // Show initial instruction dialog
             Alert.alert(
-              'Thanh toán VNPay',
-              'Vui lòng hoàn tất thanh toán trên trình duyệt. Sau khi thanh toán, bạn có thể quay lại ứng dụng để kiểm tra lịch hẹn.',
+              '💳 Thanh toán VNPay',
+              '✅ Lịch hẹn đã được tạo!\n\n' +
+              '📱 Vui lòng hoàn tất thanh toán trên trang VNPay đã mở.\n\n' +
+              '⚠️ LƯU Ý:\n' +
+              '• Sau khi thanh toán xong, trang web sẽ báo lỗi (đây là bình thường)\n' +
+              '• Hãy QUAY LẠI ỨNG DỤNG này\n' +
+              '• Kết quả thanh toán sẽ được thông báo tự động',
               [
-                { 
-                  text: 'Xem lịch hẹn', 
-                  onPress: () => {
-                    resetBookingState();
-                    navigation.navigate('AppointmentsTab');
-                  }
-                },
-                { 
-                  text: 'Về trang chủ', 
-                  style: 'cancel',
-                  onPress: () => {
-                    resetBookingState();
-                    navigation.navigate('HomeTab');
-                  }
+                {
+                  text: 'Đã hiểu',
+                  onPress: () => { }
                 }
               ]
             );
@@ -551,6 +683,22 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
         }
       } else {
         // Cash payment - Show success modal
+        console.log('📤 Calling processPayment API for Cash with:', {
+          appointmentId: appointment.id,
+          method: 'Cash',
+          amount: amount,
+          promotionCode: selectedPromotion?.code
+        });
+
+        const result = await apiService.processPayment(
+          appointment.id,
+          'Cash',
+          amount,
+          selectedPromotion?.code
+        );
+
+        console.log('📥 Cash payment API response:', result);
+
         setSuccessAppointment({
           ...appointment,
           serviceName: selectedService.name,
@@ -558,14 +706,79 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
           paymentMethod: 'Cash'
         });
         setShowSuccessModal(true);
-        
+
         // Clear selected promotion after successful booking
         setSelectedPromotion(null);
         setPromoCode('');
       }
-    } catch (error) {
-      console.error('Failed to process payment:', error);
-      Alert.alert('Lỗi', 'Đặt lịch thất bại. Vui lòng thử lại.');
+    } catch (error: any) {
+      console.error('❌ ========== PAYMENT ERROR DETAILS ==========');
+      console.error('Error object:', error);
+      console.error('Error message:', error.message);
+      console.error('Error response:', error.response);
+      console.error('Error response data:', error.response?.data);
+      console.error('Error response status:', error.response?.status);
+      console.error('Error response headers:', error.response?.headers);
+      console.error('Error config:', error.config);
+      console.error('Error config URL:', error.config?.url);
+      console.error('Error config data:', error.config?.data);
+      console.error('Error config headers:', error.config?.headers);
+      console.error('============================================');
+
+      // Special handling: existing active treatment course → reuse existing appointment for Cash
+      const msg: string | undefined = error?.response?.data?.message;
+      const isDuplicateCourse = error?.response?.status === 400 && typeof msg === 'string' && msg.includes('Bạn đang có liệu trình');
+
+      if (isDuplicateCourse && paymentMethod === 'Cash') {
+        try {
+          console.log('🔄 Duplicate course detected. Attempting to find existing unpaid appointment to create Cash payment...');
+          const allApts = await apiService.getUserAppointments(currentUser.id);
+          const targetApt = allApts
+            .filter((a: any) => a.serviceId === selectedService.id)
+            .filter((a: any) => ['pending', 'scheduled', 'upcoming', 'in-progress', 'confirmed'].includes(a.status))
+            .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+          if (targetApt?.id) {
+            console.log('✅ Found existing appointment to attach Cash payment:', targetApt.id);
+
+            // Recalculate amount to be safe
+            const servicePrice = Number(selectedService.price) || 0;
+            const promoValue = selectedPromotion ? Number(selectedPromotion.discountValue) || 0 : 0;
+            const serviceTotal = servicePrice * numberOfSessions;
+            const discount = selectedPromotion
+              ? selectedPromotion.discountType === 'percentage'
+                ? serviceTotal * (promoValue / 100)
+                : promoValue
+              : 0;
+            const fallbackAmount = Math.max(0, Math.round(serviceTotal - discount));
+
+            const result = await apiService.processPayment(
+              targetApt.id,
+              'Cash',
+              fallbackAmount,
+              selectedPromotion?.code
+            );
+
+            console.log('📥 Cash payment (fallback) API response:', result);
+
+            setSuccessAppointment({
+              ...targetApt,
+              serviceName: selectedService.name,
+              amount: fallbackAmount,
+              paymentMethod: 'Cash'
+            });
+            setShowSuccessModal(true);
+            setSelectedPromotion(null);
+            setPromoCode('');
+            return; // handled
+          }
+        } catch (reuseErr) {
+          console.error('⚠️ Fallback Cash payment failed:', reuseErr);
+        }
+      }
+
+      const errorMessage = error.response?.data?.message || error.message || 'Đặt lịch thất bại';
+      Alert.alert('Lỗi Thanh Toán', `${errorMessage}\n\nStatus: ${error.response?.status || 'N/A'}`);
     } finally {
       setIsLoading(false);
     }
@@ -608,7 +821,7 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
   const renderStepTwo = () => (
     <ScrollView style={styles.stepContent}>
       <Text style={styles.stepTitle}>Chọn Ngày & Giờ</Text>
-      
+
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Ngày đặt lịch</Text>
         <TouchableOpacity
@@ -643,33 +856,33 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
         )}
         <View style={styles.timeSlots}>
           {timeSlots.map((time) => {
-            const isAvailable = selectedService 
+            const isAvailable = selectedService
               ? isTimeSlotAvailable(time, selectedService.duration)
               : true;
             const isSelected = selectedTime === time;
             const isDisabled = checkingAvailability || !isAvailable;
 
             return (
-            <TouchableOpacity
-              key={time}
-              style={[
-                styles.timeSlot,
+              <TouchableOpacity
+                key={time}
+                style={[
+                  styles.timeSlot,
                   isSelected && styles.timeSlotSelected,
                   !isAvailable && styles.timeSlotDisabled,
-              ]}
-              onPress={() => handleTimeSelect(time)}
+                ]}
+                onPress={() => handleTimeSelect(time)}
                 disabled={isDisabled}
-            >
-              <Text
-                style={[
-                  styles.timeSlotText,
+              >
+                <Text
+                  style={[
+                    styles.timeSlotText,
                     isSelected && styles.timeSlotTextSelected,
                     !isAvailable && styles.timeSlotTextDisabled,
-                ]}
-              >
-                {time}
-              </Text>
-            </TouchableOpacity>
+                  ]}
+                >
+                  {time}
+                </Text>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -679,7 +892,7 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
         <Text style={styles.label}>Số lượng buổi</Text>
         <Text style={styles.helperText}>Đặt nhiều buổi để tạo liệu trình điều trị</Text>
         <View style={styles.quantitySelector}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.quantityButton}
             onPress={() => setNumberOfSessions(Math.max(1, numberOfSessions - 1))}
           >
@@ -689,7 +902,7 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
             <Text style={styles.quantityText}>{numberOfSessions}</Text>
             <Text style={styles.quantityLabel}>buổi</Text>
           </View>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.quantityButton}
             onPress={() => setNumberOfSessions(Math.min(20, numberOfSessions + 1))}
           >
@@ -765,78 +978,78 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
               <Text style={styles.selectedPromoDesc}>{selectedPromotion.description}</Text>
             </View>
           )}
-          
+
           {/* Available Promotions List */}
           {(() => {
             // Filter applicable promotions (similar to web logic)
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            
+
             if (!selectedService) return null;
             const currentOrderTotal = selectedService.price * numberOfSessions;
-            
+
             // Filter public promotions
             const filteredPromotions = promotions.filter(p => {
               if (p.isActive === false) return false;
               const expiryDate = new Date(p.expiryDate);
               expiryDate.setHours(0, 0, 0, 0);
               if (expiryDate < today) return false;
-              
+
               const pAny = p as any;
               const isPublicValue: any = pAny.isPublic;
               const normalizedIsPublic = isPublicValue === true ||
-                                       isPublicValue === 1 ||
-                                       (typeof isPublicValue === 'string' && isPublicValue === '1');
-              
+                isPublicValue === 1 ||
+                (typeof isPublicValue === 'string' && isPublicValue === '1');
+
               if (normalizedIsPublic && p.stock !== null && p.stock !== undefined && p.stock <= 0) {
                 return false;
               }
-              
+
               if (p.minOrderValue && currentOrderTotal < p.minOrderValue) return false;
-              
+
               if (p.applicableServiceIds && p.applicableServiceIds.length > 0) {
                 if (!p.applicableServiceIds.includes(selectedService.id)) return false;
               }
-              
+
               return isPromotionApplicable(p);
             });
-            
+
             // Filter redeemed vouchers (voucher đổi điểm)
             const filteredRedeemedVouchers = redeemedVouchers.filter((v: any) => {
               const isPublicValue: any = v.isPublic;
               const isPublicNormalized = isPublicValue === true ||
-                                       isPublicValue === 1 ||
-                                       (typeof isPublicValue === 'string' && isPublicValue === '1');
-              
+                isPublicValue === 1 ||
+                (typeof isPublicValue === 'string' && isPublicValue === '1');
+
               // CHỈ lấy voucher đổi điểm (isPublic = false)
               if (isPublicNormalized) return false;
-              
+
               if (!v.redeemedCount || v.redeemedCount <= 0) return false;
               if (v.isActive === false) return false;
-              
+
               const expiryDate = new Date(v.expiryDate);
               expiryDate.setHours(0, 0, 0, 0);
               if (today > expiryDate) return false;
-              
+
               if (v.minOrderValue && currentOrderTotal < v.minOrderValue) return false;
-              
+
               if (v.applicableServiceIds && v.applicableServiceIds.length > 0) {
                 if (!v.applicableServiceIds.includes(selectedService.id)) return false;
               }
-              
+
               return true;
             });
-            
+
             // Combine and remove duplicates
             const allAvailablePromotions = [
               ...filteredPromotions,
-              ...filteredRedeemedVouchers.filter((rv: any) => 
+              ...filteredRedeemedVouchers.filter((rv: any) =>
                 !filteredPromotions.some(p => p.id === rv.id || p.code === rv.code)
               )
             ];
-            
+
             if (allAvailablePromotions.length === 0) return null;
-            
+
             return (
               <View style={styles.promoListContainer}>
                 <Text style={styles.promoListTitle}>Ưu đãi có sẵn:</Text>
@@ -844,7 +1057,7 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
                   const isSelected = selectedPromotion?.id === promo.id;
                   const isRedeemedVoucher = !(promo.isPublic === true || promo.isPublic === 1 || (typeof promo.isPublic === 'string' && promo.isPublic === '1'));
                   const showRedeemedText = isRedeemedVoucher && promo.redeemedCount && promo.redeemedCount > 0;
-                  
+
                   return (
                     <TouchableOpacity
                       key={promo.id}
@@ -869,17 +1082,17 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
                       <View style={styles.promoItemContent}>
                         <Text style={styles.promoItemTitle}>
                           {promo.title}
-                          {showRedeemedText && promo.redeemedCount > 1 
+                          {showRedeemedText && promo.redeemedCount > 1
                             ? ` [Bạn có ${promo.redeemedCount} voucher]`
                             : showRedeemedText ? ' [Voucher đã đổi]' : ''}
                         </Text>
                         <Text style={styles.promoItemCode}>Code: {promo.code}</Text>
                         <Text style={styles.promoItemDesc}>{promo.description}</Text>
                       </View>
-                      <Ionicons 
-                        name={isSelected ? "checkmark-circle" : "chevron-forward"} 
-                        size={24} 
-                        color={isSelected ? "#4CAF50" : "#999"} 
+                      <Ionicons
+                        name={isSelected ? "checkmark-circle" : "chevron-forward"}
+                        size={24}
+                        color={isSelected ? "#4CAF50" : "#999"}
                       />
                     </TouchableOpacity>
                   );
@@ -997,7 +1210,7 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Chọn phương thức thanh toán</Text>
-            
+
             <TouchableOpacity
               style={[
                 styles.paymentOption,
@@ -1070,7 +1283,7 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
             <Text style={styles.successMessage}>
               Lịch hẹn của bạn đã được xác nhận. Vui lòng thanh toán tại quầy khi đến spa.
             </Text>
-            
+
             {successAppointment && (
               <View style={styles.successDetails}>
                 <View style={styles.successDetailRow}>
@@ -1132,7 +1345,7 @@ export const BookingScreen: React.FC<Props> = ({ route, navigation }) => {
             <Text style={styles.backButtonText}>Quay lại</Text>
           </TouchableOpacity>
         )}
-        
+
         {currentStep < 3 ? (
           <TouchableOpacity
             style={[styles.nextButton, currentStep === 1 && !selectedService && styles.buttonDisabled]}

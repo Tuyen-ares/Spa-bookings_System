@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  SectionList,
   TouchableOpacity,
   TextInput,
   Image,
@@ -40,6 +41,48 @@ export const ServicesListScreen: React.FC<Props> = ({ navigation, route }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
+
+  const sections = React.useMemo(() => {
+    const grouped = new Map<
+      string,
+      { key: string; title: string; items: Service[]; serviceCount: number }
+    >();
+
+    filteredServices.forEach((service) => {
+      const key = service.categoryId?.toString() ?? 'uncategorized';
+      const title =
+        service.ServiceCategory?.name ||
+        categories.find((c) => c.id === service.categoryId)?.name ||
+        'Khác';
+
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          key,
+          title,
+          items: [],
+          serviceCount: 0,
+        });
+      }
+
+      const bucket = grouped.get(key);
+      if (bucket) {
+        bucket.items.push(service);
+        bucket.serviceCount += 1;
+      }
+    });
+
+    return Array.from(grouped.values()).map((group) => ({
+      title: group.title,
+      key: group.key,
+      serviceCount: group.serviceCount,
+      data: [
+        {
+          key: `${group.key}-grid`,
+          items: group.items,
+        },
+      ],
+    }));
+  }, [filteredServices, categories]);
 
   useEffect(() => {
     loadData();
@@ -127,7 +170,13 @@ export const ServicesListScreen: React.FC<Props> = ({ navigation, route }) => {
           <View style={styles.serviceRating}>
             <Ionicons name="star" size={16} color="#FFD700" />
             <Text style={styles.ratingText}>
-              {item.averageRating?.toFixed(1) || '5.0'}
+              {(
+                typeof item.averageRating === 'number'
+                  ? item.averageRating
+                  : typeof item.rating === 'number'
+                    ? item.rating
+                    : 0
+              ).toFixed(1)}
             </Text>
           </View>
         </View>
@@ -195,7 +244,7 @@ export const ServicesListScreen: React.FC<Props> = ({ navigation, route }) => {
                     style={[
                       styles.filterChipText,
                       selectedCategory === cat.id.toString() &&
-                        styles.filterChipTextActive,
+                      styles.filterChipTextActive,
                     ]}
                   >
                     {cat.name}
@@ -298,26 +347,41 @@ export const ServicesListScreen: React.FC<Props> = ({ navigation, route }) => {
         </View>
       )}
 
-      {/* Services List */}
-      <FlatList
-        data={filteredServices}
-        renderItem={renderServiceCard}
-        keyExtractor={(item) => item.id.toString()}
-        numColumns={2}
-        columnWrapperStyle={styles.row}
+      {/* Services List theo danh mục */}
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => item.key}
         contentContainerStyle={styles.listContent}
+        stickySectionHeadersEnabled={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+            <Text style={styles.sectionCount}>{section.serviceCount} dịch vụ</Text>
+          </View>
+        )}
+        renderItem={({ item }) => (
+          <FlatList
+            data={item.items}
+            renderItem={renderServiceCard}
+            keyExtractor={(service) => service.id.toString()}
+            numColumns={2}
+            columnWrapperStyle={styles.row}
+            scrollEnabled={false}
+            contentContainerStyle={styles.sectionGrid}
+          />
+        )}
+        ListHeaderComponent={
+          <Text style={styles.resultCount}>
+            Tìm thấy {filteredServices.length} dịch vụ
+          </Text>
+        }
         ListEmptyComponent={
           <EmptyState
             icon="basket-outline"
             title="Không tìm thấy dịch vụ"
             message="Thử thay đổi bộ lọc hoặc tìm kiếm khác"
           />
-        }
-        ListHeaderComponent={
-          <Text style={styles.resultCount}>
-            Tìm thấy {filteredServices.length} dịch vụ
-          </Text>
         }
       />
 
@@ -392,6 +456,25 @@ const styles = StyleSheet.create({
   },
   row: {
     justifyContent: 'space-between',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+  },
+  sectionCount: {
+    fontSize: 12,
+    color: '#666',
+  },
+  sectionGrid: {
+    paddingHorizontal: 0,
   },
   serviceCard: {
     flex: 1,

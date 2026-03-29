@@ -11,6 +11,35 @@ import type {
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'; // Point to the backend server
 
+const CACHE_TTL_MS = 60_000; // Short-lived cache to cut repeated fetches between page switches
+type CacheEntry<T> = { expiry: number; data?: T; promise?: Promise<T> };
+const responseCache = new Map<string, CacheEntry<any>>();
+
+const cachedGet = async <T,>(url: string, options?: RequestInit, ttlMs: number = CACHE_TTL_MS): Promise<T> => {
+    const now = Date.now();
+    const cached = responseCache.get(url);
+    if (cached && cached.expiry > now) {
+        if (cached.data !== undefined) return cached.data as T;
+        if (cached.promise) return cached.promise as Promise<T>;
+    }
+
+    const fetchPromise = fetch(url, options)
+        .then(handleResponse)
+        .then((data) => {
+            responseCache.set(url, { data, expiry: now + ttlMs });
+            return data as T;
+        })
+        .catch((error) => {
+            responseCache.delete(url);
+            throw error;
+        });
+
+    responseCache.set(url, { expiry: now + ttlMs, promise: fetchPromise });
+    return fetchPromise;
+};
+
+const clearCache = () => responseCache.clear();
+
 // Helper to get authorization headers
 const getAuthHeaders = () => {
     const token = localStorage.getItem('token');
@@ -131,17 +160,17 @@ export const changePassword = async (userId: string, currentPassword: string, ne
 
 
 // --- DATA GETTERS ---
-export const getUsers = async (): Promise<User[]> => fetch(`${API_BASE_URL}/users`).then(handleResponse);
-export const getUserById = async (id: string): Promise<User> => fetch(`${API_BASE_URL}/users/${id}`).then(handleResponse);
-export const getServices = async (): Promise<Service[]> => fetch(`${API_BASE_URL}/services`).then(handleResponse);
-export const getMostBookedServices = async (limit: number = 4): Promise<Service[]> => fetch(`${API_BASE_URL}/services/most-booked?limit=${limit}`).then(handleResponse);
-export const getServiceById = async (id: string): Promise<Service> => fetch(`${API_BASE_URL}/services/${id}`).then(handleResponse);
-export const getAppointments = async (): Promise<Appointment[]> => fetch(`${API_BASE_URL}/appointments`).then(handleResponse);
-export const getAppointmentById = async (id: string): Promise<Appointment> => fetch(`${API_BASE_URL}/appointments/${id}`).then(handleResponse);
-export const getUserAppointments = async (userId: string): Promise<Appointment[]> => fetch(`${API_BASE_URL}/appointments/user/${userId}`).then(handleResponse);
+export const getUsers = async (): Promise<User[]> => cachedGet(`${API_BASE_URL}/users`);
+export const getUserById = async (id: string): Promise<User> => cachedGet(`${API_BASE_URL}/users/${id}`);
+export const getServices = async (): Promise<Service[]> => cachedGet(`${API_BASE_URL}/services`);
+export const getMostBookedServices = async (limit: number = 4): Promise<Service[]> => cachedGet(`${API_BASE_URL}/services/most-booked?limit=${limit}`);
+export const getServiceById = async (id: string): Promise<Service> => cachedGet(`${API_BASE_URL}/services/${id}`);
+export const getAppointments = async (): Promise<Appointment[]> => cachedGet(`${API_BASE_URL}/appointments`);
+export const getAppointmentById = async (id: string): Promise<Appointment> => cachedGet(`${API_BASE_URL}/appointments/${id}`);
+export const getUserAppointments = async (userId: string): Promise<Appointment[]> => cachedGet(`${API_BASE_URL}/appointments/user/${userId}`);
 export const getReviews = async (filters?: { serviceId?: string; userId?: string }): Promise<Review[]> => {
     const params = new URLSearchParams(filters as any);
-    return fetch(`${API_BASE_URL}/reviews?${params.toString()}`).then(handleResponse);
+    return cachedGet(`${API_BASE_URL}/reviews?${params.toString()}`);
 };
 export const getPromotions = async (params?: { userId?: string; serviceId?: string; all?: boolean }): Promise<Promotion[]> => {
     const queryParams = new URLSearchParams();
@@ -149,12 +178,11 @@ export const getPromotions = async (params?: { userId?: string; serviceId?: stri
     if (params?.serviceId) queryParams.append('serviceId', params.serviceId);
     if (params?.all === true) queryParams.append('all', 'true');
     const queryString = queryParams.toString();
-    return fetch(`${API_BASE_URL}/promotions${queryString ? `?${queryString}` : ''}`).then(handleResponse);
+    return cachedGet(`${API_BASE_URL}/promotions${queryString ? `?${queryString}` : ''}`);
 };
 // Get redeemable vouchers (private vouchers that can be redeemed with points)
 export const getRedeemableVouchers = async (): Promise<RedeemableVoucher[]> => {
-    const response = await fetch(`${API_BASE_URL}/promotions?redeemableOnly=true`);
-    return handleResponse(response);
+    return cachedGet(`${API_BASE_URL}/promotions?redeemableOnly=true`);
 };
 export const redeemVoucherWithPoints = async (promotionId: string, userId: string): Promise<{ success: boolean; message: string; promotion: Promotion; remainingPoints: number }> => {
     return fetch(`${API_BASE_URL}/promotions/${promotionId}/redeem`, {
@@ -172,33 +200,98 @@ export const getMyRedeemedVouchers = async (userId: string): Promise<Array<Promo
 };
 
 export const getTiers = async (): Promise<Tier[]> => Promise.resolve([]);
-export const getUserWallet = async (userId: string): Promise<Wallet> => fetch(`${API_BASE_URL}/wallets/${userId}`).then(handleResponse);
-export const getUserPointsHistory = async (userId: string): Promise<Array<{ date: string; pointsChange: number; type: string; source: string; description: string }>> => fetch(`${API_BASE_URL}/wallets/${userId}/points-history`).then(handleResponse);
-export const getLuckyWheelPrizes = async (): Promise<Prize[]> => fetch(`${API_BASE_URL}/wallets/lucky-wheel-prizes`).then(handleResponse);
+export const getUserWallet = async (userId: string): Promise<Wallet> => cachedGet(`${API_BASE_URL}/wallets/${userId}`);
+export const getUserPointsHistory = async (userId: string): Promise<Array<{ date: string; pointsChange: number; type: string; source: string; description: string }>> => cachedGet(`${API_BASE_URL}/wallets/${userId}/points-history`);
+export const getLuckyWheelPrizes = async (): Promise<Prize[]> => cachedGet(`${API_BASE_URL}/wallets/lucky-wheel-prizes`);
 export const getRedeemedRewards = async (): Promise<RedeemedReward[]> => Promise.resolve([]);
 export const getUserMissions = async (userId: string): Promise<Mission[]> => Promise.resolve([]);
-export const getPayments = async (): Promise<Payment[]> => fetch(`${API_BASE_URL}/payments`).then(handleResponse);
-export const getStaffAvailability = async (staffId: string): Promise<StaffDailyAvailability[]> => fetch(`${API_BASE_URL}/staff/availability/${staffId}`).then(handleResponse);
-export const getStaffShifts = async (staffId: string): Promise<StaffShift[]> => fetch(`${API_BASE_URL}/staff/shifts/${staffId}`).then(handleResponse);
-export const getAllStaffShifts = async (): Promise<StaffShift[]> => fetch(`${API_BASE_URL}/staff/shifts`).then(handleResponse);
-export const getProducts = async (): Promise<Product[]> => fetch(`${API_BASE_URL}/staff/products`).then(handleResponse);
-export const getSales = async (): Promise<Sale[]> => fetch(`${API_BASE_URL}/staff/sales`).then(handleResponse);
-export const getInternalNotifications = async (userId: string): Promise<InternalNotification[]> => fetch(`${API_BASE_URL}/notifications/user/${userId}`).then(handleResponse);
-export const getInternalNews = async (): Promise<InternalNews[]> => fetch(`${API_BASE_URL}/staff/news`).then(handleResponse);
-export const getServiceCategories = async (): Promise<ServiceCategory[]> => fetch(`${API_BASE_URL}/services/categories`).then(handleResponse);
+export const getPayments = async (): Promise<Payment[]> => cachedGet(`${API_BASE_URL}/payments`);
+export const getStaffAvailability = async (staffId: string): Promise<StaffDailyAvailability[]> => cachedGet(`${API_BASE_URL}/staff/availability/${staffId}`);
+export const getStaffShifts = async (staffId: string): Promise<StaffShift[]> => cachedGet(`${API_BASE_URL}/staff/shifts/${staffId}`);
+export const getAllStaffShifts = async (): Promise<StaffShift[]> => cachedGet(`${API_BASE_URL}/staff/shifts`);
+export const getProducts = async (): Promise<Product[]> => cachedGet(`${API_BASE_URL}/staff/products`);
+export const getSales = async (): Promise<Sale[]> => cachedGet(`${API_BASE_URL}/staff/sales`);
+export const getInternalNotifications = async (userId: string): Promise<InternalNotification[]> => cachedGet(`${API_BASE_URL}/notifications/user/${userId}`, { headers: getAuthHeaders() });
+export const getInternalNews = async (): Promise<InternalNews[]> => cachedGet(`${API_BASE_URL}/staff/news`, { headers: getAuthHeaders() });
+export const getServiceCategories = async (): Promise<ServiceCategory[]> => cachedGet(`${API_BASE_URL}/services/categories`);
+
+// --- ANALYTICS ---
+export interface ServiceAffinityResponse {
+    summary: {
+        totalAppointments: number;
+        transactions: number;
+        uniqueServices: number;
+        minSupport: number;
+        minConfidence: number;
+        minLift: number;
+    };
+    pairs: Array<{
+        serviceAId: string;
+        serviceAName: string;
+        serviceBId: string;
+        serviceBName: string;
+        counts: { A: number; B: number; AB: number };
+        metrics: {
+            supportAB: number;
+            supportA: number;
+            supportB: number;
+            confidenceAtoB: number;
+            confidenceBtoA: number;
+            liftAtoB: number;
+            liftBtoA: number;
+        };
+        recommendation: { title: string; rationale: string; actions: string[] };
+    }>;
+}
+
+export const getServiceAffinity = async (params: {
+    from: string;
+    to: string;
+    minSupport?: number;
+    minConfidence?: number;
+    minLift?: number;
+    limit?: number;
+    useBookingGroupOnly?: boolean;
+}): Promise<ServiceAffinityResponse> => {
+    const query = new URLSearchParams();
+    query.append('from', params.from);
+    query.append('to', params.to);
+    if (typeof params.minSupport === 'number') query.append('minSupport', String(params.minSupport));
+    if (typeof params.minConfidence === 'number') query.append('minConfidence', String(params.minConfidence));
+    if (typeof params.minLift === 'number') query.append('minLift', String(params.minLift));
+    if (typeof params.limit === 'number') query.append('limit', String(params.limit));
+    if (typeof params.useBookingGroupOnly === 'boolean') query.append('useBookingGroupOnly', String(params.useBookingGroupOnly));
+    const url = `${API_BASE_URL}/analytics/service-affinity?${query.toString()}`;
+    const response = await fetch(url, { method: 'GET', headers: getAuthHeaders() });
+    return handleResponse(response);
+};
 
 // --- DATA MUTATIONS ---
 const create = <T,>(url: string, data: Partial<T>): Promise<T> => {
-    // Log data trước khi gửi để debug
     console.log(`📤 [apiService.create] Sending to ${url}:`, {
         dataKeys: Object.keys(data),
         dataValues: data,
         stringified: JSON.stringify(data)
     });
-    return fetch(url, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) }).then(handleResponse);
+    return fetch(url, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) })
+        .then(handleResponse)
+        .then((result) => {
+            clearCache();
+            return result;
+        });
 };
-const update = <T,>(url: string, data: Partial<T>): Promise<T> => fetch(url, { method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(data) }).then(handleResponse);
-const remove = (url: string): Promise<void> => fetch(url, { method: 'DELETE', headers: getAuthHeaders() }).then(handleResponse);
+const update = <T,>(url: string, data: Partial<T>): Promise<T> => fetch(url, { method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(data) })
+    .then(handleResponse)
+    .then((result) => {
+        clearCache();
+        return result;
+    });
+const remove = (url: string): Promise<void> => fetch(url, { method: 'DELETE', headers: getAuthHeaders() })
+    .then(handleResponse)
+    .then((result) => {
+        clearCache();
+        return result;
+    });
 
 export const createUser = (data: Partial<User>) => create<User>(`${API_BASE_URL}/users`, data);
 export const updateUser = (id: string, data: Partial<User>) => update<User>(`${API_BASE_URL}/users/${id}`, data);

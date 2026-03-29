@@ -2,7 +2,14 @@ import React from 'react';
 
 // New Lotus Icon replacing the old book icon
 export const LogoIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg {...props} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <svg
+    width="32"
+    height="32"
+    {...props}
+    viewBox="0 0 64 64"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
     <defs>
       <linearGradient id="lotusGradient" x1="50%" y1="0%" x2="50%" y2="100%">
         <stop offset="0%" stopColor="#F3E2B3" />
@@ -28,6 +35,8 @@ export const LogoIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 // --- Standard UI Icons (Heroicons based) ---
 const iconProps = {
+  width: "24",
+  height: "24",
   xmlns: "http://www.w3.org/2000/svg",
   fill: "none",
   viewBox: "0 0 24 24",

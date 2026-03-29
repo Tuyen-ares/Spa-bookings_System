@@ -1,11 +1,11 @@
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 // FIX: Added UserRole and Payment to the type import.
 import type { User, Appointment, Service, Review, Promotion, InternalNotification, Payment, UserRole } from '../../types';
 import {
     CurrencyDollarIcon, UsersIcon, CalendarIcon, StarIcon,
     BellIcon,
-    LightBulbIcon, ExclamationTriangleIcon, TrophyIcon, ClockIcon, GiftIcon, XCircleIcon
+    LightBulbIcon, ExclamationTriangleIcon, TrophyIcon, ClockIcon, XCircleIcon
 } from '../../shared/icons';
 import EmployeeOfMonth from '../components/EmployeeOfMonth';
 import * as apiService from '../../client/services/apiService';
@@ -58,8 +58,8 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon, change, changeT
                 </p>
                 {change && (
                     <div className={`mt-3 inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${changeType === 'increase'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-red-100 text-red-700'
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-red-100 text-red-700'
                         }`}>
                         <span className="mr-1">{changeType === 'increase' ? '↑' : '↓'}</span>
                         {change}
@@ -490,7 +490,6 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
         return { expiringPromos, unconfirmedAppointments, staffOnLeave };
     }, [localAppointments, allAppointments, allPromotions, allInternalNotifications, now]);
 
-
     return (
         <div className="space-y-8 pb-8">
             {/* Header with gradient */}
@@ -564,7 +563,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                {/* Main content: Charts & Lists */}
+                {/* Left: Revenue Chart (col-span-2) */}
                 <div className="xl:col-span-2 space-y-6">
                     {/* Revenue Section */}
                     <div className="bg-gradient-to-br from-white via-gray-50 to-white p-6 rounded-2xl shadow-xl border border-gray-200 opacity-0 animate-fadeInUp" style={{ animationDelay: '600ms' }}>
@@ -674,8 +673,9 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
                             </div>
                         )}
                     </div>
-                    {/* Top Services & Retention */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                    {/* Top Services */}
+                    <div className="grid grid-cols-1 gap-6">
                         <div className="bg-gradient-to-br from-white via-blue-50/30 to-white p-6 rounded-2xl shadow-xl border border-gray-200 opacity-0 animate-fadeInUp" style={{ animationDelay: '700ms' }}>
                             <div className="flex items-center gap-3 mb-5">
                                 <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center shadow-lg">
@@ -688,9 +688,9 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
                                     <li key={index} className="flex justify-between items-center p-3 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border border-gray-100">
                                         <div className="flex items-center gap-3">
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${index === 0 ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white' :
-                                                    index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-white' :
-                                                        index === 2 ? 'bg-gradient-to-br from-orange-400 to-red-500 text-white' :
-                                                            'bg-gradient-to-br from-blue-400 to-indigo-500 text-white'
+                                                index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-white' :
+                                                    index === 2 ? 'bg-gradient-to-br from-orange-400 to-red-500 text-white' :
+                                                        'bg-gradient-to-br from-blue-400 to-indigo-500 text-white'
                                                 }`}>
                                                 {index + 1}
                                             </div>
@@ -703,6 +703,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ allServices, allAppo
                         </div>
                     </div>
                 </div>
+
             </div>
         </div>
     );

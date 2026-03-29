@@ -23,12 +23,14 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 type Props = NativeStackScreenProps<any, 'AppointmentsList'>;
 
 type FilterType = 'all' | 'today' | 'thisWeek' | 'thisMonth' | 'custom';
+type StatusFilter = 'all' | 'upcoming' | 'completed' | 'cancelled' | 'pending' | 'in-progress';
 
 export const AppointmentsScreen: React.FC<Props> = ({ navigation }) => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filterType, setFilterType] = useState<FilterType>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -69,78 +71,86 @@ export const AppointmentsScreen: React.FC<Props> = ({ navigation }) => {
 
   // Filter appointments based on filter type
   const filteredAppointments = useMemo(() => {
-    if (filterType === 'all') {
-      return appointments;
-    }
+    let filtered = appointments;
 
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
+    // Filter by date
+    if (filterType !== 'all') {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
 
-    return appointments.filter((app) => {
-      try {
-        // Handle both string and Date object for app.date
-        let appDate: Date;
-        if (!app.date) {
-          return false; // Skip appointments without date
-        }
-        
-        if (typeof app.date === 'string') {
-          // If date is string like "2025-12-02" or "2025-12-02T00:00:00.000Z"
-          const dateStr = app.date.split('T')[0]; // Get YYYY-MM-DD part
-          const [year, month, day] = dateStr.split('-').map(Number);
-          if (isNaN(year) || isNaN(month) || isNaN(day)) {
+      filtered = filtered.filter((app) => {
+        try {
+          // Handle both string and Date object for app.date
+          let appDate: Date;
+          if (!app.date) {
+            return false; // Skip appointments without date
+          }
+
+          if (typeof app.date === 'string') {
+            // If date is string like "2025-12-02" or "2025-12-02T00:00:00.000Z"
+            const dateStr = app.date.split('T')[0]; // Get YYYY-MM-DD part
+            const [year, month, day] = dateStr.split('-').map(Number);
+            if (isNaN(year) || isNaN(month) || isNaN(day)) {
+              return false; // Skip invalid dates
+            }
+            appDate = new Date(year, month - 1, day);
+          } else {
+            appDate = new Date(app.date);
+          }
+
+          if (isNaN(appDate.getTime())) {
             return false; // Skip invalid dates
           }
-          appDate = new Date(year, month - 1, day);
-        } else {
-          appDate = new Date(app.date);
-        }
-        
-        if (isNaN(appDate.getTime())) {
-          return false; // Skip invalid dates
-        }
-        
-        appDate.setHours(0, 0, 0, 0);
 
-        switch (filterType) {
-          case 'today':
-            return appDate.getTime() === now.getTime();
+          appDate.setHours(0, 0, 0, 0);
 
-          case 'thisWeek': {
-            const startOfWeek = new Date(now);
-            const dayOfWeek = startOfWeek.getDay();
-            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-            startOfWeek.setDate(now.getDate() - daysToMonday);
-            startOfWeek.setHours(0, 0, 0, 0);
+          switch (filterType) {
+            case 'today':
+              return appDate.getTime() === now.getTime();
 
-            const endOfWeek = new Date(startOfWeek);
-            endOfWeek.setDate(startOfWeek.getDate() + 6);
-            endOfWeek.setHours(23, 59, 59, 999);
+            case 'thisWeek': {
+              const startOfWeek = new Date(now);
+              const dayOfWeek = startOfWeek.getDay();
+              const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+              startOfWeek.setDate(now.getDate() - daysToMonday);
+              startOfWeek.setHours(0, 0, 0, 0);
 
-            return appDate >= startOfWeek && appDate <= endOfWeek;
+              const endOfWeek = new Date(startOfWeek);
+              endOfWeek.setDate(startOfWeek.getDate() + 6);
+              endOfWeek.setHours(23, 59, 59, 999);
+
+              return appDate >= startOfWeek && appDate <= endOfWeek;
+            }
+
+            case 'thisMonth': {
+              const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+              const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+              return appDate >= startOfMonth && appDate <= endOfMonth;
+            }
+
+            case 'custom': {
+              const customDate = new Date(selectedDate);
+              customDate.setHours(0, 0, 0, 0);
+              return appDate.getTime() === customDate.getTime();
+            }
+
+            default:
+              return true;
           }
-
-          case 'thisMonth': {
-            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-            const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-            return appDate >= startOfMonth && appDate <= endOfMonth;
-          }
-
-          case 'custom': {
-            const customDate = new Date(selectedDate);
-            customDate.setHours(0, 0, 0, 0);
-            return appDate.getTime() === customDate.getTime();
-          }
-
-          default:
-            return true;
+        } catch (error) {
+          console.error('Error filtering appointment:', error, app);
+          return false; // Skip appointments that cause errors
         }
-      } catch (error) {
-        console.error('Error filtering appointment:', error, app);
-        return false; // Skip appointments that cause errors
-      }
-    });
-  }, [appointments, filterType, selectedDate]);
+      });
+    }
+
+    // Filter by status
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter((app) => app.status === statusFilter);
+    }
+
+    return filtered;
+  }, [appointments, filterType, statusFilter, selectedDate]);
 
   // Pagination
   const totalPages = Math.ceil(filteredAppointments.length / itemsPerPage);
@@ -153,7 +163,7 @@ export const AppointmentsScreen: React.FC<Props> = ({ navigation }) => {
   // Reset to page 1 when filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterType, selectedDate]);
+  }, [filterType, statusFilter, selectedDate]);
 
   const handleDateChange = (event: any, date?: Date) => {
     if (Platform.OS === 'android') {
@@ -228,8 +238,9 @@ export const AppointmentsScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* Filter Section */}
       <View style={styles.filterContainer}>
-        <ScrollView 
-          horizontal 
+        <Text style={styles.filterLabel}>Thời gian:</Text>
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterScroll}
         >
@@ -282,6 +293,70 @@ export const AppointmentsScreen: React.FC<Props> = ({ navigation }) => {
             <Ionicons name="calendar-outline" size={16} color={filterType === 'custom' ? '#fff' : '#666'} />
             <Text style={[styles.filterButtonText, filterType === 'custom' && styles.filterButtonTextActive]}>
               Chọn ngày
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* Status Filter Section */}
+      <View style={styles.filterContainer}>
+        <Text style={styles.filterLabel}>Trạng thái:</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterScroll}
+        >
+          <TouchableOpacity
+            style={[styles.filterButton, statusFilter === 'all' && styles.filterButtonActive]}
+            onPress={() => setStatusFilter('all')}
+          >
+            <Text style={[styles.filterButtonText, statusFilter === 'all' && styles.filterButtonTextActive]}>
+              Tất cả
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, statusFilter === 'upcoming' && styles.filterButtonActive]}
+            onPress={() => setStatusFilter('upcoming')}
+          >
+            <Text style={[styles.filterButtonText, statusFilter === 'upcoming' && styles.filterButtonTextActive]}>
+              Sắp tới
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, statusFilter === 'pending' && styles.filterButtonActive]}
+            onPress={() => setStatusFilter('pending')}
+          >
+            <Text style={[styles.filterButtonText, statusFilter === 'pending' && styles.filterButtonTextActive]}>
+              Chờ xác nhận
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, statusFilter === 'in-progress' && styles.filterButtonActive]}
+            onPress={() => setStatusFilter('in-progress')}
+          >
+            <Text style={[styles.filterButtonText, statusFilter === 'in-progress' && styles.filterButtonTextActive]}>
+              Đang thực hiện
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, statusFilter === 'completed' && styles.filterButtonActive]}
+            onPress={() => setStatusFilter('completed')}
+          >
+            <Text style={[styles.filterButtonText, statusFilter === 'completed' && styles.filterButtonTextActive]}>
+              Hoàn thành
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, statusFilter === 'cancelled' && styles.filterButtonActive]}
+            onPress={() => setStatusFilter('cancelled')}
+          >
+            <Text style={[styles.filterButtonText, statusFilter === 'cancelled' && styles.filterButtonTextActive]}>
+              Đã hủy
             </Text>
           </TouchableOpacity>
         </ScrollView>
@@ -504,6 +579,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0'
+  },
+  filterLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    paddingHorizontal: 16,
+    marginBottom: 8
   },
   filterScroll: {
     paddingHorizontal: 16,

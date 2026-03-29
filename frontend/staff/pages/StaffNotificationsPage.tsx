@@ -1,6 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { User, InternalNotification, InternalNews } from '../../types';
+import * as apiService from '../../client/services/apiService';
 
 // Icons
 // FIX: Replaced `MailOpenIcon` with the available `MailIcon` to resolve import error.
@@ -19,6 +20,24 @@ export const StaffNotificationsPage: React.FC<StaffNotificationsPageProps> = ({ 
     const [notifications, setNotifications] = useState<InternalNotification[]>(allInternalNotifications);
     const [news, setNews] = useState<InternalNews[]>(allInternalNews);
 
+    // Auto-refresh notifications every 5 seconds
+    useEffect(() => {
+        const loadNotifications = async () => {
+            try {
+                const data = await apiService.getInternalNotifications(currentUser.id);
+                setNotifications(data);
+            } catch (error) {
+                console.error('Error loading notifications:', error);
+            }
+        };
+
+        const interval = setInterval(() => {
+            loadNotifications();
+        }, 5000); // Refresh every 5 seconds
+
+        return () => clearInterval(interval);
+    }, [currentUser.id]);
+
     const filteredNotifications = useMemo(() => {
         return notifications
             .filter(notif => notif.recipientId === currentUser.id || notif.recipientType === 'all')
@@ -30,10 +49,15 @@ export const StaffNotificationsPage: React.FC<StaffNotificationsPageProps> = ({ 
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [news]);
 
-    const handleMarkAsRead = (id: string) => {
-        setNotifications(prev =>
-            prev.map(notif => (notif.id === id ? { ...notif, isRead: true } : notif))
-        );
+    const handleMarkAsRead = async (id: string) => {
+        try {
+            setNotifications(prev =>
+                prev.map(notif => (notif.id === id ? { ...notif, isRead: true } : notif))
+            );
+            await apiService.markNotificationAsRead(id);
+        } catch (error) {
+            console.error('Error marking as read:', error);
+        }
     };
 
     const getPriorityColor = (priority: InternalNews['priority']) => {
@@ -88,7 +112,7 @@ export const StaffNotificationsPage: React.FC<StaffNotificationsPageProps> = ({ 
                                     {getNotificationTypeIcon(notif.type)}
                                 </div>
                                 <div className="flex-1">
-                                    <p className={`font-semibold text-gray-800 ${notif.isRead ? '' : 'text-brand-dark'}`}>{notif.message}</p>
+                                    <p className={`font-semibold text-gray-800 ${notif.isRead ? '' : 'text-brand-dark'} whitespace-pre-wrap break-words`}>{notif.message}</p>
                                     <p className="text-sm text-gray-500 mt-1">{new Date(notif.date).toLocaleString('vi-VN')}</p>
                                     {notif.link && !notif.isRead && (
                                         <a href={notif.link} className="text-blue-600 hover:underline text-sm mt-2 block">

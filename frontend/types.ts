@@ -192,7 +192,7 @@ export interface TreatmentSession {
   beforeAfterImages?: string[];
   therapistNotes?: string;
   afterSessionImageUrl?: string;
-  status?: 'completed' | 'in-progress' | 'upcoming' | 'pending' | 'scheduled' | 'cancelled';
+  status?: 'completed' | 'in-progress' | 'upcoming' | 'pending' | 'scheduled' | 'cancelled' | 'unscheduled';
   // Additional fields for session detail
   serviceId?: string;
   serviceName?: string;
@@ -223,27 +223,27 @@ export interface TreatmentCourse {
     duration?: number;
   }>;
   imageUrl?: string;
-  
+
   // Thông tin đăng ký của khách hàng
   clientId?: string;
   therapistId?: string;
   completedSessions: number;
   sessions?: TreatmentSession[];
-  
+
   // Trạng thái
   status: 'draft' | 'active' | 'paused' | 'completed' | 'expired' | 'cancelled' | 'pending';
   paymentStatus?: 'Paid' | 'Unpaid';
-  
+
   // Thời gian
   startDate?: string;
   expiryDate?: string;
   actualCompletionDate?: string;
   nextAppointmentDate?: string;
   lastCompletedDate?: string;
-  
+
   // Tính toán
   progressPercentage: number;
-  
+
   // Thông tin bổ sung
   treatmentGoals?: string;
   initialSkinCondition?: string;
@@ -253,7 +253,7 @@ export interface TreatmentCourse {
   pauseReason?: string;
   pausedDate?: string;
   resumedDate?: string;
-  remindersSent?: Array<{type: string; date: string; status: string}>;
+  remindersSent?: Array<{ type: string; date: string; status: string }>;
   treatmentHistory?: Array<{
     sessionNumber: number;
     date: string;
@@ -262,12 +262,12 @@ export interface TreatmentCourse {
   }>;
   createdAt?: string;
   updatedAt?: string;
-  
+
   // Computed fields
   daysUntilExpiry?: number;
   isExpiringSoon?: boolean;
   isExpired?: boolean;
-  
+
   // Associations
   Client?: User;
   Service?: Service;

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { Payment, PaymentMethod, PaymentStatus, User, Appointment } from '../../types';
+import type { Payment, PaymentMethod, PaymentStatus, User, Appointment, TreatmentCourse, Service } from '../../types';
 import { SearchIcon, CurrencyDollarIcon, CheckCircleIcon, ClockIcon, PrinterIcon, ArrowUturnLeftIcon, TrashIcon, PlusIcon, ChevronDownIcon, ChevronUpIcon, EditIcon, CloseIcon, PhoneIcon, ProfileIcon } from '../../shared/icons';
 import * as apiService from '../../client/services/apiService'; // Import API service
 
@@ -80,6 +80,8 @@ interface PaymentsPageProps {
 
 const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }) => {
     const [payments, setPayments] = useState<Payment[]>([]);
+    const [treatmentCourses, setTreatmentCourses] = useState<TreatmentCourse[]>([]); // Cache treatment courses
+    const [services, setServices] = useState<Service[]>([]); // For service combobox in edit modal
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -103,6 +105,11 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
     // Edit invoice modal
     const [showEditModal, setShowEditModal] = useState(false);
     const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+
+    // Edit service in invoice
+    const [editingServiceIndex, setEditingServiceIndex] = useState<number | null>(null);
+    const [serviceEditDraft, setServiceEditDraft] = useState<{ serviceName: string; sessions: number; price: number } | null>(null);
+    const [showServiceSuggestions, setShowServiceSuggestions] = useState<boolean>(false);
 
     const [filterMethod, setFilterMethod] = useState<PaymentMethod | 'All'>('All');
     const [filterStatus, setFilterStatus] = useState<PaymentStatus | 'All'>('All');
@@ -206,6 +213,25 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
                 setError(null);
                 const fetchedPayments = await apiService.getPayments();
                 setPayments(fetchedPayments);
+
+                // Fetch treatment courses for appointments with bookingGroupId
+                const bookingGroupIds = allAppointments
+                    .filter(apt => apt.bookingGroupId && apt.bookingGroupId.startsWith('group-'))
+                    .map(apt => apt.bookingGroupId!.replace('group-', ''));
+                const uniqueTcIds = Array.from(new Set(bookingGroupIds));
+
+                if (uniqueTcIds.length > 0) {
+                    try {
+                        const fetchedTCs = await Promise.all(
+                            uniqueTcIds.map(id => apiService.getTreatmentCourseById(id))
+                        );
+                        setTreatmentCourses(fetchedTCs);
+                        console.log('✅ Loaded treatment courses for invoice pricing:', fetchedTCs.length);
+                    } catch (tcError) {
+                        console.error('Error fetching treatment courses:', tcError);
+                        // Not critical, continue without TCs
+                    }
+                }
             } catch (err: any) {
                 console.error("Error fetching payments:", err);
                 setError(err.message || "Không thể tải danh sách thanh toán.");
@@ -227,7 +253,21 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
         }, 30000); // 30 seconds
 
         return () => clearInterval(interval);
-    }, [viewMode]); // Re-setup interval when viewMode changes
+    }, [viewMode, allAppointments]); // Re-setup interval when viewMode or appointments change
+
+    // Fetch services once for combobox suggestions in edit modal
+    useEffect(() => {
+        const loadServices = async () => {
+            try {
+                const svcs = await apiService.getServices();
+                setServices(svcs || []);
+            } catch (e) {
+                // Non-blocking for Payments page
+                console.error('Failed to load services for edit combobox:', e);
+            }
+        };
+        loadServices();
+    }, []);
 
 
     const stats = useMemo(() => {
@@ -257,13 +297,44 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
             console.error('Error loading printedInvoiceData:', e);
         }
 
+        const parseAmount = (value: number | string | undefined | null) => {
+            if (typeof value === 'number') return value;
+            if (typeof value === 'string') {
+                const parsed = parseFloat(value);
+                return Number.isFinite(parsed) ? parsed : 0;
+            }
+            return 0;
+        };
+
+        const paymentsByAppointment = new Map<string, Payment[]>();
+        payments.forEach(payment => {
+            if (payment.appointmentId) {
+                const list = paymentsByAppointment.get(payment.appointmentId) || [];
+                list.push(payment);
+                paymentsByAppointment.set(payment.appointmentId, list);
+            }
+        });
+
         // Sort appointments by date
         const sortedAppointments = [...allAppointments]
-            .filter(apt => apt.status !== 'cancelled' && apt.status !== 'pending')
+            .filter(apt => {
+                if (apt.status === 'cancelled') return false;
+
+                // Exclude appointments belonging to cancelled treatment courses (unfinished)
+                if (apt.bookingGroupId && apt.bookingGroupId.startsWith('group-')) {
+                    const tcId = apt.bookingGroupId.replace('group-', '');
+                    const tc = treatmentCourses.find(tc => tc.id === tcId);
+                    if (tc && tc.status === 'cancelled' && (tc.completedSessions || 0) < (tc.totalSessions || 0)) {
+                        return false;
+                    }
+                }
+                return true;
+            })
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
         // STRATEGY: Build map of appointment -> which printed invoice it belongs to
         const appointmentToPrintedInvoice = new Map<string, string>(); // aptId -> printed groupKey
+        const appointmentToInvoiceKey = new Map<string, string>(); // aptId -> invoice groupKey
 
         // First pass: Identify which appointments belong to printed invoices
         const printedInvoiceGroups = new Map<string, Set<string>>(); // groupKey -> Set of aptIds
@@ -316,6 +387,7 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
                     });
                 }
                 invoiceMap.get(printedGroupKey)!.appointments.push(apt);
+                appointmentToInvoiceKey.set(apt.id, printedGroupKey);
             } else {
                 // Not in printed invoice → Add to user's active (unpaid) invoice
                 const activeGroupKey = `${userId}-active`;
@@ -339,10 +411,14 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
                     });
                 }
                 invoiceMap.get(activeGroupKey)!.appointments.push(apt);
+                appointmentToInvoiceKey.set(apt.id, activeGroupKey);
             }
         });
 
         // Group services by serviceName and calculate totals
+        // Track treatment courses đã xử lý GLOBALLY (không theo invoice)
+        const processedTCs = new Set<string>();
+
         invoiceMap.forEach(invoice => {
             const serviceMap = new Map<string, {
                 serviceName: string;
@@ -359,35 +435,149 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
                 const service = (apt as any).Service;
                 const serviceId = apt.serviceId;
                 const serviceName = apt.serviceName;
-                const price = service?.price || 0;
-                const isPaid = apt.paymentStatus === 'Paid';
+                const paymentsForAppointment = paymentsByAppointment.get(apt.id) || [];
+                const completedAmount = paymentsForAppointment
+                    .filter(p => p.status === 'Completed')
+                    .reduce((sum, p) => sum + parseAmount(p.amount), 0);
+                const pendingAmount = paymentsForAppointment
+                    .filter(p => p.status === 'Pending')
+                    .reduce((sum, p) => sum + parseAmount(p.amount), 0);
 
-                if (!serviceMap.has(serviceName)) {
-                    serviceMap.set(serviceName, {
-                        serviceName,
-                        serviceId,
-                        sessions: 0,
-                        price,
-                        totalPrice: 0,
-                        paidSessions: 0,
-                        unpaidSessions: 0,
-                        appointmentIds: []
+                // Xác định xem có phải treatment course không
+                let isTreatmentCourse = false;
+                let treatmentCourse: any = null;
+                let tcId: string | null = null;
+
+                if (apt.bookingGroupId && apt.bookingGroupId.startsWith('group-')) {
+                    tcId = apt.bookingGroupId.replace('group-', '');
+                    treatmentCourse = treatmentCourses.find(tc => tc.id === tcId);
+                    isTreatmentCourse = !!treatmentCourse;
+                }
+
+                // Nếu là treatment course và chưa xử lý, chỉ tính 1 lần cho toàn bộ liệu trình
+                // Dùng tcId làm key (không phụ thuộc invoice) để tránh đếm lặp
+                if (isTreatmentCourse && treatmentCourse && tcId && !processedTCs.has(tcId)) {
+                    processedTCs.add(tcId);
+
+                    const unitPrice = service?.price || 0; // Giá gốc của service
+                    const totalSessions = treatmentCourse.totalSessions || 1;
+
+                    // Lấy TẤT CẢ payments liên quan đến treatment course (từ tất cả appointments trong TC)
+                    const tcAppointments = invoice.appointments.filter(a =>
+                        a.bookingGroupId && a.bookingGroupId === apt.bookingGroupId
+                    );
+
+                    const tcTotalPaidAmount = tcAppointments.reduce((sum, tcApt) => {
+                        const tcAptPayments = paymentsByAppointment.get(tcApt.id) || [];
+                        return sum + tcAptPayments
+                            .filter(p => p.status === 'Completed')
+                            .reduce((s, p) => s + parseAmount(p.amount), 0);
+                    }, 0);
+
+                    const tcTotalCollectedAmount = tcAppointments.reduce((sum, tcApt) => {
+                        const tcAptPayments = paymentsByAppointment.get(tcApt.id) || [];
+                        return sum + tcAptPayments
+                            .filter(p => p.status === 'Completed' || p.status === 'Pending')
+                            .reduce((s, p) => s + parseAmount(p.amount), 0);
+                    }, 0);
+
+                    const totalAmountAfterDiscount = treatmentCourse.totalAmount
+                        ? parseFloat(treatmentCourse.totalAmount.toString())
+                        : (tcTotalCollectedAmount > 0 ? tcTotalCollectedAmount : (unitPrice * totalSessions));
+
+                    console.log(`💰 TC pricing for ${serviceName}:`, {
+                        unitPrice,
+                        totalSessions,
+                        totalAmountAfterDiscount,
+                        tcId: treatmentCourse.id,
+                        tcAppointmentsCount: tcAppointments.length,
+                        tcTotalPaidAmount
                     });
-                }
 
-                const svc = serviceMap.get(serviceName)!;
-                svc.sessions++;
-                svc.totalPrice += price;
-                svc.appointmentIds.push(apt.id);
+                    // Dùng key riêng cho liệu trình để không gộp với lịch hẹn lẻ cùng dịch vụ
+                    const serviceKey = `tc-${tcId}`;
 
-                if (isPaid) {
-                    svc.paidSessions++;
-                    invoice.paidAmount += price;
-                } else {
-                    svc.unpaidSessions++;
-                    invoice.unpaidAmount += price;
+                    if (!serviceMap.has(serviceKey)) {
+                        serviceMap.set(serviceKey, {
+                            serviceName,
+                            serviceId,
+                            sessions: 0,
+                            price: unitPrice, // Đơn giá gốc
+                            totalPrice: 0,
+                            paidSessions: 0,
+                            unpaidSessions: 0,
+                            appointmentIds: []
+                        });
+                    }
+
+                    const svc = serviceMap.get(serviceKey)!;
+                    svc.sessions += totalSessions; // Cộng tổng số buổi
+                    svc.totalPrice += totalAmountAfterDiscount; // Cộng tổng tiền sau giảm giá
+                    // Đưa tất cả lịch hẹn thuộc liệu trình (trong invoice hiện tại) vào danh sách, tránh trùng
+                    tcAppointments.forEach(tcApt => {
+                        if (!svc.appointmentIds.includes(tcApt.id)) {
+                            svc.appointmentIds.push(tcApt.id);
+                        }
+                    });
+
+                    // Check paid status: dùng treatmentCourse.paymentStatus hoặc tổng payment thực tế
+                    const isPaid = treatmentCourse.paymentStatus === 'Paid' || tcTotalPaidAmount >= totalAmountAfterDiscount;
+                    const unpaidPortion = Math.max(0, totalAmountAfterDiscount - tcTotalPaidAmount);
+
+                    if (isPaid) {
+                        svc.paidSessions += totalSessions;
+                    } else {
+                        svc.unpaidSessions += totalSessions;
+                    }
+
+                    invoice.totalAmount += totalAmountAfterDiscount;
+                    invoice.paidAmount += Math.min(tcTotalPaidAmount, totalAmountAfterDiscount);
+                    if (unpaidPortion > 0) {
+                        invoice.unpaidAmount += unpaidPortion;
+                    }
+                } else if (!isTreatmentCourse) {
+                    // Appointment đơn lẻ (không phải treatment course)
+                    const unitPrice = service?.price || 0;
+                    const lineTotal = unitPrice > 0 ? unitPrice : (completedAmount + pendingAmount);
+                    const isPaidByStatus = apt.paymentStatus === 'Paid';
+                    const paidForLine = isPaidByStatus ? lineTotal : Math.min(completedAmount, lineTotal);
+                    const remainingAmount = isPaidByStatus ? 0 : Math.max(0, lineTotal - completedAmount);
+                    const isPaid = isPaidByStatus || completedAmount >= lineTotal;
+
+                    // Dùng key theo service để gộp các lịch hẹn lẻ cùng dịch vụ, tách biệt với liệu trình
+                    const serviceKey = `svc-${serviceId}`;
+
+                    if (!serviceMap.has(serviceKey)) {
+                        serviceMap.set(serviceKey, {
+                            serviceName,
+                            serviceId,
+                            sessions: 0,
+                            price: lineTotal,
+                            totalPrice: 0,
+                            paidSessions: 0,
+                            unpaidSessions: 0,
+                            appointmentIds: []
+                        });
+                    }
+
+                    const svc = serviceMap.get(serviceKey)!;
+                    svc.sessions++;
+                    svc.totalPrice += lineTotal;
+                    svc.appointmentIds.push(apt.id);
+
+                    if (isPaid) {
+                        svc.paidSessions++;
+                    } else {
+                        svc.unpaidSessions++;
+                    }
+
+                    invoice.totalAmount += lineTotal;
+                    invoice.paidAmount += paidForLine;
+                    if (remainingAmount > 0) {
+                        invoice.unpaidAmount += remainingAmount;
+                    }
                 }
-                invoice.totalAmount += price;
+                // Nếu là TC và đã xử lý rồi, skip (không cộng lặp)
             });
 
             invoice.services = Array.from(serviceMap.values());
@@ -407,7 +597,7 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
             if (payment.appointmentId) {
                 const apt = allAppointments.find(a => a.id === payment.appointmentId);
                 if (apt) {
-                    const groupKey = apt.bookingGroupId || `${apt.userId}-${apt.date}`;
+                    const groupKey = appointmentToInvoiceKey.get(apt.id);
                     const invoice = invoiceMap.get(groupKey);
                     if (invoice && !invoice.payments.find(p => p.id === payment.id)) {
                         invoice.payments.push(payment);
@@ -446,7 +636,7 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
 
         // Return sorted by newest first for display
         return invoicesArray.reverse();
-    }, [allAppointments, payments, printedInvoices]);
+    }, [allAppointments, payments, printedInvoices, treatmentCourses]);
 
     const filteredPayments = useMemo(() => {
         return payments
@@ -583,8 +773,24 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
     const handleRefund = async (paymentId: string) => {
         if (window.confirm("Bạn có chắc chắn muốn hoàn tiền cho giao dịch này?")) {
             try {
+                // Find the payment to get appointmentId
+                const payment = payments.find(p => p.id === paymentId);
+                if (!payment) {
+                    alert('Không tìm thấy giao dịch này');
+                    return;
+                }
+
+                // Update payment status to Refunded
                 const updatedPayment = await apiService.updatePayment(paymentId, { status: 'Refunded' });
                 setPayments(prev => prev.map(p => p.id === updatedPayment.id ? updatedPayment : p));
+
+                // Update appointment paymentStatus to Unpaid
+                if (payment.appointmentId) {
+                    await apiService.updateAppointment(payment.appointmentId, { paymentStatus: 'Unpaid' });
+
+                    // Reload to reflect changes
+                    window.location.reload();
+                }
             } catch (err: any) {
                 console.error("Error refunding payment:", err);
                 alert(`Hoàn tiền thất bại: ${err.message || String(err)}`);
@@ -968,6 +1174,140 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
         }
     };
 
+    const handleStartEditService = (serviceIndex: number, service: Invoice['services'][0]) => {
+        setEditingServiceIndex(serviceIndex);
+        setServiceEditDraft({
+            serviceName: service.serviceName,
+            sessions: service.sessions,
+            price: service.price,
+        });
+        setShowServiceSuggestions(false);
+    };
+
+    const handleCancelEditService = () => {
+        setEditingServiceIndex(null);
+        setServiceEditDraft(null);
+    };
+
+    const handleSaveEditService = async () => {
+        if (!editingInvoice || editingServiceIndex === null || !serviceEditDraft) return;
+
+        try {
+            const oldService = editingInvoice.services[editingServiceIndex];
+            const sessionDifference = serviceEditDraft.sessions - oldService.sessions;
+
+            // Detect if this service row represents a Treatment Course (derive tcId from any appointment's bookingGroupId)
+            let tcId: string | null = null;
+            for (const aptId of oldService.appointmentIds) {
+                const appt = allAppointments.find(a => a.id === aptId);
+                if (appt?.bookingGroupId && appt.bookingGroupId.startsWith('group-')) {
+                    tcId = appt.bookingGroupId.replace('group-', '');
+                    break;
+                }
+            }
+
+            const invoiceIsUnpaid = editingInvoice.unpaidAmount > 0; // Only allow course mutation when invoice is not fully paid
+
+            if (tcId && invoiceIsUnpaid) {
+                // UPDATE TREATMENT COURSE to reflect edits from invoice
+                const matchedService = services.find(s => s.name === serviceEditDraft.serviceName);
+                const newServiceId = matchedService?.id || oldService.serviceId;
+                const newServiceName = matchedService?.name || oldService.serviceName;
+                const newTotalSessions = Math.max(1, serviceEditDraft.sessions);
+                const newTotalAmount = Math.max(0, serviceEditDraft.sessions * serviceEditDraft.price);
+
+                // 1) Update course core fields (service, sessions, totalAmount)
+                await apiService.updateTreatmentCourse(tcId, {
+                    serviceId: newServiceId,
+                    serviceName: newServiceName,
+                    totalSessions: newTotalSessions,
+                    totalAmount: newTotalAmount,
+                } as any);
+
+                // 2) Sync treatment sessions count by creating/removing trailing sessions
+                try {
+                    const existingSessions = await apiService.getTreatmentSessions(tcId);
+                    const currentCount = existingSessions.length;
+
+                    if (newTotalSessions > currentCount) {
+                        // Create additional sessions as pending without scheduling
+                        for (let sn = currentCount + 1; sn <= newTotalSessions; sn++) {
+                            await apiService.createTreatmentSession({
+                                treatmentCourseId: tcId,
+                                sessionNumber: sn,
+                            } as any);
+                        }
+                    } else if (newTotalSessions < currentCount) {
+                        // Remove sessions with highest numbers first if not completed
+                        const toRemove = existingSessions
+                            .filter((s: any) => s.sessionNumber > newTotalSessions)
+                            .sort((a: any, b: any) => b.sessionNumber - a.sessionNumber);
+                        for (const s of toRemove) {
+                            if (s.status !== 'completed') {
+                                await apiService.deleteTreatmentSession(s.id);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to sync treatment sessions after course update:', e);
+                }
+            } else {
+                // NON-COURSE or invoice already paid: fallback to appointment-level edit (rename and session add/remove)
+                // If changing number of sessions, create or delete appointments
+                if (sessionDifference !== 0) {
+                    const appointmentIds = oldService.appointmentIds;
+
+                    if (sessionDifference > 0) {
+                        // Create new sessions as separate appointments spaced by 1 week from the last one
+                        const lastAppointment = allAppointments.find(a => a.id === appointmentIds[appointmentIds.length - 1]);
+                        if (lastAppointment) {
+                            for (let i = 0; i < sessionDifference; i++) {
+                                const lastDate = new Date(lastAppointment.date);
+                                const nextDate = new Date(lastDate);
+                                nextDate.setDate(nextDate.getDate() + 7);
+
+                                const newAppointmentData = {
+                                    userId: editingInvoice.userId,
+                                    serviceId: oldService.serviceId,
+                                    date: nextDate.toISOString().split('T')[0],
+                                    time: lastAppointment.time,
+                                    paymentStatus: 'Unpaid' as const,
+                                    status: 'pending' as const,
+                                };
+
+                                await apiService.createAppointment(newAppointmentData);
+                            }
+                        }
+                    } else {
+                        // Delete sessions from the end
+                        const toDeleteCount = Math.abs(sessionDifference);
+                        const appointmentsToDelete = appointmentIds.slice(-toDeleteCount);
+
+                        for (const aptId of appointmentsToDelete) {
+                            await apiService.cancelAppointment(aptId);
+                        }
+                    }
+                }
+            }
+
+            // Update appointment service name if changed (visual consistency), skip if course edit already changes course-level name
+            if (!tcId && (serviceEditDraft.serviceName !== oldService.serviceName)) {
+                for (const aptId of oldService.appointmentIds) {
+                    await apiService.updateAppointment(aptId, { serviceName: serviceEditDraft.serviceName });
+                }
+            }
+
+            // Close edit mode
+            handleCancelEditService();
+
+            // Reload to reflect changes
+            window.location.reload();
+        } catch (err: any) {
+            console.error("Error saving service changes:", err);
+            alert(`Lưu thay đổi thất bại: ${err.message || String(err)}`);
+        }
+    };
+
     return (
         <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-6">Quản lý Thanh toán</h1>
@@ -1293,12 +1633,12 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
                                                                         <div className="flex items-center justify-center gap-2">
                                                                             {svc.paidSessions > 0 && (
                                                                                 <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
-                                                                                    ✓ {svc.paidSessions}
+                                                                                    Đã thanh toán
                                                                                 </span>
                                                                             )}
                                                                             {svc.unpaidSessions > 0 && (
                                                                                 <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
-                                                                                    ○ {svc.unpaidSessions}
+                                                                                    Chưa thanh toán
                                                                                 </span>
                                                                             )}
                                                                         </div>
@@ -1317,7 +1657,7 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     if (invoice.isPrinted) {
-                                                                        alert('Hóa đơn này đã được in. Chỉ có thể chỉnh sửa.');
+                                                                        alert('Hóa đơn này đã được in. Vui lòng dùng chức năng "In lại".');
                                                                         return;
                                                                     }
                                                                     // Show modal instead of window.confirm
@@ -1347,16 +1687,7 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
                                                                         <PrinterIcon className="w-4 h-4" />
                                                                         In lại
                                                                     </button>
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            alert('Chức năng chỉnh sửa hóa đơn:\n\n• Thêm/bớt dịch vụ\n• Cập nhật thanh toán\n• Sửa thông tin khách hàng\n\nĐang được phát triển...');
-                                                                        }}
-                                                                        className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 flex items-center gap-1"
-                                                                    >
-                                                                        <EditIcon className="w-4 h-4" />
-                                                                        Chỉnh sửa
-                                                                    </button>
+                                                                    {/* Edit invoice disabled by requirement */}
                                                                     {invoice.isPrinted && !invoice.isConfirmedPaid && (
                                                                         <button
                                                                             onClick={(e) => {
@@ -1385,17 +1716,7 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
                                                                         <PrinterIcon className="w-4 h-4" />
                                                                         In lại
                                                                     </button>
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setEditingInvoice(invoice);
-                                                                            setShowEditModal(true);
-                                                                        }}
-                                                                        className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 flex items-center gap-1"
-                                                                    >
-                                                                        <EditIcon className="w-4 h-4" />
-                                                                        Chỉnh sửa
-                                                                    </button>
+                                                                    {/* Edit invoice disabled by requirement */}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -1549,123 +1870,7 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
                 </div>
             )}
 
-            {/* Edit Invoice Modal */}
-            {showEditModal && editingInvoice && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowEditModal(false)}>
-                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto animate-fadeIn" onClick={(e) => e.stopPropagation()}>
-                        {/* Modal Header */}
-                        <div className="bg-blue-600 text-white px-6 py-4 rounded-t-lg flex items-center justify-between sticky top-0 z-10">
-                            <div className="flex items-center gap-3">
-                                <EditIcon className="w-6 h-6" />
-                                <h3 className="text-lg font-semibold">Chỉnh sửa hóa đơn {editingInvoice.id}</h3>
-                            </div>
-                            <button onClick={() => setShowEditModal(false)} className="text-white hover:text-gray-200">
-                                <CloseIcon className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        {/* Modal Body */}
-                        <div className="p-6">
-                            <div className="mb-4">
-                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                    <h4 className="text-sm font-medium text-blue-800 mb-2">Thông tin hóa đơn</h4>
-                                    <div className="text-sm text-blue-700 space-y-1">
-                                        <p>• Khách hàng: <span className="font-semibold">{allUsers.find(u => u.id === editingInvoice.userId)?.name || 'Khách vãng lai'}</span></p>
-                                        <p>• Tổng tiền: <span className="font-semibold">{formatPrice(editingInvoice.totalAmount)}</span></p>
-                                        <p>• Đã thanh toán: <span className="font-semibold text-green-600">{formatPrice(editingInvoice.paidAmount)}</span></p>
-                                        {editingInvoice.unpaidAmount > 0 && (
-                                            <p>• Còn lại: <span className="font-semibold text-red-600">{formatPrice(editingInvoice.unpaidAmount)}</span></p>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Services List */}
-                            <div className="space-y-3">
-                                <h4 className="text-sm font-medium text-gray-700 mb-3">Danh sách dịch vụ</h4>
-                                {editingInvoice.services.map((service, idx) => {
-                                    const totalSessions = service.paidSessions + service.unpaidSessions;
-                                    return (
-                                        <div key={idx} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
-                                            <div className="flex items-start justify-between mb-3">
-                                                <div className="flex-1">
-                                                    <h5 className="font-medium text-gray-800">{service.serviceName}</h5>
-                                                    <p className="text-sm text-gray-600 mt-1">Tổng: {totalSessions} buổi • Giá: {formatPrice(service.price)}/buổi</p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="font-semibold text-gray-800">{formatPrice(service.totalPrice)}</p>
-                                                </div>
-                                            </div>
-
-                                            {/* Payment Status */}
-                                            <div className="flex items-center gap-4 text-sm">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                                                    <span className="text-green-700 font-medium">{service.paidSessions} buổi đã thanh toán</span>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                                                    <span className="text-red-700 font-medium">{service.unpaidSessions} buổi chưa thanh toán</span>
-                                                </div>
-                                            </div>
-
-                                            {/* Appointment Items */}
-                                            <div className="mt-3 space-y-2">
-                                                {service.appointmentIds.map((aptId) => {
-                                                    const appt = allAppointments.find(a => a.id === aptId);
-                                                    if (!appt) return null;
-                                                    return (
-                                                        <div key={appt.id} className="flex items-center justify-between bg-gray-50 rounded p-3">
-                                                            <div className="flex-1">
-                                                                <p className="text-sm text-gray-700">
-                                                                    Ngày: <span className="font-medium">{new Date(appt.date).toLocaleDateString('vi-VN')}</span> • {appt.time}
-                                                                </p>
-                                                            </div>
-                                                            <div className="flex items-center gap-3">
-                                                                <span className={`px-2 py-1 text-xs font-medium rounded ${appt.paymentStatus === 'Paid'
-                                                                    ? 'bg-green-100 text-green-700'
-                                                                    : 'bg-red-100 text-red-700'
-                                                                    }`}>
-                                                                    {appt.paymentStatus === 'Paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
-                                                                </span>
-                                                                {appt.paymentStatus === 'Paid' ? (
-                                                                    <button
-                                                                        onClick={() => handleUpdateServicePayment(appt.id, 'Unpaid')}
-                                                                        className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
-                                                                    >
-                                                                        Đánh dấu chưa TT
-                                                                    </button>
-                                                                ) : (
-                                                                    <button
-                                                                        onClick={() => handleUpdateServicePayment(appt.id, 'Paid')}
-                                                                        className="px-3 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"
-                                                                    >
-                                                                        Đánh dấu đã TT
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Modal Footer */}
-                        <div className="bg-gray-50 px-6 py-4 rounded-b-lg flex items-center justify-end gap-3 sticky bottom-0">
-                            <button
-                                onClick={() => setShowEditModal(false)}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                            >
-                                Đóng
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Edit Invoice Modal removed by requirement */}
         </div>
     );
 };

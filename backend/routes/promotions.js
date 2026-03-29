@@ -34,13 +34,13 @@ router.get('/', async (req, res) => {
                 } else {
                     promoData = promo;
                 }
-                
+
                 // Check if private: isPublic should be false, 0, or '0'
                 const isPublicRaw = promoData.isPublic;
                 // Also check the Sequelize instance directly
                 const isPublicFromInstance = promo.isPublic !== undefined ? promo.isPublic : isPublicRaw;
                 const isPublicValue = isPublicFromInstance !== undefined ? isPublicFromInstance : isPublicRaw;
-                
+
                 const isPrivate = isPublicValue === false ||
                     isPublicValue === 0 ||
                     isPublicValue === '0' ||
@@ -51,7 +51,7 @@ router.get('/', async (req, res) => {
                 // Also check the Sequelize instance directly
                 const pointsRequiredFromInstance = promo.pointsRequired !== undefined ? promo.pointsRequired : pointsRequiredRaw;
                 const pointsRequiredValue = pointsRequiredFromInstance !== undefined ? pointsRequiredFromInstance : pointsRequiredRaw;
-                
+
                 const pointsRequired = Number(pointsRequiredValue);
                 const hasPointsRequired = !isNaN(pointsRequired) && pointsRequired > 0;
 
@@ -92,7 +92,7 @@ router.get('/', async (req, res) => {
                 } else {
                     promoData = promo;
                 }
-                
+
                 // Check expiry date
                 const expiryDate = new Date(promoData.expiryDate);
                 expiryDate.setHours(0, 0, 0, 0);
@@ -100,7 +100,7 @@ router.get('/', async (req, res) => {
                     console.log(`   ⚠️ [FILTER OUT] Voucher ${promoData.id} expired`);
                     return false;
                 }
-                
+
                 // IMPORTANT: Do NOT filter by stock for redeemable vouchers (private vouchers)
                 // Redeemable vouchers are redeemed with points, stock is not applicable
                 // Stock check only applies to public vouchers, not redeemable vouchers
@@ -119,22 +119,22 @@ router.get('/', async (req, res) => {
                 } else {
                     promo = p;
                 }
-                
+
                 // Normalize isPublic to boolean (should be false for redeemable vouchers)
                 if (promo.isPublic !== undefined) {
                     const isPublicValue = promo.isPublic;
                     promo.isPublic = isPublicValue === true || isPublicValue === 1 || isPublicValue === '1';
                 }
-                
+
                 // Ensure pointsRequired is a number
                 if (promo.pointsRequired !== undefined && promo.pointsRequired !== null) {
                     promo.pointsRequired = Number(promo.pointsRequired);
                 }
-                
+
                 console.log(`   📦 [RESPONSE] ${promo.id}: ${promo.title}, isPublic: ${promo.isPublic}, pointsRequired: ${promo.pointsRequired}`);
                 return promo;
             });
-            
+
             console.log(`\n✅ [REDEEMABLE FILTER] Sending ${responseData.length} vouchers to client\n`);
             return res.json(responseData);
         }
@@ -201,9 +201,9 @@ router.get('/', async (req, res) => {
                 });
                 hasBookedServiceViaCourse = !!treatmentCourse;
             }
-            
+
             const hasBookedThisService = hasBookedService || hasBookedServiceViaCourse;
-            
+
             // Log để debug
             if (hasBookedThisService) {
                 console.log(`   📋 User ${userId} has already booked service ${serviceId}:`);
@@ -217,7 +217,7 @@ router.get('/', async (req, res) => {
 
             // Check promotion usage - CHỈ tính là "đã dùng" nếu có appointmentId != null
             const usedPromotions = await db.PromotionUsage.findAll({
-                where: { 
+                where: {
                     userId: userId,
                     appointmentId: { [Op.ne]: null } // CHỈ tính PromotionUsage đã được dùng (có appointmentId)
                 }
@@ -279,15 +279,15 @@ router.get('/', async (req, res) => {
                         required: true
                     }]
                 });
-                
+
                 if (birthdayVoucherUsages.length > 0) {
                     // Kiểm tra xem có appointment nào không bị cancelled/rejected không
                     const validUsages = birthdayVoucherUsages.filter(usage => {
                         if (!usage.Appointment) return false;
-                        return usage.Appointment.status !== 'cancelled' && 
-                               (!usage.Appointment.rejectionReason || usage.Appointment.rejectionReason.trim() === '');
+                        return usage.Appointment.status !== 'cancelled' &&
+                            (!usage.Appointment.rejectionReason || usage.Appointment.rejectionReason.trim() === '');
                     });
-                    
+
                     if (validUsages.length > 0) {
                         // Kiểm tra xem có dùng trong ngày hôm nay không
                         hasUsedBirthdayVoucherToday = validUsages.some(usage => {
@@ -407,14 +407,14 @@ router.get('/', async (req, res) => {
                         required: true
                     }]
                 });
-                
+
                 if (birthdayVoucherUsages.length > 0) {
                     const validUsages = birthdayVoucherUsages.filter(usage => {
                         if (!usage.Appointment) return false;
-                        return usage.Appointment.status !== 'cancelled' && 
-                               (!usage.Appointment.rejectionReason || usage.Appointment.rejectionReason.trim() === '');
+                        return usage.Appointment.status !== 'cancelled' &&
+                            (!usage.Appointment.rejectionReason || usage.Appointment.rejectionReason.trim() === '');
                     });
-                    
+
                     if (validUsages.length > 0) {
                         hasUsedBirthdayVoucherToday = validUsages.some(usage => {
                             const usedDate = new Date(usage.usedAt || usage.createdAt);
@@ -447,12 +447,12 @@ router.get('/', async (req, res) => {
                     status: { [Op.ne]: 'cancelled' }
                 }
             });
-            
-            const isNewClient = userAppointments.length === 0 || 
-                !userAppointments.some(apt => 
-                    apt.paymentStatus === 'Paid' || 
-                    apt.status === 'completed' || 
-                    apt.status === 'upcoming' || 
+
+            const isNewClient = userAppointments.length === 0 ||
+                !userAppointments.some(apt =>
+                    apt.paymentStatus === 'Paid' ||
+                    apt.status === 'completed' ||
+                    apt.status === 'upcoming' ||
                     apt.status === 'scheduled'
                 );
 
@@ -702,41 +702,41 @@ router.post('/', async (req, res) => {
         }
 
         console.log('Creating promotion with data:', JSON.stringify(newPromotionData, null, 2));
-        
+
         // Check if this is a VIP tier voucher (targetAudience starts with "Tier Level")
-        const isVIPTierVoucher = newPromotionData.targetAudience && 
+        const isVIPTierVoucher = newPromotionData.targetAudience &&
             String(newPromotionData.targetAudience).startsWith('Tier Level');
-        
+
         // If this is a VIP tier voucher, check if there's already a voucher for this tier
         // VIP tier vouchers: Only 1 voucher allowed per tier (must delete old one before creating new)
         if (isVIPTierVoucher) {
             const tierLevel = String(newPromotionData.targetAudience).replace('Tier Level ', '');
             const targetAudience = `Tier Level ${tierLevel}`;
-            
+
             // Check if there's already a voucher for this tier (active or inactive)
             const existingVoucher = await db.Promotion.findOne({
                 where: {
                     targetAudience: targetAudience
                 }
             });
-            
+
             if (existingVoucher) {
                 console.log(`❌ [VIP VOUCHER CREATE] Voucher already exists for Tier Level ${tierLevel}: ${existingVoucher.id} - ${existingVoucher.title}`);
-                return res.status(400).json({ 
+                return res.status(400).json({
                     message: `Đã tồn tại voucher cho hạng ${tierLevel}. Vui lòng xóa voucher cũ trước khi tạo voucher mới.`,
                     existingVoucherId: existingVoucher.id,
                     existingVoucherTitle: existingVoucher.title
                 });
             }
-            
+
             // Ensure isActive is set to true for the new voucher (default)
             if (newPromotionData.isActive === undefined) {
                 newPromotionData.isActive = true;
             }
-            
+
             console.log(`✅ [VIP VOUCHER CREATE] No existing voucher for Tier Level ${tierLevel}, creating new voucher`);
         }
-        
+
         const createdPromotion = await db.Promotion.create({
             id: `promo-${uuidv4()}`,
             usageCount: 0,
@@ -776,7 +776,7 @@ router.put('/:id', async (req, res) => {
 
         // Ensure isPublic is properly converted to boolean
         const oldIsPublic = promotion.isPublic === true || promotion.isPublic === 1 || promotion.isPublic === '1' || String(promotion.isPublic).toLowerCase() === 'true';
-        
+
         if (updatedPromotionData.isPublic !== undefined) {
             // Convert to boolean: true if explicitly true/1/'true', false otherwise
             if (updatedPromotionData.isPublic === true ||
@@ -789,7 +789,7 @@ router.put('/:id', async (req, res) => {
             }
         }
 
-        const newIsPublic = updatedPromotionData.isPublic !== undefined 
+        const newIsPublic = updatedPromotionData.isPublic !== undefined
             ? (updatedPromotionData.isPublic === true || updatedPromotionData.isPublic === 1 || updatedPromotionData.isPublic === '1' || String(updatedPromotionData.isPublic).toLowerCase() === 'true')
             : oldIsPublic;
 
@@ -810,7 +810,7 @@ router.put('/:id', async (req, res) => {
             console.log(`   - Old isPublic: ${oldIsPublic}, New isPublic: ${newIsPublic}`);
             console.log(`   - Updated pointsRequired: ${updatedPromotionData.pointsRequired}`);
             console.log(`   - Existing pointsRequired: ${promotion.pointsRequired}`);
-            
+
             if (!updatedPromotionData.pointsRequired || updatedPromotionData.pointsRequired === null || updatedPromotionData.pointsRequired === '') {
                 // If pointsRequired is not provided, check if promotion already has a value
                 const existingPointsRequired = promotion.pointsRequired;
@@ -830,23 +830,23 @@ router.put('/:id', async (req, res) => {
         }
 
         // Check if this is a VIP tier voucher
-        const isVIPTierVoucher = promotion.targetAudience && 
+        const isVIPTierVoucher = promotion.targetAudience &&
             String(promotion.targetAudience).startsWith('Tier Level');
-        
+
         // If this is a VIP tier voucher and isActive is being set to true,
         // deactivate all other vouchers for the same tier
         if (isVIPTierVoucher) {
             const tierLevel = String(promotion.targetAudience).replace('Tier Level ', '');
             const targetAudience = `Tier Level ${tierLevel}`;
-            
+
             // Check if isActive is being set to true (or not being changed and is currently true)
-            const currentIsActive = promotion.isActive === true || promotion.isActive === 1 || 
+            const currentIsActive = promotion.isActive === true || promotion.isActive === 1 ||
                 String(promotion.isActive).toLowerCase() === 'true';
-            const newIsActive = updatedPromotionData.isActive !== undefined 
-                ? (updatedPromotionData.isActive === true || updatedPromotionData.isActive === 1 || 
-                   String(updatedPromotionData.isActive).toLowerCase() === 'true')
+            const newIsActive = updatedPromotionData.isActive !== undefined
+                ? (updatedPromotionData.isActive === true || updatedPromotionData.isActive === 1 ||
+                    String(updatedPromotionData.isActive).toLowerCase() === 'true')
                 : currentIsActive;
-            
+
             // If the voucher will be active after update, deactivate all other vouchers for this tier
             if (newIsActive) {
                 const deactivatedCount = await db.Promotion.update(
@@ -859,19 +859,19 @@ router.put('/:id', async (req, res) => {
                         }
                     }
                 );
-                
+
                 if (deactivatedCount[0] > 0) {
                     console.log(`🔄 [VIP VOUCHER UPDATE] Deactivated ${deactivatedCount[0]} existing voucher(s) for Tier Level ${tierLevel}`);
                 }
             }
         }
-        
+
         console.log('\n📝 [UPDATE PROMOTION] Updating promotion with data:', JSON.stringify(updatedPromotionData, null, 2));
         await promotion.update(updatedPromotionData);
 
         // Fetch updated promotion to return (reload from database to ensure correct values)
         const updatedPromotion = await db.Promotion.findByPk(id);
-        
+
         // Verify the update
         const verifyData = updatedPromotion.toJSON ? updatedPromotion.toJSON() : updatedPromotion;
         console.log(`✅ [UPDATE PROMOTION] Updated promotion ${id}:`);
@@ -947,7 +947,7 @@ router.post('/apply/:code', async (req, res) => {
         // Normalize isPublic để xác định loại voucher
         const normalizedIsPublic = promotion.isPublic === true || promotion.isPublic === 1 || promotion.isPublic === '1';
         const isRedeemedVoucher = !normalizedIsPublic; // Voucher đổi điểm (isPublic = false)
-        
+
         // QUAN TRỌNG: Kiểm tra stock CHỈ cho voucher public, KHÔNG kiểm tra cho voucher đổi điểm
         // Voucher đổi điểm: Chỉ cần kiểm tra xem user có unused PromotionUsage (appointmentId = null) không
         if (normalizedIsPublic) {
@@ -963,7 +963,7 @@ router.post('/apply/:code', async (req, res) => {
             console.log(`   ⚠️ [WARNING] userId is required for redeemed vouchers (isPublic = false)`);
             return res.status(400).json({ message: 'Cần thông tin người dùng để áp dụng voucher đổi điểm' });
         }
-        
+
         // Check if user has already used this promotion
         // QUAN TRỌNG: Chỉ reject nếu PromotionUsage có appointmentId != null (đã dùng)
         // Nếu appointmentId = null, nghĩa là voucher đổi điểm chưa dùng, vẫn cho phép áp dụng
@@ -971,8 +971,8 @@ router.post('/apply/:code', async (req, res) => {
             if (normalizedIsPublic) {
                 // Voucher public: Kiểm tra xem đã dùng chưa (có PromotionUsage với appointmentId != null)
                 const usedUsage = await db.PromotionUsage.findOne({
-                    where: { 
-                        userId, 
+                    where: {
+                        userId,
                         promotionId: promotion.id,
                         appointmentId: { [Op.ne]: null } // Đã được dùng (có appointmentId)
                     }
@@ -996,8 +996,8 @@ router.post('/apply/:code', async (req, res) => {
                 // Voucher đổi điểm (isPublic = false): Kiểm tra xem có voucher chưa dùng không
                 // QUAN TRỌNG: Chỉ cần kiểm tra unused PromotionUsage, KHÔNG cần kiểm tra stock
                 const unusedRedeemedUsages = await db.PromotionUsage.findAll({
-                    where: { 
-                        userId, 
+                    where: {
+                        userId,
                         promotionId: promotion.id,
                         appointmentId: { [Op.is]: null } // Chưa dùng (appointmentId = null)
                     }
@@ -1014,7 +1014,7 @@ router.post('/apply/:code', async (req, res) => {
                     console.log(`   ❌ [VALIDATION FAILED] No unused redeemed voucher found`);
                     return res.status(400).json({ message: 'Mã khuyến mãi này không còn khả dụng. Vui lòng chọn mã khác.' });
                 }
-                
+
                 console.log(`   ✅ [VALIDATION PASSED] Found ${unusedRedeemedUsages.length} unused voucher(s) - voucher có thể sử dụng!`);
                 console.log(`   ⚠️ IMPORTANT: NOT creating new PromotionUsage - only validating`);
                 console.log(`   ⚠️ IMPORTANT: Voucher sẽ được trừ khi đặt lịch thành công (trong POST /api/appointments)`);
@@ -1034,7 +1034,7 @@ router.post('/apply/:code', async (req, res) => {
         // PromotionUsage chỉ được tạo khi appointment được tạo thành công (trong POST /api/appointments)
         // Điều này ngăn voucher public xuất hiện ở "Voucher của tôi" khi chỉ chọn mà chưa đặt lịch
         // VÀ ngăn voucher đổi điểm tăng số lượng khi chỉ chọn mà chưa đặt lịch
-        
+
         console.log(`\n🔍 [POST /apply/${code}] Final validation summary:`);
         console.log(`   - userId: ${userId || 'NOT PROVIDED'}`);
         console.log(`   - appointmentId: ${appointmentId || 'undefined (validation only)'}`);
@@ -1045,13 +1045,13 @@ router.post('/apply/:code', async (req, res) => {
         console.log(`   - isRedeemedVoucher: ${isRedeemedVoucher}`);
         console.log(`   ⚠️ IMPORTANT: This route ONLY validates, does NOT create PromotionUsage`);
         console.log(`   ⚠️ PromotionUsage will be created/updated in POST /api/appointments when booking is confirmed`);
-        
+
         // KHÔNG trừ stock ở đây - stock sẽ được trừ khi tạo appointment thành công
         // KHÔNG tạo PromotionUsage ở đây - PromotionUsage sẽ được tạo khi tạo appointment thành công
 
         // Fetch promotion để trả về (không cần update vì chưa trừ stock)
         const updatedPromotion = await db.Promotion.findByPk(promotion.id);
-        
+
         console.log(`   ✅ [SUCCESS] All validations passed - returning success response`);
         console.log(`   ✅ Response: success=true, message='Áp dụng mã thành công'`);
 
@@ -1165,7 +1165,7 @@ router.get('/my-redeemed/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
 
-        console.log(`\n🔍 [GET /my-redeemed/${userId}] Fetching redeemed vouchers...`);
+        // console.log(`\n🔍 [GET /my-redeemed/${userId}] Fetching redeemed vouchers...`);
 
         // Get all PromotionUsage records for this user where appointmentId is null (unused redeemed vouchers)
         // QUAN TRỌNG: CHỈ lấy voucher đổi điểm (isPublic = false), KHÔNG lấy voucher public
@@ -1180,22 +1180,22 @@ router.get('/my-redeemed/:userId', async (req, res) => {
                 required: true // Inner join - only get vouchers that still exist
             }]
         });
-        
+
         // Filter để CHỈ lấy PromotionUsage của voucher đổi điểm (isPublic = false)
         const unusedRedeemedUsages = allUnusedUsages.filter(usage => {
             const promotion = usage.Promotion || (usage.get ? usage.get('Promotion') : null);
             if (!promotion) return false;
-            
+
             const promoData = promotion.toJSON ? promotion.toJSON() : promotion;
             const isPublicNormalized = promoData.isPublic === true || promoData.isPublic === 1 || promoData.isPublic === '1';
-            
+
             // CHỈ lấy voucher đổi điểm (isPublic = false)
             const isRedeemedVoucher = !isPublicNormalized;
-            
+
             if (!isRedeemedVoucher) {
                 console.log(`   ⚠️ Skipping public voucher PromotionUsage: ${promoData.code || promoData.id}, isPublic = ${promoData.isPublic}`);
             }
-            
+
             return isRedeemedVoucher;
         });
 
@@ -1238,13 +1238,13 @@ router.get('/my-redeemed/:userId', async (req, res) => {
         redeemedVouchers = redeemedVouchers.filter(v => {
             // Kiểm tra lại isPublic sau khi normalize
             const isPublicNormalized = v.isPublic === true || v.isPublic === 1 || v.isPublic === '1';
-            
+
             // CHỈ hiển thị voucher đổi điểm (isPublic = false), LOẠI BỎ voucher public
             if (isPublicNormalized) {
                 console.log(`   ⚠️ Filtering out public voucher ${v.code || v.id}: isPublic = ${v.isPublic} (raw), normalized = ${isPublicNormalized} (chỉ hiển thị voucher đổi điểm)`);
                 return false;
             }
-            
+
             // Nếu là voucher đổi điểm (isPublic = false) và có stock
             if (!isPublicNormalized && v.stock !== null) {
                 // Chỉ hiển thị nếu stock > 0
@@ -1253,16 +1253,16 @@ router.get('/my-redeemed/:userId', async (req, res) => {
                     return false;
                 }
             }
-            
+
             // CHỈ trả về voucher đổi điểm (isPublic = false)
             return !isPublicNormalized;
         });
 
-        console.log(`   ✅ Returning ${redeemedVouchers.length} unique redeemed vouchers (after stock filter)`);
-        redeemedVouchers.forEach(v => {
-            console.log(`      - ${v.code || v.id}: redeemedCount = ${v.redeemedCount}, stock = ${v.stock}`);
-        });
-        console.log(`🔍 [GET /my-redeemed/${userId}] ==========================================\n`);
+        // console.log(`   ✅ Returning ${redeemedVouchers.length} unique redeemed vouchers (after stock filter)`);
+        // redeemedVouchers.forEach(v => {
+        //     console.log(`      - ${v.code || v.id}: redeemedCount = ${v.redeemedCount}, stock = ${v.stock}`);
+        // });
+        // console.log(`🔍 [GET /my-redeemed/${userId}] ==========================================\n`);
 
         res.json(redeemedVouchers);
     } catch (error) {

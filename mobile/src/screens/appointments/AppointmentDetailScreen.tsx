@@ -126,11 +126,11 @@ export const AppointmentDetailScreen: React.FC<Props> = ({ route, navigation }) 
               <View style={styles.sessionProgress}>
                 <Text style={styles.sessionLabel}>Buổi {appointment.TreatmentSession.sessionNumber}/{appointment.TreatmentSession.TreatmentCourse.totalSessions}</Text>
                 <View style={styles.progressBar}>
-                  <View 
+                  <View
                     style={[
                       styles.progressFill,
                       { width: `${(appointment.TreatmentSession.TreatmentCourse.completedSessions / appointment.TreatmentSession.TreatmentCourse.totalSessions) * 100}%` }
-                    ]} 
+                    ]}
                   />
                 </View>
                 <Text style={styles.progressText}>
@@ -143,6 +143,35 @@ export const AppointmentDetailScreen: React.FC<Props> = ({ route, navigation }) 
             <>
               <Text style={styles.notesTitle}>Ghi chú</Text>
               <Text style={styles.notes}>{appointment.notes}</Text>
+            </>
+          )}
+
+          {/* Ghi chú buổi trước (nếu là buổi liệu trình) */}
+          {(appointment as any).TreatmentSession?.previousSessionNotes && (
+            <>
+              <Text style={styles.notesTitle}>📋 Ghi chú buổi trước</Text>
+              <View style={{ backgroundColor: '#eff6ff', padding: 12, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#3b82f6' }}>
+                {(appointment as any).TreatmentSession.previousSessionNotes.adminNotes && (
+                  <View style={{ marginBottom: 8 }}>
+                    <View style={{ backgroundColor: '#1e40af', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start' }}>
+                      <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>Admin</Text>
+                    </View>
+                    <Text style={[styles.notes, { marginTop: 4 }]}>
+                      {(appointment as any).TreatmentSession.previousSessionNotes.adminNotes}
+                    </Text>
+                  </View>
+                )}
+                {(appointment as any).TreatmentSession.previousSessionNotes.customerStatusNotes && (
+                  <View>
+                    <View style={{ backgroundColor: '#16a34a', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start' }}>
+                      <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>Khách hàng</Text>
+                    </View>
+                    <Text style={[styles.notes, { marginTop: 4 }]}>
+                      {(appointment as any).TreatmentSession.previousSessionNotes.customerStatusNotes}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </>
           )}
         </View>
@@ -223,9 +252,9 @@ export const AppointmentDetailScreen: React.FC<Props> = ({ route, navigation }) 
                 <Text style={styles.priceLabel}>Giá/buổi</Text>
                 <Text style={styles.priceValue}>
                   {formatCurrency(
-                    appointment.totalPrice || 
-                    appointment.price || 
-                    appointment.Service?.price || 
+                    appointment.totalPrice ||
+                    appointment.price ||
+                    appointment.Service?.price ||
                     0
                   )}
                 </Text>
@@ -236,7 +265,7 @@ export const AppointmentDetailScreen: React.FC<Props> = ({ route, navigation }) 
                 </Text>
                 <Text style={styles.totalPriceValue}>
                   {formatCurrency(
-                    (appointment.totalPrice || appointment.price || appointment.Service?.price || 0) * 
+                    (appointment.totalPrice || appointment.price || appointment.Service?.price || 0) *
                     appointment.TreatmentSession.TreatmentCourse.totalSessions
                   )}
                 </Text>
@@ -247,9 +276,9 @@ export const AppointmentDetailScreen: React.FC<Props> = ({ route, navigation }) 
               <Text style={styles.priceLabel}>Giá dịch vụ</Text>
               <Text style={styles.priceValue}>
                 {formatCurrency(
-                  appointment.totalPrice || 
-                  appointment.price || 
-                  appointment.Service?.price || 
+                  appointment.totalPrice ||
+                  appointment.price ||
+                  appointment.Service?.price ||
                   0
                 )}
               </Text>

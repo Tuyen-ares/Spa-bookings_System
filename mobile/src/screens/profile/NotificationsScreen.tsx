@@ -1,4 +1,4 @@
- import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,11 @@ import {
   Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { 
-  getNotifications, 
-  markNotificationAsRead, 
+import {
+  getNotifications,
+  markNotificationAsRead,
   markAllNotificationsAsRead,
-  getCurrentUser 
+  getCurrentUser
 } from '../../services/apiService';
 import { Notification } from '../../types';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
@@ -47,7 +47,7 @@ export const NotificationsScreen: React.FC<{ navigation: any }> = ({ navigation 
     if (!notification.isRead) {
       try {
         await markNotificationAsRead(notification.id);
-        setNotifications(prev => 
+        setNotifications(prev =>
           prev.map(n => n.id === notification.id ? { ...n, isRead: true } : n)
         );
         // Update polling service
@@ -92,7 +92,7 @@ export const NotificationsScreen: React.FC<{ navigation: any }> = ({ navigation 
     if (notification.title && (notification.title.includes('Voucher hạng') || notification.title.includes('Voucher VIP'))) {
       return 'gift';
     }
-    
+
     switch (notification.type) {
       case 'booking_confirmed':
       case 'appointment_confirmed':
@@ -128,7 +128,7 @@ export const NotificationsScreen: React.FC<{ navigation: any }> = ({ navigation 
     if (notification.title && (notification.title.includes('Voucher hạng') || notification.title.includes('Voucher VIP'))) {
       return { icon: '#9333ea', bg: '#f3e8ff' }; // Purple
     }
-    
+
     switch (notification.type) {
       case 'booking_confirmed':
       case 'appointment_confirmed':
@@ -156,7 +156,7 @@ export const NotificationsScreen: React.FC<{ navigation: any }> = ({ navigation 
     if (notification.title && (notification.title.includes('🎉') || notification.title.includes('🎁'))) {
       return notification.title;
     }
-    
+
     switch (notification.type) {
       case 'booking_confirmed':
       case 'appointment_confirmed':
@@ -199,7 +199,7 @@ export const NotificationsScreen: React.FC<{ navigation: any }> = ({ navigation 
     const colorConfig = getNotificationColor(item);
     const iconName = getNotificationIcon(item);
     const displayTitle = getNotificationTitle(item);
-    
+
     // Check if message contains cancellation reason
     const hasCancellationReason = item.type === 'booking_cancelled' || item.type === 'appointment_cancelled';
     const reasonMatch = item.message && item.message.includes('Lý do:');
@@ -213,10 +213,10 @@ export const NotificationsScreen: React.FC<{ navigation: any }> = ({ navigation 
         onPress={() => handleNotificationPress(item)}
       >
         <View style={[styles.iconContainer, { backgroundColor: colorConfig.bg }]}>
-          <Ionicons 
-            name={iconName as any} 
-            size={24} 
-            color={colorConfig.icon} 
+          <Ionicons
+            name={iconName as any}
+            size={24}
+            color={colorConfig.icon}
           />
         </View>
         <View style={styles.notificationContent}>
@@ -226,7 +226,7 @@ export const NotificationsScreen: React.FC<{ navigation: any }> = ({ navigation 
             </Text>
             {!item.isRead && <View style={styles.unreadDot} />}
           </View>
-          <Text style={styles.notificationMessage} numberOfLines={reasonMatch ? 3 : 2}>
+          <Text style={styles.notificationMessage}>
             {mainMessage}
           </Text>
           {cancellationReason && (
@@ -276,7 +276,7 @@ export const NotificationsScreen: React.FC<{ navigation: any }> = ({ navigation 
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadNotifications(); }} />
         }
         ListEmptyComponent={
-          <EmptyState 
+          <EmptyState
             icon="notifications-off-outline"
             title="Chưa có thông báo"
             message="Bạn sẽ nhận được thông báo về lịch hẹn và ưu đãi tại đây"
@@ -341,6 +341,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
     flexDirection: 'row',
+    minHeight: 80,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -388,8 +389,9 @@ const styles = StyleSheet.create({
   notificationMessage: {
     fontSize: 14,
     color: '#666',
-    lineHeight: 20,
-    marginBottom: 8
+    lineHeight: 21,
+    marginBottom: 8,
+    flexWrap: 'wrap'
   },
   notificationTime: {
     fontSize: 12,

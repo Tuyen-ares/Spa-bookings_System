@@ -55,15 +55,15 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
     loadData();
     loadUnreadCount();
-    
+
     // Subscribe to notification count updates
     const unsubscribe = notificationPolling.subscribe((count) => {
       setUnreadCount(count);
     });
-    
+
     // Start polling if not already started
     notificationPolling.start();
-    
+
     return () => {
       unsubscribe();
     };
@@ -161,167 +161,173 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
         style={styles.container}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-      {/* Hero Slider */}
-      <View style={styles.heroContainer}>
-        <ScrollView
-          ref={scrollViewRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-        >
-          {HERO_SLIDES.map((slide, index) => (
-            <View key={index} style={styles.slide}>
-              <Image source={{ uri: slide.image }} style={styles.slideImage} />
-              <View style={styles.slideOverlay}>
-                <Text style={styles.slideTitle}>{slide.title}</Text>
-                <Text style={styles.slideSubtitle}>{slide.subtitle}</Text>
-                <TouchableOpacity
-                  style={styles.slideButton}
-                  onPress={() => navigation.navigate('ServicesTab')}
-                >
-                  <Text style={styles.slideButtonText}>Khám Phá</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
-        </ScrollView>
-        
-        {/* Slide Indicators */}
-        <View style={styles.indicators}>
-          {HERO_SLIDES.map((_, index) => (
-            <View
-              key={index}
-              style={[
-                styles.indicator,
-                currentSlide === index && styles.activeIndicator,
-              ]}
-            />
-          ))}
-        </View>
-      </View>
-
-      {/* Featured Services */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Dịch Vụ Nổi Bật</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('ServicesTab')}>
-            <Text style={styles.seeAll}>Xem tất cả</Text>
-          </TouchableOpacity>
-        </View>
-        {services.length > 0 ? (
-          <ScrollView 
-            horizontal 
+        {/* Hero Slider */}
+        <View style={styles.heroContainer}>
+          <ScrollView
+            ref={scrollViewRef}
+            horizontal
+            pagingEnabled
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.servicesScrollContent}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
           >
-            {services.map((service) => (
-              <TouchableOpacity
-                key={service.id}
-                style={styles.serviceCard}
-                onPress={() => navigation.navigate('ServiceDetail', { id: service.id })}
-              >
-                <Image
-                  source={{ uri: getImageUrl(service.imageUrl) }}
-                  style={styles.serviceImage}
-                  onLoad={() => console.log('Image loaded successfully:', service.name)}
-                  onError={(error) => {
-                    console.log('Image load error for service:', service.id, service.name);
-                    console.log('Image URL:', getImageUrl(service.imageUrl));
-                  }}
-                  resizeMode="cover"
-                />
-                <View style={styles.serviceInfo}>
-                  <Text style={styles.serviceName} numberOfLines={2}>
-                    {service.name}
-                  </Text>
-                  <Text style={styles.servicePrice}>{formatCurrency(service.price)}</Text>
-                  <View style={styles.serviceRating}>
-                    <Ionicons name="star" size={14} color="#FFD700" />
-                    <Text style={styles.ratingText}>
-                      {service.averageRating?.toFixed(1) || '5.0'}
-                    </Text>
-                  </View>
+            {HERO_SLIDES.map((slide, index) => (
+              <View key={index} style={styles.slide}>
+                <Image source={{ uri: slide.image }} style={styles.slideImage} />
+                <View style={styles.slideOverlay}>
+                  <Text style={styles.slideTitle}>{slide.title}</Text>
+                  <Text style={styles.slideSubtitle}>{slide.subtitle}</Text>
+                  <TouchableOpacity
+                    style={styles.slideButton}
+                    onPress={() => navigation.navigate('ServicesTab')}
+                  >
+                    <Text style={styles.slideButtonText}>Khám Phá</Text>
+                  </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
+              </View>
             ))}
           </ScrollView>
-        ) : (
-          <View style={styles.emptyServices}>
-            <Ionicons name="flower-outline" size={48} color="#ccc" />
-            <Text style={styles.emptyText}>Chưa có dịch vụ nào</Text>
-          </View>
-        )}
-      </View>
 
-      {/* Promotions */}
-      {promotions.length > 0 && (
+          {/* Slide Indicators */}
+          <View style={styles.indicators}>
+            {HERO_SLIDES.map((_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.indicator,
+                  currentSlide === index && styles.activeIndicator,
+                ]}
+              />
+            ))}
+          </View>
+        </View>
+
+        {/* Featured Services */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Khuyến Mãi Hot</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('PromotionsTab')}>
+            <Text style={styles.sectionTitle}>Dịch Vụ Nổi Bật</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('ServicesTab')}>
               <Text style={styles.seeAll}>Xem tất cả</Text>
             </TouchableOpacity>
           </View>
-          {promotions.map((promo) => (
-            <View key={promo.id} style={styles.promoCard}>
-              <View style={styles.promoHeader}>
-                <Ionicons name="pricetag" size={24} color="#E91E63" />
-                <Text style={styles.promoCode}>{promo.code}</Text>
-              </View>
-              <Text style={styles.promoDescription}>{promo.description}</Text>
-              <View style={styles.promoFooter}>
-                <Text style={styles.promoDiscount}>
-                  {promo.discountType === 'percentage'
-                    ? `${promo.discountValue}%`
-                    : formatCurrency(promo.discountValue)}
-                </Text>
-                <Text style={styles.promoExpiry}>
-                  HSD: {new Date(promo.expiryDate).toLocaleDateString('vi-VN')}
-                </Text>
-              </View>
+          {services.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.servicesScrollContent}
+            >
+              {services.map((service) => (
+                <TouchableOpacity
+                  key={service.id}
+                  style={styles.serviceCard}
+                  onPress={() => navigation.navigate('ServiceDetail', { id: service.id })}
+                >
+                  <Image
+                    source={{ uri: getImageUrl(service.imageUrl) }}
+                    style={styles.serviceImage}
+                    onLoad={() => console.log('Image loaded successfully:', service.name)}
+                    onError={(error) => {
+                      console.log('Image load error for service:', service.id, service.name);
+                      console.log('Image URL:', getImageUrl(service.imageUrl));
+                    }}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.serviceInfo}>
+                    <Text style={styles.serviceName} numberOfLines={2}>
+                      {service.name}
+                    </Text>
+                    <Text style={styles.servicePrice}>{formatCurrency(service.price)}</Text>
+                    <View style={styles.serviceRating}>
+                      <Ionicons name="star" size={14} color="#FFD700" />
+                      <Text style={styles.ratingText}>
+                        {(
+                          typeof service.averageRating === 'number'
+                            ? service.averageRating
+                            : typeof service.rating === 'number'
+                              ? service.rating
+                              : 0
+                        ).toFixed(1)}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.emptyServices}>
+              <Ionicons name="flower-outline" size={48} color="#ccc" />
+              <Text style={styles.emptyText}>Chưa có dịch vụ nào</Text>
             </View>
-          ))}
+          )}
         </View>
-      )}
 
-      {/* Reviews */}
-      {reviews.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Đánh Giá Từ Khách Hàng</Text>
-          {reviews.map((review) => (
-            <View key={review.id} style={styles.reviewCard}>
-              <View style={styles.reviewHeader}>
-                <View style={styles.reviewAvatar}>
-                  <Ionicons name="person" size={24} color="#666" />
+        {/* Promotions */}
+        {promotions.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Khuyến Mãi Hot</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('PromotionsTab')}>
+                <Text style={styles.seeAll}>Xem tất cả</Text>
+              </TouchableOpacity>
+            </View>
+            {promotions.map((promo) => (
+              <View key={promo.id} style={styles.promoCard}>
+                <View style={styles.promoHeader}>
+                  <Ionicons name="pricetag" size={24} color="#E91E63" />
+                  <Text style={styles.promoCode}>{promo.code}</Text>
                 </View>
-                <View style={styles.reviewInfo}>
-                  <Text style={styles.reviewName}>
-                    {review.User?.name || 'Khách hàng'}
+                <Text style={styles.promoDescription}>{promo.description}</Text>
+                <View style={styles.promoFooter}>
+                  <Text style={styles.promoDiscount}>
+                    {promo.discountType === 'percentage'
+                      ? `${promo.discountValue}%`
+                      : formatCurrency(promo.discountValue)}
                   </Text>
-                  <View style={styles.reviewStars}>
-                    {[...Array(5)].map((_, i) => (
-                      <Ionicons
-                        key={i}
-                        name={i < review.rating ? 'star' : 'star-outline'}
-                        size={16}
-                        color="#FFD700"
-                      />
-                    ))}
+                  <Text style={styles.promoExpiry}>
+                    HSD: {new Date(promo.expiryDate).toLocaleDateString('vi-VN')}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Reviews */}
+        {reviews.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Đánh Giá Từ Khách Hàng</Text>
+            {reviews.map((review) => (
+              <View key={review.id} style={styles.reviewCard}>
+                <View style={styles.reviewHeader}>
+                  <View style={styles.reviewAvatar}>
+                    <Ionicons name="person" size={24} color="#666" />
+                  </View>
+                  <View style={styles.reviewInfo}>
+                    <Text style={styles.reviewName}>
+                      {review.User?.name || 'Khách hàng'}
+                    </Text>
+                    <View style={styles.reviewStars}>
+                      {[...Array(5)].map((_, i) => (
+                        <Ionicons
+                          key={i}
+                          name={i < review.rating ? 'star' : 'star-outline'}
+                          size={16}
+                          color="#FFD700"
+                        />
+                      ))}
+                    </View>
                   </View>
                 </View>
+                <Text style={styles.reviewComment}>{review.comment}</Text>
+                <Text style={styles.reviewDate}>
+                  {new Date(review.createdAt).toLocaleDateString('vi-VN')}
+                </Text>
               </View>
-              <Text style={styles.reviewComment}>{review.comment}</Text>
-              <Text style={styles.reviewDate}>
-                {new Date(review.createdAt).toLocaleDateString('vi-VN')}
-              </Text>
-            </View>
-          ))}
-        </View>
-      )}
-    </ScrollView>
-      
+            ))}
+          </View>
+        )}
+      </ScrollView>
+
       {/* Floating Chatbot Button */}
       <TouchableOpacity
         style={styles.floatingChatButton}

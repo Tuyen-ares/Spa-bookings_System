@@ -641,6 +641,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Nhân viên</th>
                                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Lịch hẹn</th>
                                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Trạng thái</th>
+                                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Ghi chú</th>
                                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Hành động</th>
                                 </tr>
                             </thead>
@@ -708,20 +709,16 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                                                 <td className="py-3 px-4 text-sm">
                                                     {getSessionStatusBadge(session.status)}
                                                 </td>
-                                                <td className="py-3 px-4 text-sm text-gray-600 max-w-xs">
-                                                    <div className="space-y-1">
-                                                        {session.customerStatusNotes && (
-                                                            <div className="truncate" title={session.customerStatusNotes}>
-                                                                <span className="text-xs text-gray-500">[Khách hàng]</span> {session.customerStatusNotes}
-                                                            </div>
-                                                        )}
+                                                <td className="py-3 px-4 text-sm text-gray-600">
+                                                    <div className="space-y-1 max-w-xs">
                                                         {session.adminNotes && (
-                                                            <div className="truncate text-blue-600" title={session.adminNotes}>
-                                                                <span className="text-xs text-blue-500">[Nội bộ]</span> {session.adminNotes}
+                                                            <div className="p-2 bg-blue-50 rounded border-l-2 border-blue-500">
+                                                                <span className="text-xs font-semibold text-blue-700">Ghi chú nội bộ:</span>
+                                                                <p className="text-xs text-gray-700 mt-1">{session.adminNotes}</p>
                                                             </div>
                                                         )}
-                                                        {!session.customerStatusNotes && !session.adminNotes && (
-                                                            <span className="text-gray-400">-</span>
+                                                        {!session.adminNotes && (
+                                                            <span className="text-gray-400 text-xs">-</span>
                                                         )}
                                                     </div>
                                                 </td>
@@ -813,6 +810,20 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
                             <h2 className="text-xl font-bold text-gray-900">
                                 Xác nhận hoàn thành buổi {selectedSession.sessionNumber}
                             </h2>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Ghi chú tình trạng
+                                </label>
+                                <textarea
+                                    value={completeForm.adminNotes}
+                                    onChange={(e) => setCompleteForm({ ...completeForm, adminNotes: e.target.value })}
+                                    placeholder="Ghi chú nội bộ về buổi điều trị, tình trạng xử lý, lưu ý cho các buổi sau..."
+                                    rows={4}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                                />
+                            </div>
                         </div>
                         <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
                             <button
@@ -1120,7 +1131,7 @@ const AdminTreatmentCourseDetailPage: React.FC = () => {
             <ConfirmDialog
                 isOpen={showCancelDialog}
                 title="⚠️ Hủy Liệu Trình"
-                message={`Bạn sắp hủy liệu trình "${course?.serviceName || 'N/A'}" với ${course?.totalSessions} buổi. Tất cả các lịch hẹn liên quan cũng sẽ bị hủy. Hành động này không thể hoàn tác.`}
+                message={`Bạn sắp hủy liệu trình "${(course as any).Service?.name || 'N/A'}" với ${course?.totalSessions} buổi. Tất cả các lịch hẹn liên quan cũng sẽ bị hủy. Hành động này không thể hoàn tác.`}
                 confirmText="Xác nhận hủy"
                 cancelText="Không, quay lại"
                 isDanger={true}

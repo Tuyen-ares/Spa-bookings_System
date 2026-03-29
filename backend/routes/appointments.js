@@ -13,20 +13,15 @@ const appointmentService = require('../services/appointmentService');
 /**
  * Helper function: Xác định paymentStatus của appointment dựa trên TreatmentCourse hoặc buổi 1
  * Logic: Nếu TreatmentCourse đã thanh toán HOẶC buổi 1 đã thanh toán → appointment = 'Paid'
+ * 
+ * OPTIMIZED: Tắt verbose logging để tăng performance
  */
 async function getAppointmentPaymentStatus(appointmentData) {
     try {
-        console.log(`\n🔍 [getAppointmentPaymentStatus] Checking appointment ${appointmentData.id}`);
-        console.log(`   Current paymentStatus: ${appointmentData.paymentStatus}`);
-        console.log(`   Has TreatmentSession: ${!!appointmentData.TreatmentSession}`);
-        console.log(`   Has bookingGroupId: ${!!appointmentData.bookingGroupId} (${appointmentData.bookingGroupId || 'N/A'})`);
-
         // Cách 1: Kiểm tra TreatmentCourse paymentStatus (nếu có trong query)
         if (appointmentData.TreatmentSession && appointmentData.TreatmentSession.TreatmentCourse) {
             const treatmentCourse = appointmentData.TreatmentSession.TreatmentCourse;
-            console.log(`   ✅ Found TreatmentCourse in query: ${treatmentCourse.id}, paymentStatus: ${treatmentCourse.paymentStatus}`);
             if (treatmentCourse.paymentStatus === 'Paid') {
-                console.log(`   ✅ TreatmentCourse is Paid → Returning 'Paid'`);
                 return 'Paid';
             }
         }
@@ -36,17 +31,11 @@ async function getAppointmentPaymentStatus(appointmentData) {
 
         // Ưu tiên lấy từ TreatmentSession.treatmentCourseId
         if (appointmentData.TreatmentSession) {
-            // Kiểm tra cả treatmentCourseId và TreatmentCourse.id
             if (appointmentData.TreatmentSession.treatmentCourseId) {
                 treatmentCourseId = appointmentData.TreatmentSession.treatmentCourseId;
-                console.log(`   ✅ Found treatmentCourseId from TreatmentSession.treatmentCourseId: ${treatmentCourseId}`);
             } else if (appointmentData.TreatmentSession.TreatmentCourse && appointmentData.TreatmentSession.TreatmentCourse.id) {
                 treatmentCourseId = appointmentData.TreatmentSession.TreatmentCourse.id;
-                console.log(`   ✅ Found treatmentCourseId from TreatmentSession.TreatmentCourse.id: ${treatmentCourseId}`);
             } else {
-                console.log(`   ⚠️ TreatmentSession exists but no treatmentCourseId field`);
-                console.log(`   TreatmentSession keys:`, Object.keys(appointmentData.TreatmentSession || {}));
-
                 // Fallback: Tìm lại TreatmentSession từ database để lấy treatmentCourseId
                 try {
                     const sessionFromDb = await db.TreatmentSession.findOne({
@@ -55,29 +44,24 @@ async function getAppointmentPaymentStatus(appointmentData) {
                     });
                     if (sessionFromDb && sessionFromDb.treatmentCourseId) {
                         treatmentCourseId = sessionFromDb.treatmentCourseId;
-                        console.log(`   ✅ Found treatmentCourseId from database lookup: ${treatmentCourseId}`);
                     }
                 } catch (dbError) {
-                    console.error(`   ⚠️ Error looking up TreatmentSession from database:`, dbError.message);
+                    // Silent fail
                 }
             }
         }
 
         // Fallback: Lấy từ bookingGroupId
         if (!treatmentCourseId && appointmentData.bookingGroupId) {
-            // bookingGroupId format: "group-tc-xxx" hoặc "group-xxx"
             let groupId = appointmentData.bookingGroupId;
             if (groupId.startsWith('group-')) {
                 groupId = groupId.replace('group-', '');
             }
-            // Giữ lại prefix 'tc-' nếu có, vì TreatmentCourse.id có format 'tc-xxx'
             if (groupId.startsWith('tc-')) {
-                treatmentCourseId = groupId; // Giữ nguyên 'tc-xxx'
+                treatmentCourseId = groupId;
             } else {
-                // Nếu không có prefix 'tc-', thêm prefix vào
                 treatmentCourseId = `tc-${groupId}`;
             }
-            console.log(`   ✅ Found treatmentCourseId from bookingGroupId: ${appointmentData.bookingGroupId} → ${treatmentCourseId}`);
         }
 
         if (treatmentCourseId) {
@@ -86,18 +70,11 @@ async function getAppointmentPaymentStatus(appointmentData) {
                 attributes: ['id', 'paymentStatus']
             });
 
-            if (treatmentCourse) {
-                console.log(`   ✅ Found TreatmentCourse ${treatmentCourse.id}, paymentStatus: ${treatmentCourse.paymentStatus}`);
-                if (treatmentCourse.paymentStatus === 'Paid') {
-                    console.log(`   ✅ TreatmentCourse is Paid → Returning 'Paid'`);
-                    return 'Paid';
-                }
-            } else {
-                console.log(`   ⚠️ TreatmentCourse ${treatmentCourseId} not found`);
+            if (treatmentCourse && treatmentCourse.paymentStatus === 'Paid') {
+                return 'Paid';
             }
 
             // Nếu TreatmentCourse chưa thanh toán, kiểm tra buổi 1
-            console.log(`   🔍 Checking session 1 payment status...`);
             const session1 = await db.TreatmentSession.findOne({
                 where: {
                     treatmentCourseId: treatmentCourseId,
@@ -107,34 +84,20 @@ async function getAppointmentPaymentStatus(appointmentData) {
             });
 
             if (session1 && session1.appointmentId) {
-                console.log(`   ✅ Found session 1, appointmentId: ${session1.appointmentId}`);
                 const appointment1 = await db.Appointment.findByPk(session1.appointmentId, {
                     attributes: ['paymentStatus']
                 });
 
-                if (appointment1) {
-                    console.log(`   ✅ Session 1 appointment paymentStatus: ${appointment1.paymentStatus}`);
-                    if (appointment1.paymentStatus === 'Paid') {
-                        console.log(`   ✅ Session 1 is Paid → Returning 'Paid'`);
-                        return 'Paid';
-                    }
-                } else {
-                    console.log(`   ⚠️ Session 1 appointment ${session1.appointmentId} not found`);
+                if (appointment1 && appointment1.paymentStatus === 'Paid') {
+                    return 'Paid';
                 }
-            } else {
-                console.log(`   ⚠️ Session 1 not found for treatmentCourseId ${treatmentCourseId}`);
             }
-        } else {
-            console.log(`   ⚠️ No treatmentCourseId found`);
         }
 
         // Trả về paymentStatus hiện tại của appointment
-        const finalStatus = appointmentData.paymentStatus || 'Unpaid';
-        console.log(`   ⚠️ Returning current paymentStatus: ${finalStatus}\n`);
-        return finalStatus;
+        return appointmentData.paymentStatus || 'Unpaid';
     } catch (error) {
         console.error(`❌ [getAppointmentPaymentStatus] Error for appointment ${appointmentData.id}:`, error.message);
-        console.error(`   Error stack:`, error.stack);
         return appointmentData.paymentStatus || 'Unpaid';
     }
 }
@@ -396,9 +359,50 @@ router.get('/', async (req, res) => {
             order: [['date', 'DESC'], ['time', 'ASC']]
         });
 
-        // Map appointments to include client info and treatment session
-        const mappedAppointments = await Promise.all(appointments.map(async (apt) => {
+        // OPTIMIZED: Batch query tất cả treatment courses và sessions để tránh n+1 query
+        const treatmentCourseIds = [];
+        appointments.forEach(apt => {
+            if (apt.TreatmentSession && apt.TreatmentSession.treatmentCourseId) {
+                treatmentCourseIds.push(apt.TreatmentSession.treatmentCourseId);
+            }
+        });
+
+        // Batch fetch tất cả treatment courses
+        const treatmentCoursesMap = new Map();
+        if (treatmentCourseIds.length > 0) {
+            const treatmentCourses = await db.TreatmentCourse.findAll({
+                where: { id: { [Op.in]: [...new Set(treatmentCourseIds)] } },
+                attributes: ['id', 'paymentStatus']
+            });
+            treatmentCourses.forEach(tc => treatmentCoursesMap.set(tc.id, tc));
+        }
+
+        // Batch fetch tất cả session 1 appointments
+        const session1AppointmentsMap = new Map();
+        if (treatmentCourseIds.length > 0) {
+            const sessions1 = await db.TreatmentSession.findAll({
+                where: {
+                    treatmentCourseId: { [Op.in]: [...new Set(treatmentCourseIds)] },
+                    sessionNumber: 1
+                },
+                attributes: ['treatmentCourseId', 'appointmentId'],
+                include: [{
+                    model: db.Appointment,
+                    as: 'Appointment',
+                    attributes: ['id', 'paymentStatus']
+                }]
+            });
+            sessions1.forEach(session => {
+                if (session.Appointment) {
+                    session1AppointmentsMap.set(session.treatmentCourseId, session.Appointment);
+                }
+            });
+        }
+
+        // Map appointments với cached data
+        const mappedAppointments = appointments.map(apt => {
             const appointmentData = apt.toJSON();
+
             // Ensure Client association is preserved
             if (appointmentData.Client) {
                 appointmentData.Client = {
@@ -409,27 +413,37 @@ router.get('/', async (req, res) => {
                 };
             }
 
-            // QUAN TRỌNG: Sử dụng helper function để xác định paymentStatus
-            const originalPaymentStatus = appointmentData.paymentStatus;
-            const finalPaymentStatus = await getAppointmentPaymentStatus(appointmentData);
-            appointmentData.paymentStatus = finalPaymentStatus;
+            // Tính toán paymentStatus từ cached data
+            let finalPaymentStatus = appointmentData.paymentStatus || 'Unpaid';
 
-            // Log nếu paymentStatus thay đổi
-            if (originalPaymentStatus !== finalPaymentStatus) {
-                console.log(`✅ [GET /api/appointments] Appointment ${appointmentData.id} paymentStatus changed: ${originalPaymentStatus} → ${finalPaymentStatus}`);
+            if (appointmentData.TreatmentSession && appointmentData.TreatmentSession.treatmentCourseId) {
+                const tcId = appointmentData.TreatmentSession.treatmentCourseId;
+                const treatmentCourse = treatmentCoursesMap.get(tcId);
+
+                // Nếu treatment course đã paid → appointment = paid
+                if (treatmentCourse && treatmentCourse.paymentStatus === 'Paid') {
+                    finalPaymentStatus = 'Paid';
+                } else {
+                    // Nếu session 1 đã paid → appointment = paid
+                    const session1Appointment = session1AppointmentsMap.get(tcId);
+                    if (session1Appointment && session1Appointment.paymentStatus === 'Paid') {
+                        finalPaymentStatus = 'Paid';
+                    }
+                }
             }
 
+            appointmentData.paymentStatus = finalPaymentStatus;
             return appointmentData;
-        }));
+        });
 
-        console.log('Appointments API - Fetched', mappedAppointments.length, 'appointments');
-        if (mappedAppointments.length > 0) {
-            console.log('Sample appointment:', {
-                id: mappedAppointments[0].id,
-                hasClient: !!mappedAppointments[0].Client,
-                status: mappedAppointments[0].status
-            });
-        }
+        // console.log('Appointments API - Fetched', mappedAppointments.length, 'appointments');
+        // if (mappedAppointments.length > 0) {
+        //     console.log('Sample appointment:', {
+        //         id: mappedAppointments[0].id,
+        //         hasClient: !!mappedAppointments[0].Client,
+        //         status: mappedAppointments[0].status
+        //     });
+        // }
 
         res.json(mappedAppointments);
     } catch (error) {
@@ -461,39 +475,47 @@ router.delete('/cancel-all/:appointmentId', async (req, res) => {
                 bookingGroupId: appointment.bookingGroupId,
                 serviceId: appointment.serviceId,
                 userId: appointment.userId,
-                status: { [db.sequelize.Sequelize.Op.ne]: 'cancelled' } // Exclude already cancelled
+                // Only cancel sessions that are not already cancelled or completed (keep past completed sessions)
+                status: { [Op.notIn]: ['cancelled', 'completed'] }
             },
             transaction
         });
 
         if (appointmentsToCancel.length === 0) {
+            // Nothing to cancel (all appointments already cancelled or none found)
             await transaction.rollback();
-            return res.status(404).json({ message: 'No appointments to cancel' });
+            return res.json({
+                message: 'No cancellable appointments (already completed or cancelled)',
+                cancelledCount: 0,
+                cancelledIds: []
+            });
         }
 
         // Cancel all appointments
         const cancelledIds = [];
+        const serviceName = (await db.Service.findByPk(appointment.serviceId))?.name || 'dịch vụ';
+
         for (const apt of appointmentsToCancel) {
             await apt.update({
                 status: 'cancelled',
                 rejectionReason: reason || 'Khách hàng yêu cầu hủy'
             }, { transaction });
             cancelledIds.push(apt.id);
+        }
 
-            // Create Notification for customer about cancellation
-            try {
-                await db.Notification.create({
-                    id: `noti-${require('uuid').v4()}`,
-                    userId: apt.userId,
-                    title: `Lịch hẹn bị hủy`,
-                    message: `Lịch hẹn ${(await db.Service.findByPk(apt.serviceId))?.name || 'dịch vụ'} vào ${apt.date} lúc ${apt.time} đã bị hủy.\nLý do hủy: ${apt.rejectionReason || reason || 'Không cung cấp.'}`,
-                    type: 'appointment_cancelled',
-                    isRead: false,
-                    createdAt: new Date()
-                }, { transaction });
-            } catch (e) {
-                console.warn('⚠️  Failed to create cancellation notification:', e.message);
-            }
+        // Create SINGLE notification for customer about cancellation of entire booking
+        try {
+            await db.Notification.create({
+                id: `noti-${require('uuid').v4()}`,
+                userId: appointment.userId,
+                title: `Lịch hẹn dịch vụ ${serviceName} bị hủy`,
+                message: `Dịch vụ ${serviceName} (${appointmentsToCancel.length} buổi) đã bị hủy.\nLý do hủy: ${reason || 'Không cung cấp.'}`,
+                type: 'appointment_cancelled',
+                isRead: false,
+                createdAt: new Date()
+            }, { transaction });
+        } catch (e) {
+            console.warn('⚠️  Failed to create cancellation notification:', e.message);
         }
 
         // If there's a treatment course, update its status
@@ -671,8 +693,48 @@ router.get('/user/:userId', async (req, res) => {
             order: [['date', 'DESC'], ['time', 'ASC']]
         });
 
-        // Map appointments to include client, therapist info, and treatment session
-        const mappedAppointments = await Promise.all(userAppointments.map(async (apt) => {
+        // OPTIMIZED: Batch query tất cả treatment courses và sessions để tránh n+1 query
+        const treatmentCourseIds = [];
+        userAppointments.forEach(apt => {
+            if (apt.TreatmentSession && apt.TreatmentSession.treatmentCourseId) {
+                treatmentCourseIds.push(apt.TreatmentSession.treatmentCourseId);
+            }
+        });
+
+        // Batch fetch tất cả treatment courses
+        const treatmentCoursesMap = new Map();
+        if (treatmentCourseIds.length > 0) {
+            const treatmentCourses = await db.TreatmentCourse.findAll({
+                where: { id: { [Op.in]: [...new Set(treatmentCourseIds)] } },
+                attributes: ['id', 'paymentStatus']
+            });
+            treatmentCourses.forEach(tc => treatmentCoursesMap.set(tc.id, tc));
+        }
+
+        // Batch fetch tất cả session 1 appointments
+        const session1AppointmentsMap = new Map();
+        if (treatmentCourseIds.length > 0) {
+            const sessions1 = await db.TreatmentSession.findAll({
+                where: {
+                    treatmentCourseId: { [Op.in]: [...new Set(treatmentCourseIds)] },
+                    sessionNumber: 1
+                },
+                attributes: ['treatmentCourseId', 'appointmentId'],
+                include: [{
+                    model: db.Appointment,
+                    as: 'Appointment',
+                    attributes: ['id', 'paymentStatus']
+                }]
+            });
+            sessions1.forEach(session => {
+                if (session.Appointment) {
+                    session1AppointmentsMap.set(session.treatmentCourseId, session.Appointment);
+                }
+            });
+        }
+
+        // Map appointments với cached data
+        const mappedAppointments = userAppointments.map(apt => {
             const appointmentData = apt.toJSON();
 
             // Map price from Service to top level for mobile app
@@ -696,79 +758,27 @@ router.get('/user/:userId', async (req, res) => {
                     phone: appointmentData.Therapist.phone
                 };
             }
-            // QUAN TRỌNG: Đồng bộ paymentStatus - Logic đơn giản: Nếu buổi 1 đã thanh toán, tất cả buổi khác cũng đã thanh toán
-            let treatmentCourse = null;
-            let sessionNumber = null;
 
-            if (appointmentData.TreatmentSession && appointmentData.TreatmentSession.TreatmentCourse) {
-                // Nếu có TreatmentSession và TreatmentCourse trong query
-                treatmentCourse = appointmentData.TreatmentSession.TreatmentCourse;
-                sessionNumber = appointmentData.TreatmentSession.sessionNumber;
-                appointmentData.TreatmentSession = {
-                    id: appointmentData.TreatmentSession.id,
-                    sessionNumber: appointmentData.TreatmentSession.sessionNumber,
-                    adminNotes: appointmentData.TreatmentSession.adminNotes,
-                    customerStatusNotes: appointmentData.TreatmentSession.customerStatusNotes,
-                    status: appointmentData.TreatmentSession.status,
-                    sessionDate: appointmentData.TreatmentSession.sessionDate,
-                    sessionTime: appointmentData.TreatmentSession.sessionTime,
-                    TreatmentCourse: treatmentCourse
-                };
-            } else {
-                // Fallback: Tìm TreatmentSession qua appointmentId
-                try {
-                    const treatmentSession = await db.TreatmentSession.findOne({
-                        where: { appointmentId: appointmentData.id },
-                        include: [{
-                            model: db.TreatmentCourse,
-                            as: 'TreatmentCourse',
-                            attributes: ['id', 'paymentStatus']
-                        }]
-                    });
+            // Tính toán paymentStatus từ cached data
+            let finalPaymentStatus = appointmentData.paymentStatus || 'Unpaid';
 
-                    if (treatmentSession && treatmentSession.TreatmentCourse) {
-                        treatmentCourse = treatmentSession.TreatmentCourse.toJSON();
-                        sessionNumber = treatmentSession.sessionNumber;
-                        appointmentData.TreatmentSession = {
-                            id: treatmentSession.id,
-                            sessionNumber: treatmentSession.sessionNumber,
-                            adminNotes: treatmentSession.adminNotes,
-                            customerStatusNotes: treatmentSession.customerStatusNotes,
-                            status: treatmentSession.status,
-                            sessionDate: treatmentSession.sessionDate,
-                            sessionTime: treatmentSession.sessionTime,
-                            TreatmentCourse: treatmentCourse
-                        };
-                    }
-                } catch (fallbackError) {
-                    console.error(`⚠️ [GET /api/appointments/user/:userId] Error finding TreatmentSession:`, fallbackError.message);
-                }
+            if (appointmentData.TreatmentSession && appointmentData.TreatmentSession.treatmentCourseId) {
+                const tcId = appointmentData.TreatmentSession.treatmentCourseId;
+                const treatmentCourse = treatmentCoursesMap.get(tcId);
 
-                // Fallback: Tìm TreatmentCourse qua bookingGroupId
-                if (!treatmentCourse && appointmentData.bookingGroupId) {
-                    try {
-                        const courseId = appointmentData.bookingGroupId.replace('group-', '');
-                        const foundCourse = await db.TreatmentCourse.findByPk(courseId, {
-                            attributes: ['id', 'paymentStatus']
-                        });
-                        if (foundCourse) {
-                            treatmentCourse = foundCourse.toJSON();
-                        }
-                    } catch (bookingGroupError) {
-                        // Ignore error
+                // Nếu treatment course đã paid → appointment = paid
+                if (treatmentCourse && treatmentCourse.paymentStatus === 'Paid') {
+                    finalPaymentStatus = 'Paid';
+                } else {
+                    // Nếu session 1 đã paid → appointment = paid
+                    const session1Appointment = session1AppointmentsMap.get(tcId);
+                    if (session1Appointment && session1Appointment.paymentStatus === 'Paid') {
+                        finalPaymentStatus = 'Paid';
                     }
                 }
             }
 
-            // QUAN TRỌNG: Sử dụng helper function để xác định paymentStatus
-            const originalPaymentStatus = appointmentData.paymentStatus;
-            const finalPaymentStatus = await getAppointmentPaymentStatus(appointmentData);
             appointmentData.paymentStatus = finalPaymentStatus;
-
-            // Log nếu paymentStatus thay đổi
-            if (originalPaymentStatus !== finalPaymentStatus) {
-                console.log(`✅ [GET /api/appointments/user/:userId] Appointment ${appointmentData.id} paymentStatus changed: ${originalPaymentStatus} → ${finalPaymentStatus}`);
-            }
 
             // Format date to YYYY-MM-DD string to avoid timezone issues
             if (appointmentData.date) {
@@ -783,7 +793,7 @@ router.get('/user/:userId', async (req, res) => {
             }
 
             return appointmentData;
-        }));
+        });
 
         console.log(`✅ Fetched ${mappedAppointments.length} appointments for user ${userId} (as client or therapist)`);
 
@@ -899,45 +909,81 @@ router.post('/', async (req, res) => {
         if (!service) return res.status(404).json({ message: 'Service not found' });
 
         // ==========================================
-        // VALIDATION: Kiểm tra xem user đã có liệu trình chưa hoàn tất cho dịch vụ này chưa
+        // VALIDATION: Kiểm tra liệu trình/đặt lịch đang tồn tại
+        // CHẶN nếu đã có lịch hẹn cho dịch vụ A với trạng thái đang tồn tại hoặc đã đặt:
+        //   'pending', 'scheduled', 'upcoming', 'in-progress', 'confirmed'
+        // CHO PHÉP nếu chỉ còn 'cancelled' hoặc course đã 'completed'/'cancelled'
         // ==========================================
         const bookingQuantity = newAppointmentData.quantity || 1;
         if (bookingQuantity >= 1 && finalUserId) {
-            // Chỉ kiểm tra nếu đặt với quantity >= 1 (tức là tạo treatment course)
+            console.log(`\n🔍 [TREATMENT COURSE CHECK] Checking for existing treatment courses...`);
+            console.log(`   User ID: ${finalUserId}`);
+            console.log(`   Service ID: ${newAppointmentData.serviceId}`);
+            console.log(`   Booking Quantity: ${bookingQuantity}`);
+
             const existingActiveCourse = await db.TreatmentCourse.findOne({
                 where: {
                     clientId: finalUserId,
                     serviceId: newAppointmentData.serviceId,
-                    status: {
-                        [Op.notIn]: ['completed', 'cancelled'] // Chưa hoàn tất hoặc chưa hủy
-                    }
+                    status: { [Op.notIn]: ['completed', 'cancelled'] }
                 },
                 include: [
-                    {
-                        model: db.Service,
-                        attributes: ['id', 'name']
-                    }
+                    { model: db.Service, attributes: ['id', 'name'] },
+                    { model: db.TreatmentSession, as: 'TreatmentSessions', attributes: ['appointmentId'], required: false },
                 ]
             });
 
+            console.log(`   Existing Active Course Found: ${existingActiveCourse ? 'YES' : 'NO'}`);
             if (existingActiveCourse) {
-                const serviceName = existingActiveCourse.Service?.name || existingActiveCourse.serviceName || 'dịch vụ này';
-                const completedSessions = existingActiveCourse.completedSessions || 0;
-                const totalSessions = existingActiveCourse.totalSessions || 0;
-                const progress = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0;
+                console.log(`   Course ID: ${existingActiveCourse.id}`);
+                console.log(`   Course Status: ${existingActiveCourse.status}`);
+                console.log(`   Course Progress: ${existingActiveCourse.completedSessions}/${existingActiveCourse.totalSessions}`);
+                console.log(`   Course Created: ${existingActiveCourse.createdAt}`);
+                console.log(`   Treatment Sessions: ${existingActiveCourse.TreatmentSessions?.length || 0}`);
+            }
 
-                console.log(`\n⚠️ [DUPLICATE SERVICE BOOKING] ==========================================`);
-                console.log(`   User ${finalUserId} đang cố đặt lại dịch vụ ${newAppointmentData.serviceId}`);
-                console.log(`   Đã tìm thấy liệu trình chưa hoàn tất:`);
-                console.log(`   - Course ID: ${existingActiveCourse.id}`);
-                console.log(`   - Service: ${serviceName}`);
-                console.log(`   - Status: ${existingActiveCourse.status}`);
-                console.log(`   - Tiến độ: ${completedSessions}/${totalSessions} buổi (${progress}%)`);
-                console.log(`⚠️ [DUPLICATE SERVICE BOOKING] ==========================================\n`);
+            if (existingActiveCourse) {
+                // Thu thập appointmentId liên quan tới course
+                const appointmentIds = (existingActiveCourse.TreatmentSessions || [])
+                    .map(s => s.appointmentId)
+                    .filter(id => id);
 
-                return res.status(400).json({
-                    message: `Bạn đang có liệu trình "${serviceName}" chưa hoàn tất (đã hoàn thành ${completedSessions}/${totalSessions} buổi). Vui lòng hoàn tất liệu trình hiện tại trước khi đặt lại dịch vụ này.`
-                });
+                console.log(`   Appointment IDs linked to course: [${appointmentIds.join(', ')}]`);
+
+                let hasActiveOrBookedAppointment = false;
+                if (appointmentIds.length > 0) {
+                    const matched = await db.Appointment.findOne({
+                        where: {
+                            id: { [Op.in]: appointmentIds },
+                            status: { [Op.in]: ['pending', 'scheduled', 'upcoming', 'in-progress', 'confirmed'] }
+                        }
+                    });
+                    hasActiveOrBookedAppointment = !!matched;
+
+                    if (matched) {
+                        console.log(`   ✅ Found active/booked appointment: ${matched.id} (status: ${matched.status})`);
+                    } else {
+                        console.log(`   ℹ️ No active/booked appointments found (all may be cancelled or completed)`);
+                    }
+                } else {
+                    console.log(`   ℹ️ No appointments linked to this course yet`);
+                }
+
+                if (hasActiveOrBookedAppointment) {
+                    const serviceName = existingActiveCourse.Service?.name || existingActiveCourse.serviceName || 'dịch vụ này';
+                    const completedSessions = existingActiveCourse.completedSessions || 0;
+                    const totalSessions = existingActiveCourse.totalSessions || 0;
+                    const progress = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0;
+
+                    console.log(`\n⚠️ [DUPLICATE SERVICE BOOKING] Course has active/booked appointment, block booking`);
+                    console.log(`   Course: ${existingActiveCourse.id} | Service: ${serviceName} | Progress: ${completedSessions}/${totalSessions} (${progress}%)`);
+
+                    return res.status(400).json({
+                        message: `Bạn đang có liệu trình "${serviceName}" chưa hoàn tất (đã hoàn thành ${completedSessions}/${totalSessions} buổi). Vui lòng hoàn tất liệu trình hiện tại trước khi đặt lại dịch vụ này.`
+                    });
+                } else {
+                    console.log(`ℹ️ [DUPLICATE SERVICE BOOKING] Course exists but no active/booked appointment → allow booking`);
+                }
             }
         }
 
@@ -1341,7 +1387,8 @@ router.post('/', async (req, res) => {
                     sessionNumber: i,
                     status: i === 1 ? 'scheduled' : 'scheduled', // First session is scheduled, others can be updated later
                     sessionDate: sessionDate.toISOString().split('T')[0],
-                    sessionTime: i === 1 ? newAppointmentData.time : '09:00', // First session uses appointment time
+                    // Keep the same time as the first booking for all sessions
+                    sessionTime: newAppointmentData.time,
                     staffId: finalTherapistId || null,
                 });
             }
@@ -2308,7 +2355,7 @@ router.put('/:id', async (req, res) => {
                     await db.Notification.create({
                         id: `notif-${uuidv4()}`,
                         userId: therapistId,
-                        type: 'appointment_assigned',
+                        type: 'appointment_confirmed',
                         title: 'Phân công lịch hẹn mới',
                         message: `Bạn được phân công lịch hẹn ${appointment.serviceName} vào ${new Date(appointmentDate).toLocaleDateString('vi-VN')} lúc ${appointmentTime}`,
                         relatedId: appointment.id,

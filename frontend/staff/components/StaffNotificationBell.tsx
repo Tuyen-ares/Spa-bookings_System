@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { InternalNotification, User } from '../../types';
 import * as apiService from '../../client/services/apiService';
-import { 
-    BellIcon, 
-    CalendarIcon, 
-    CheckCircleIcon, 
+import {
+    BellIcon,
+    CalendarIcon,
+    CheckCircleIcon,
     XCircleIcon,
     TrashIcon
 } from '../../shared/icons';
@@ -19,19 +19,19 @@ export const StaffNotificationBell: React.FC<StaffNotificationBellProps> = ({ cu
     const [isOpen, setIsOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
-    // Real-time polling
+    // Real-time polling - faster refresh for better UX
     useEffect(() => {
         if (currentUser) {
             loadNotifications();
             loadUnreadCount();
-            
+
             const interval = setInterval(() => {
                 loadUnreadCount();
                 if (isOpen) {
                     loadNotifications();
                 }
-            }, 10000); // Poll every 10s
-            
+            }, 5000); // Poll every 5s (faster for staff notifications)
+
             return () => clearInterval(interval);
         }
     }, [currentUser, isOpen]);
@@ -74,7 +74,7 @@ export const StaffNotificationBell: React.FC<StaffNotificationBellProps> = ({ cu
                 prev.map(notif => notif.id === id ? { ...notif, isRead: true } : notif)
             );
             setUnreadCount(prev => Math.max(0, prev - 1));
-            
+
             await apiService.markNotificationAsRead(id);
         } catch (error) {
             console.error('Error marking notification as read:', error);
@@ -105,7 +105,7 @@ export const StaffNotificationBell: React.FC<StaffNotificationBellProps> = ({ cu
         if (!dateStr) return '';
         const date = new Date(dateStr);
         if (isNaN(date.getTime())) return '';
-        
+
         const now = new Date();
         const diff = now.getTime() - date.getTime();
         const minutes = Math.floor(diff / 60000);
@@ -159,7 +159,7 @@ export const StaffNotificationBell: React.FC<StaffNotificationBellProps> = ({ cu
                 className="relative p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none rounded-full"
                 aria-label="Thông báo"
             >
-                <BellIcon className="h-6 w-6"/>
+                <BellIcon className="h-6 w-6" />
                 {unreadCount > 0 && (
                     <>
                         <span className="absolute top-0 right-0 h-2 w-2 mt-1 mr-2 bg-red-500 rounded-full"></span>
@@ -201,9 +201,8 @@ export const StaffNotificationBell: React.FC<StaffNotificationBellProps> = ({ cu
                                         <div
                                             key={notif.id}
                                             onClick={() => handleMarkRead(notif.id)}
-                                            className={`group relative p-4 transition-all duration-200 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer flex gap-4 ${
-                                                !notif.isRead ? 'bg-brand-primary/5 dark:bg-brand-primary/10' : 'bg-white dark:bg-gray-800'
-                                            }`}
+                                            className={`group relative p-4 transition-all duration-200 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer flex gap-4 ${!notif.isRead ? 'bg-brand-primary/5 dark:bg-brand-primary/10' : 'bg-white dark:bg-gray-800'
+                                                }`}
                                         >
                                             {/* Icon Box */}
                                             <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center ${style.bg} ${style.color}`}>
@@ -220,8 +219,8 @@ export const StaffNotificationBell: React.FC<StaffNotificationBellProps> = ({ cu
                                                         {formatTime(notif.date)}
                                                     </span>
                                                 </div>
-                                                
-                                                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-2">
+
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
                                                     {notif.message}
                                                 </p>
                                             </div>
@@ -231,7 +230,7 @@ export const StaffNotificationBell: React.FC<StaffNotificationBellProps> = ({ cu
                                                 {!notif.isRead && (
                                                     <span className="w-2 h-2 bg-brand-primary rounded-full mb-2"></span>
                                                 )}
-                                                
+
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();

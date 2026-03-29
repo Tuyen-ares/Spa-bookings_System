@@ -11,8 +11,10 @@ module.exports = {
     dialect: 'mysql',
     dialectOptions: {
       charset: 'utf8mb4',
-      collate: 'utf8mb4_unicode_ci'
+      collate: 'utf8mb4_unicode_ci',
+      timezone: '+07:00'
     },
+    timezone: '+07:00',
     logging: console.log
   },
   test: {
@@ -24,8 +26,10 @@ module.exports = {
     dialect: 'mysql',
     dialectOptions: {
       charset: 'utf8mb4',
-      collate: 'utf8mb4_unicode_ci'
+      collate: 'utf8mb4_unicode_ci',
+      timezone: '+07:00'
     },
+    timezone: '+07:00',
     logging: false
   },
   production: {
@@ -38,10 +42,12 @@ module.exports = {
     dialectOptions: {
       charset: 'utf8mb4',
       collate: 'utf8mb4_unicode_ci',
+      timezone: '+07:00',
       ssl: process.env.DB_SSL === 'true' ? {
         rejectUnauthorized: false
       } : false
     },
+    timezone: '+07:00',
     logging: false,
     pool: {
       max: 5,

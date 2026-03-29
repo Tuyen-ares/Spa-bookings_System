@@ -5,25 +5,25 @@ class ServiceController {
     async getAllServices(req, res) {
         try {
             const services = await serviceService.getAllServices();
-            console.log('Backend - getAllServices: Total services found:', services.length);
+            // console.log('Backend - getAllServices: Total services found:', services.length);
 
-            // Debug: Log services info
-            if (services.length > 0) {
-                services.forEach((service, index) => {
-                    console.log(`Service ${index + 1}:`, {
-                        id: service.id,
-                        name: service.name,
-                        price: service.price,
-                        discountPercent: service.discountPercent,
-                        discountPrice: service.discountPrice,
-                        isActive: service.isActive,
-                        categoryId: service.categoryId,
-                        hasImageUrl: !!service.imageUrl
-                    });
-                });
-            } else {
-                console.warn('Backend - No services found in database!');
-            }
+            // Debug: Log services info (DISABLED for production)
+            // if (services.length > 0) {
+            //     services.forEach((service, index) => {
+            //         console.log(`Service ${index + 1}:`, {
+            //             id: service.id,
+            //             name: service.name,
+            //             price: service.price,
+            //             discountPercent: service.discountPercent,
+            //             discountPrice: service.discountPrice,
+            //             isActive: service.isActive,
+            //             categoryId: service.categoryId,
+            //             hasImageUrl: !!service.imageUrl
+            //         });
+            //     });
+            // } else {
+            //     console.warn('Backend - No services found in database!');
+            // }
 
             res.json(services);
         } catch (error) {

@@ -50,8 +50,10 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
     const [selectedAppointmentDetail, setSelectedAppointmentDetail] = useState<Appointment | null>(null);
+    const [selectedAppointmentGroup, setSelectedAppointmentGroup] = useState<Appointment[]>([]); // For grouped appointments
     const handleAppointmentSelect = useCallback(async (appointment: Appointment) => {
         setSelectedAppointment(appointment);
+        setSelectedAppointmentGroup([]); // Reset group for single appointments
         // Fetch fresh appointment detail from API to get latest payment status
         try {
             setIsLoadingModalData(true);
@@ -89,6 +91,15 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     // New state for cancellation reason
     const [appointmentToCancel, setAppointmentToCancel] = useState<Appointment | null>(null);
     const [rejectionReason, setRejectionReason] = useState('');
+    const [cancellationReasons, setCancellationReasons] = useState<string[]>([
+        'Khách yêu cầu hủy',
+        'Khung giờ đã được đặt khác',
+        'Kỹ thuật viên không có lịch',
+        'Khách không liên lạc được',
+        'Lý do cá nhân của khách'
+    ]);
+    const [showAddReasonModal, setShowAddReasonModal] = useState(false);
+    const [newReasonText, setNewReasonText] = useState('');
 
     // State for cancel confirmation dialog
     const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -307,7 +318,9 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     });
 
     // State for selected services (for table display)
-    const [selectedServices, setSelectedServices] = useState<{ id: string; name: string; price: number; quantity: number; time: string }[]>([]);
+    const [selectedServices, setSelectedServices] = useState<{ id: string; name: string; price: number; quantity: number; date: string; time: string; therapistId?: string }[]>([]);
+    const [editingServiceIndex, setEditingServiceIndex] = useState<number | null>(null);
+    const [serviceEditDraft, setServiceEditDraft] = useState<{ serviceId: string; quantity: number; date: string; time: string; therapistId: string } | null>(null);
 
     // Time slot helpers (match client booking rules)
     const WORKING_START_MINUTES = 9 * 60; // 09:00
@@ -341,9 +354,16 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         return duration * (quantity || 1);
     }, [localServices]);
 
+    // Base duration per service (ignore quantity) for time-block calculations
+    const getServiceBaseDuration = useCallback((serviceId: string): number => {
+        const service = localServices.find(s => s.id === serviceId);
+        return service?.duration || 0;
+    }, [localServices]);
+
     const getAppointmentServiceDuration = useCallback((appointment: Appointment): number => {
-        return getServiceDuration(appointment.serviceId, appointment.quantity || 1);
-    }, [getServiceDuration]);
+        // Use base duration when checking overlaps; quantity should not extend a single session's occupied time
+        return getServiceBaseDuration(appointment.serviceId);
+    }, [getServiceBaseDuration]);
 
     const primaryServiceSelection = useMemo(() => {
         if (selectedServices.length > 0) {
@@ -470,8 +490,8 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         };
 
         const isTimeSlotBlocked = (time: string) => {
-            // Get current service duration being selected
-            const currentServiceDuration = newAppointmentForm.serviceId ? getServiceDuration(newAppointmentForm.serviceId, newAppointmentForm.serviceQuantity || 1) : 0;
+            // Use base duration (ignore quantity) when blocking slots
+            const currentServiceDuration = newAppointmentForm.serviceId ? getServiceBaseDuration(newAppointmentForm.serviceId) : 0;
 
             const newStart = timeToMinutes(time);
             const newEnd = newStart + currentServiceDuration;
@@ -492,7 +512,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             // Check against already selected services (not yet saved)
             // This should ALWAYS run to prevent selecting conflicting time slots
             return selectedServices.some(service => {
-                const serviceDuration = getServiceDuration(service.id, service.quantity);
+                const serviceDuration = getServiceBaseDuration(service.id);
                 const serviceStart = timeToMinutes(service.time);
                 const serviceEnd = serviceStart + serviceDuration;
 
@@ -508,7 +528,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         };
 
         const isTimeSlotValidForMinimumGap = (time: string) => {
-            const currentServiceDuration = newAppointmentForm.serviceId ? getServiceDuration(newAppointmentForm.serviceId, newAppointmentForm.serviceQuantity || 1) : 0;
+            const currentServiceDuration = newAppointmentForm.serviceId ? getServiceBaseDuration(newAppointmentForm.serviceId) : 0;
 
             // If no appointments and no selected services, all times valid
             if (appointmentsOnDate.length === 0 && selectedServices.length === 0) return true;
@@ -517,7 +537,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             if (currentServiceDuration === 0 && selectedServices.length > 0) {
                 const newStart = timeToMinutes(time);
                 return !selectedServices.some(service => {
-                    const serviceDuration = getServiceDuration(service.id, service.quantity);
+                    const serviceDuration = getServiceBaseDuration(service.id);
                     const serviceStart = timeToMinutes(service.time);
                     const serviceEnd = serviceStart + serviceDuration;
                     // Block if this slot is within the service's time range
@@ -554,7 +574,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
 
             // Check against selected services
             return selectedServices.every(service => {
-                const serviceDuration = getServiceDuration(service.id, service.quantity);
+                const serviceDuration = getServiceBaseDuration(service.id);
                 const serviceStart = timeToMinutes(service.time);
                 const serviceEnd = serviceStart + serviceDuration;
 
@@ -614,6 +634,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
         newAppointmentForm.serviceQuantity,
         primaryServiceDuration,
         getAppointmentServiceDuration,
+        getServiceBaseDuration,
         courseMinAllowedDateTime,
         selectedServices,
         totalSelectedServicesDuration,
@@ -691,17 +712,18 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             fetchAppointments();
         }
 
-        // Listen for refresh events
-        const handleRefresh = () => {
-            fetchAppointments();
-        };
-        window.addEventListener('refresh-appointments', handleRefresh);
-        window.addEventListener('appointments-updated', handleRefresh);
+        // Note: Real-time event listeners disabled to avoid stale data issues
+        // Using hard page reload after delete/cancel operations instead
+        // const handleRefresh = () => {
+        //     fetchAppointments();
+        // };
+        // window.addEventListener('refresh-appointments', handleRefresh);
+        // window.addEventListener('appointments-updated', handleRefresh);
 
-        return () => {
-            window.removeEventListener('refresh-appointments', handleRefresh);
-            window.removeEventListener('appointments-updated', handleRefresh);
-        };
+        // return () => {
+        //     window.removeEventListener('refresh-appointments', handleRefresh);
+        //     window.removeEventListener('appointments-updated', handleRefresh);
+        // };
     }, []);
 
     // Handle confirm appointment
@@ -764,28 +786,17 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 rejectionReason
             );
 
-            // Update local state
-            setAppointments(prev =>
-                prev.map(apt =>
-                    result.cancelledIds.includes(apt.id)
-                        ? { ...apt, status: 'cancelled' as const, rejectionReason: rejectionReason }
-                        : apt
-                )
-            );
-
             setShowCancelDialog(false);
             setAppointmentToCancel(null);
             setRejectionReason('');
 
             alert(`Đã hủy ${result.cancelledCount} lịch hẹn thành công!`);
 
+            // Hard refresh the page after successful cancellation
+            // This ensures the pending appointments list is completely updated
             setTimeout(() => {
-                const fetchLatest = async () => {
-                    const data = await apiService.getAppointments();
-                    setAppointments(data);
-                };
-                fetchLatest();
-            }, 300);
+                window.location.reload();
+            }, 500);
         } catch (error) {
             console.error('Error cancelling appointments:', error);
             alert('Có lỗi xảy ra khi hủy lịch hẹn');
@@ -1077,9 +1088,35 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
     }, [newAppointmentForm.customerSearch, allCustomersForModal]);
 
     // Get pending appointments for "Lịch hẹn chưa xác nhận" tab
+    // Group by bookingGroupId: each group shows as 1 item
     const pendingAppointments = useMemo(() => {
         return appointments.filter(app => app.status === 'pending');
     }, [appointments]);
+
+    // Group pending appointments by bookingGroupId
+    const groupedPendingAppointments = useMemo(() => {
+        const grouped = new Map<string, Appointment[]>();
+
+        pendingAppointments.forEach(app => {
+            const groupId = app.bookingGroupId || app.id; // Fallback to appointment id if no bookingGroupId
+
+            if (!grouped.has(groupId)) {
+                grouped.set(groupId, []);
+            }
+            grouped.get(groupId)!.push(app);
+        });
+
+        // Sort appointments within each group by date and time
+        grouped.forEach((apps, groupId) => {
+            apps.sort((a, b) => {
+                const dateCompare = a.date.localeCompare(b.date);
+                if (dateCompare !== 0) return dateCompare;
+                return a.time.localeCompare(b.time);
+            });
+        });
+
+        return grouped;
+    }, [pendingAppointments]);
 
     // Helper function to filter week appointments
     const filterWeekAppointments = (
@@ -1183,28 +1220,94 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             return;
         }
 
+        if (!newAppointmentForm.therapistId) {
+            alert('Vui lòng chọn nhân viên cho dịch vụ này');
+            return;
+        }
+
         const service = localServices.find(s => s.id === newAppointmentForm.serviceId);
         if (!service) return;
 
         const quantity = newAppointmentForm.serviceQuantity || 1;
 
-        // Check if service already in table
-        if (selectedServices.find(s => s.id === service.id)) {
-            setSelectedServices(prev => prev.map(s =>
-                s.id === service.id ? { ...s, quantity: s.quantity + quantity } : s
-            ));
-        } else {
-            setSelectedServices(prev => [...prev, {
+        // Add as a distinct row (allow different times/therapists per service)
+        setSelectedServices(prev => ([
+            ...prev,
+            {
                 id: service.id,
                 name: service.name,
                 price: service.price || 0,
-                quantity: quantity,
+                quantity,
+                date: newAppointmentForm.date,
                 time: newAppointmentForm.time,
-            }]);
-        }
+                therapistId: newAppointmentForm.therapistId,
+            }
+        ]));
 
         // Reset service selection AND time (to force recalculation with new services)
-        setNewAppointmentForm(prev => ({ ...prev, serviceId: '', serviceQuantity: 1, time: '' }));
+        setNewAppointmentForm(prev => ({ ...prev, serviceId: '', serviceQuantity: 1, time: '', therapistId: '' }));
+    };
+
+    const startEditService = (index: number) => {
+        const target = selectedServices[index];
+        if (!target) return;
+        setEditingServiceIndex(index);
+        setServiceEditDraft({
+            serviceId: target.id,
+            quantity: target.quantity,
+            date: target.date,
+            time: target.time,
+            therapistId: target.therapistId || '',
+        });
+    };
+
+    const cancelEditService = () => {
+        setEditingServiceIndex(null);
+        setServiceEditDraft(null);
+    };
+
+    const saveEditService = () => {
+        if (editingServiceIndex === null || !serviceEditDraft) return;
+        if (!serviceEditDraft.serviceId) {
+            alert('Vui lòng chọn dịch vụ');
+            return;
+        }
+        if (!serviceEditDraft.date) {
+            alert('Vui lòng chọn ngày');
+            return;
+        }
+        if (!serviceEditDraft.time) {
+            alert('Vui lòng chọn khung giờ');
+            return;
+        }
+        if (!serviceEditDraft.therapistId) {
+            alert('Vui lòng chọn nhân viên');
+            return;
+        }
+
+        // Prevent conflicts with other services/appointments
+        const conflict = hasServiceSlotConflict(serviceEditDraft.serviceId, serviceEditDraft.time, editingServiceIndex);
+        if (conflict) {
+            alert('Khung giờ này đang trùng với dịch vụ khác hoặc lịch đã có. Vui lòng chọn giờ khác.');
+            return;
+        }
+
+        setSelectedServices(prev => prev.map((svc, idx) =>
+            idx === editingServiceIndex
+                ? {
+                    ...svc,
+                    id: serviceEditDraft.serviceId,
+                    name: localServices.find(s => s.id === serviceEditDraft.serviceId)?.name || svc.name,
+                    price: localServices.find(s => s.id === serviceEditDraft.serviceId)?.price || svc.price,
+                    quantity: serviceEditDraft.quantity,
+                    date: serviceEditDraft.date,
+                    time: serviceEditDraft.time,
+                    therapistId: serviceEditDraft.therapistId,
+                }
+                : svc
+        ));
+
+        cancelEditService();
     };
 
     // Helper: Check if therapist has time conflict (client-side validation)
@@ -1246,6 +1349,66 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
 
         return { hasConflict: false };
     };
+
+    // Check slot conflict for a specific service/time against existing appointments and other selected services
+    const hasServiceSlotConflict = useCallback((serviceId: string, slot: string, ignoreIndex: number | null = null): boolean => {
+        const dateIso = parseDDMMYYYYToYYYYMMDD(newAppointmentForm.date || '');
+        if (!dateIso || !slot) return false;
+
+        const duration = getServiceBaseDuration(serviceId);
+        if (duration <= 0) return false;
+
+        const newStart = timeToMinutes(slot);
+        const newEnd = newStart + duration;
+
+        const selectedCustomerId = newAppointmentForm.selectedCustomerId;
+        const appointmentsOnDate = appointments.filter(apt => apt.userId === selectedCustomerId && apt.status !== 'cancelled' && apt.date === dateIso);
+
+        // Compare with existing appointments in DB
+        if (appointmentsOnDate.some(apt => {
+            const existingDuration = getAppointmentServiceDuration(apt);
+            const existingStart = timeToMinutes(apt.time || '00:00');
+            const existingEnd = existingStart + existingDuration;
+            return newStart < existingEnd && newEnd > existingStart;
+        })) {
+            return true;
+        }
+
+        // Compare with other selected services
+        const others = selectedServices.filter((_, idx) => idx !== ignoreIndex);
+        if (others.some(svc => {
+            if (!svc.time) return false;
+            const svcDuration = getServiceBaseDuration(svc.id);
+            const svcStart = timeToMinutes(svc.time);
+            const svcEnd = svcStart + svcDuration;
+            return newStart < svcEnd && newEnd > svcStart;
+        })) {
+            return true;
+        }
+
+        return false;
+    }, [appointments, newAppointmentForm.date, newAppointmentForm.selectedCustomerId, selectedServices, getAppointmentServiceDuration, getServiceBaseDuration]);
+
+    // Build available slots for editing a service row, respecting conflicts
+    const getAvailableSlotsForService = useCallback((serviceId: string, ignoreIndex: number | null = null): string[] => {
+        const dateIso = parseDDMMYYYYToYYYYMMDD(newAppointmentForm.date || '');
+        const slots = [...generateTimeSlots];
+        if (!dateIso) return slots;
+
+        const todayIso = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const nowMinutes = timeToMinutes(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+
+        return slots.filter(slot => {
+            const slotMinutes = timeToMinutes(slot);
+            if (dateIso === todayIso && slotMinutes <= nowMinutes) return false;
+            if (courseMinAllowedDateTime) {
+                const slotDateTime = new Date(`${dateIso}T${slot}:00`);
+                if (slotDateTime < courseMinAllowedDateTime) return false;
+            }
+            return !hasServiceSlotConflict(serviceId, slot, ignoreIndex);
+        });
+    }, [generateTimeSlots, newAppointmentForm.date, hasServiceSlotConflict, courseMinAllowedDateTime]);
 
     // Get available staff for selected date
     const availableStaff = useMemo(() => {
@@ -1309,20 +1472,26 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 return;
             }
 
-            if (!newAppointmentForm.time) {
-                alert('Vui lòng chọn giờ hẹn hợp lệ');
-                return;
-            }
-
             if (selectedServices.length === 0) {
                 console.error('No services selected:', selectedServices);
                 alert('Vui lòng chọn ít nhất một dịch vụ');
                 return;
             }
 
-            if (!newAppointmentForm.therapistId) {
-                alert('Vui lòng chọn nhân viên');
-                return;
+            // Ensure each service has date, time & therapist
+            for (const svc of selectedServices) {
+                if (!svc.date) {
+                    alert(`Dịch vụ ${svc.name} chưa có ngày thực hiện`);
+                    return;
+                }
+                if (!svc.time) {
+                    alert(`Dịch vụ ${svc.name} chưa có thời gian thực hiện`);
+                    return;
+                }
+                if (!svc.therapistId) {
+                    alert(`Dịch vụ ${svc.name} chưa chọn nhân viên thực hiện`);
+                    return;
+                }
             }
 
             // Client-side validation: Check therapist time conflict BEFORE creating appointment
@@ -1332,14 +1501,16 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                 return;
             }
 
-            // Check conflict for each service to ensure no overlap
+            // Check conflict for each service to ensure no overlap per assigned therapist
             for (const serviceItem of selectedServices) {
                 const service = localServices.find(s => s.id === serviceItem.id);
-                if (service) {
+                if (service && serviceItem.therapistId) {
+                    const serviceDate = parseDDMMYYYYToYYYYMMDD(serviceItem.date);
+                    if (!serviceDate) continue;
                     const conflict = hasTherapistTimeConflict(
-                        newAppointmentForm.therapistId,
-                        selectedDate,
-                        newAppointmentForm.time,
+                        serviceItem.therapistId,
+                        serviceDate,
+                        serviceItem.time,
                         service.duration || 60
                     );
 
@@ -1349,16 +1520,6 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                     }
                 }
             }
-
-            // Get therapist name
-            const selectedTherapist = localUsers.find(u => u.id === newAppointmentForm.therapistId);
-            if (!selectedTherapist) {
-                alert('Nhân viên không hợp lệ');
-                return;
-            }
-
-            // Get time from form
-            const appointmentTime = newAppointmentForm.time || '09:00';
 
             // Create appointments for each selected service/treatment course
             const appointmentsToCreate = [];
@@ -1381,11 +1542,11 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                         customerName: newAppointmentForm.customerName,
                         phone: newAppointmentForm.customerPhone,
                         email: newAppointmentForm.customerEmail || undefined,
-                        date: selectedDate,
-                        time: appointmentTime,
+                        date: parseDDMMYYYYToYYYYMMDD(serviceItem.date) || selectedDate,
+                        time: serviceItem.time,
                         serviceId: service.id,
                         serviceName: service.name,
-                        therapistId: newAppointmentForm.therapistId,
+                        therapistId: serviceItem.therapistId,
                         notesForTherapist: newAppointmentForm.notes || '',
                         status: 'upcoming' as const,
                         quantity: serviceItem.quantity || 1, // Default to 1 if not specified
@@ -1997,28 +2158,47 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             return <p className="text-center text-gray-500 py-8">Không có lịch hẹn chưa xác nhận.</p>;
         }
 
+        // Convert Map to Array for rendering
+        const groupedArray = Array.from(groupedPendingAppointments.entries());
+
         return (
             <div className="space-y-4">
-                {pendingAppointments.map(app => {
+                {groupedArray.map(([groupId, appointmentsInGroup]) => {
+                    // Use first appointment as representative
+                    const firstApp = appointmentsInGroup[0];
+                    const totalSessions = appointmentsInGroup.length;
+
                     // Try to get client from appointment's Client association first, then fallback to localUsers/allUsers
-                    const client = app.Client || localUsers.find(u => u.id === app.userId) || allUsers.find(u => u.id === app.userId);
-                    const clientName = client?.name || (app as any).userName || 'N/A';
-                    const clientPhone = client?.phone || (app as any).customerPhone;
+                    const client = firstApp.Client || localUsers.find(u => u.id === firstApp.userId) || allUsers.find(u => u.id === firstApp.userId);
+                    const clientName = client?.name || (firstApp as any).userName || 'N/A';
+                    const clientPhone = client?.phone || (firstApp as any).customerPhone;
+
+                    // Get date range if multiple sessions
+                    const firstDate = new Date(appointmentsInGroup[0].date);
+                    const lastDate = new Date(appointmentsInGroup[appointmentsInGroup.length - 1].date);
+                    const dateRangeText = totalSessions > 1
+                        ? `${firstDate.toLocaleDateString('vi-VN')} - ${lastDate.toLocaleDateString('vi-VN')}`
+                        : firstDate.toLocaleDateString('vi-VN');
 
                     return (
                         <div
-                            key={app.id}
+                            key={groupId}
                             className="bg-white p-4 rounded-lg shadow-sm border border-yellow-200 hover:shadow-md transition-shadow"
                         >
                             <div className="flex justify-between items-start">
                                 <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-2">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${STATUS_CONFIG[app.status].bgColor} ${STATUS_CONFIG[app.status].color}`}>
-                                            {STATUS_CONFIG[app.status].text}
+                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${STATUS_CONFIG[firstApp.status].bgColor} ${STATUS_CONFIG[firstApp.status].color}`}>
+                                            {STATUS_CONFIG[firstApp.status].text}
                                         </span>
                                         <span className="text-sm text-gray-500">
-                                            {new Date(app.date).toLocaleDateString('vi-VN')} - {app.time}
+                                            {dateRangeText}
                                         </span>
+                                        {totalSessions > 1 && (
+                                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
+                                                {totalSessions} buổi
+                                            </span>
+                                        )}
                                     </div>
 
                                     <div className="space-y-1">
@@ -2032,11 +2212,16 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                             </p>
                                         )}
                                         <p className="text-sm text-gray-600">
-                                            <span className="text-gray-500">Dịch vụ:</span> {app.serviceName}
+                                            <span className="text-gray-500">Dịch vụ:</span> {firstApp.serviceName}
                                         </p>
-                                        {app.notesForTherapist && (
+                                        {totalSessions > 1 && (
+                                            <p className="text-sm text-blue-600 font-medium">
+                                                Liệu trình {totalSessions} buổi
+                                            </p>
+                                        )}
+                                        {firstApp.notesForTherapist && (
                                             <p className="text-sm text-gray-500 italic mt-2">
-                                                Ghi chú: {app.notesForTherapist}
+                                                Ghi chú: {firstApp.notesForTherapist}
                                             </p>
                                         )}
                                     </div>
@@ -2045,21 +2230,29 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                 <div className="flex gap-2 ml-4">
                                     <button
                                         onClick={() => {
-                                            setAppointmentToApprove(app);
-                                            setSelectedTherapistId(app.therapistId || '');
+                                            // For grouped appointments, set all appointments in the modal
+                                            setAppointmentToApprove(firstApp);
+                                            setSelectedTherapistId(firstApp.therapistId || '');
                                         }}
                                         className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 text-sm font-semibold transition-colors"
                                     >
                                         Xác nhận
                                     </button>
                                     <button
-                                        onClick={() => { setAppointmentToCancel(app); }}
+                                        onClick={() => {
+                                            // For grouped appointments, pass first appointment but modal will handle all
+                                            setAppointmentToCancel(firstApp);
+                                        }}
                                         className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold transition-colors"
                                     >
                                         Từ chối
                                     </button>
                                     <button
-                                        onClick={() => handleAppointmentSelect(app)}
+                                        onClick={() => {
+                                            // Show detail modal for all appointments in group
+                                            setSelectedAppointment(firstApp);
+                                            setSelectedAppointmentGroup(appointmentsInGroup);
+                                        }}
                                         className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-semibold transition-colors"
                                     >
                                         Chi tiết
@@ -2253,8 +2446,12 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
             )}
 
             {selectedAppointment && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setSelectedAppointment(null); setSelectedAppointmentDetail(null); }}>
-                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full" onClick={e => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => {
+                    setSelectedAppointment(null);
+                    setSelectedAppointmentDetail(null);
+                    setSelectedAppointmentGroup([]);
+                }}>
+                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         <div className="p-6">
                             <h3 className="text-xl font-bold text-gray-800 mb-4">Chi tiết lịch hẹn</h3>
                             {isLoadingModalData ? (
@@ -2263,27 +2460,14 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                     <p className="mt-2 text-gray-600">Đang tải...</p>
                                 </div>
                             ) : (() => {
+                                // Check if we have grouped appointments
+                                const hasGroup = selectedAppointmentGroup.length > 1;
+
                                 // Use selectedAppointmentDetail if available, otherwise fallback to selectedAppointment
                                 const appointmentToDisplay = selectedAppointmentDetail || selectedAppointment;
 
                                 // Combine allUsers and localUsers for lookup - prioritize localUsers
                                 const allUsersList = [...localUsers, ...allUsers.filter(u => !localUsers.find(lu => lu.id === u.id))];
-
-                                // Debug log
-                                console.log('Appointment detail modal - Debug info:', {
-                                    appointmentId: appointmentToDisplay.id,
-                                    userId: appointmentToDisplay.userId,
-                                    therapistId: appointmentToDisplay.therapistId,
-                                    paymentStatus: appointmentToDisplay.paymentStatus,
-                                    sessionNumber: (appointmentToDisplay as any).sessionNumber,
-                                    totalSessions: (appointmentToDisplay as any).totalSessions,
-                                    isCompleted: (appointmentToDisplay as any).isCompleted,
-                                    allUsersListLength: allUsersList.length,
-                                    localUsersLength: localUsers.length,
-                                    allUsersLength: allUsers.length,
-                                    appointmentData: appointmentToDisplay,
-                                    usingDetail: !!selectedAppointmentDetail
-                                });
 
                                 // Get client information - try multiple sources
                                 let client = (appointmentToDisplay as any).Client;
@@ -2311,61 +2495,90 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                     (appointmentToDisplay as any).therapistName ||
                                     'Chưa phân công';
 
-                                console.log('Resolved info:', {
-                                    clientName,
-                                    clientPhone,
-                                    therapistName,
-                                    clientFound: !!client,
-                                    therapistFound: !!therapist,
-                                    paymentStatus: appointmentToDisplay.paymentStatus
-                                });
-
                                 return (
-                                    <div className="space-y-2 text-sm">
-                                        <p><strong>Dịch vụ:</strong> {appointmentToDisplay.serviceName}</p>
-
-                                        {/* Session Number & Completion Status */}
-                                        {(appointmentToDisplay as any).sessionNumber && (
-                                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 my-3">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <p className="text-blue-900 font-semibold">
-                                                        📅 Buổi thứ {(appointmentToDisplay as any).sessionNumber}
-                                                        {(appointmentToDisplay as any).totalSessions &&
-                                                            ` / ${(appointmentToDisplay as any).totalSessions}`
-                                                        }
-                                                    </p>
-                                                    {(appointmentToDisplay as any).isCompleted ? (
-                                                        <span className="flex items-center gap-1 text-green-700 bg-green-100 px-2 py-1 rounded-md text-xs font-semibold">
-                                                            <CheckCircleIcon className="w-4 h-4" />
-                                                            Đã hoàn thành
-                                                        </span>
-                                                    ) : (
-                                                        <span className="flex items-center gap-1 text-orange-700 bg-orange-100 px-2 py-1 rounded-md text-xs font-semibold">
-                                                            <ClockIcon className="w-4 h-4" />
-                                                            Chưa hoàn thành
-                                                        </span>
-                                                    )}
+                                    <div className="space-y-4">
+                                        {/* Show group info if multiple appointments */}
+                                        {hasGroup && (
+                                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <span className="text-blue-900 font-bold text-lg">📋 Liệu trình {selectedAppointmentGroup.length} buổi</span>
                                                 </div>
-                                                <p className="text-blue-700 text-xs">
-                                                    {(appointmentToDisplay as any).isCompleted
-                                                        ? 'Khách hàng đã hoàn thành buổi liệu trình này'
-                                                        : 'Khách hàng chưa hoàn thành buổi này'
-                                                    }
+                                                <p className="text-sm text-blue-700 mb-3">
+                                                    Khách hàng đã đặt liệu trình với {selectedAppointmentGroup.length} buổi điều trị
                                                 </p>
+
+                                                {/* List all sessions */}
+                                                <div className="space-y-2 max-h-60 overflow-y-auto">
+                                                    {selectedAppointmentGroup.map((app, index) => {
+                                                        const sessionTherapist = allUsersList.find(u => u.id === app.therapistId);
+                                                        const sessionTherapistName = sessionTherapist?.name || 'Chưa phân công';
+
+                                                        return (
+                                                            <div
+                                                                key={app.id}
+                                                                className="bg-white border border-blue-200 rounded-md p-3 text-sm"
+                                                            >
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <span className="font-semibold text-blue-900">Buổi {index + 1}</span>
+                                                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${STATUS_CONFIG[app.status].bgColor} ${STATUS_CONFIG[app.status].color}`}>
+                                                                        {STATUS_CONFIG[app.status].text}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-2 text-xs text-gray-700">
+                                                                    <div>
+                                                                        <span className="text-gray-500">📅 Ngày:</span> {new Date(app.date).toLocaleDateString('vi-VN')}
+                                                                    </div>
+                                                                    <div>
+                                                                        <span className="text-gray-500">⏰ Giờ:</span> {app.time}
+                                                                    </div>
+                                                                    <div className="col-span-2">
+                                                                        <span className="text-gray-500">👨‍⚕️ Kỹ thuật viên:</span> {sessionTherapistName}
+                                                                    </div>
+                                                                    {app.paymentStatus && (
+                                                                        <div className="col-span-2">
+                                                                            <span className="text-gray-500">💳 Thanh toán:</span>
+                                                                            <span className={`ml-1 font-semibold ${app.paymentStatus === 'Paid' ? 'text-green-600' : 'text-yellow-600'}`}>
+                                                                                {app.paymentStatus === 'Paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
                                         )}
 
-                                        <p><strong>Khách hàng:</strong> {clientName}</p>
-                                        <p><strong>Số điện thoại:</strong> {clientPhone || 'N/A'}</p>
-                                        <p><strong>Thời gian:</strong> {appointmentToDisplay.time}, {new Date(appointmentToDisplay.date).toLocaleDateString('vi-VN')}</p>
-                                        <p><strong>Kỹ thuật viên:</strong> {therapistName}</p>
-                                        <p><strong>Trạng thái:</strong> <span className={`font-semibold ${STATUS_CONFIG[appointmentToDisplay.status].color}`}>{STATUS_CONFIG[appointmentToDisplay.status].text}</span></p>
-                                        <p><strong>Thanh toán:</strong> <span className={`font-semibold ${appointmentToDisplay.paymentStatus === 'Paid' ? 'text-green-600' : 'text-yellow-600'}`}>
-                                            {appointmentToDisplay.paymentStatus === 'Paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
-                                        </span></p>
-                                        {appointmentToDisplay.notesForTherapist && (
-                                            <p><strong>Ghi chú:</strong> {appointmentToDisplay.notesForTherapist}</p>
-                                        )}
+                                        {/* Basic info */}
+                                        <div className="space-y-2 text-sm">
+                                            <p><strong>Dịch vụ:</strong> {appointmentToDisplay.serviceName}</p>
+                                            <p><strong>Khách hàng:</strong> {clientName}</p>
+                                            <p><strong>Số điện thoại:</strong> {clientPhone || 'N/A'}</p>
+                                            {!hasGroup && (
+                                                <>
+                                                    <p><strong>Thời gian:</strong> {appointmentToDisplay.time}, {new Date(appointmentToDisplay.date).toLocaleDateString('vi-VN')}</p>
+                                                    <p><strong>Kỹ thuật viên:</strong> {therapistName}</p>
+                                                    <p><strong>Trạng thái:</strong> <span className={`font-semibold ${STATUS_CONFIG[appointmentToDisplay.status].color}`}>{STATUS_CONFIG[appointmentToDisplay.status].text}</span></p>
+                                                    <p><strong>Thanh toán:</strong> <span className={`font-semibold ${appointmentToDisplay.paymentStatus === 'Paid' ? 'text-green-600' : 'text-yellow-600'}`}>
+                                                        {appointmentToDisplay.paymentStatus === 'Paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                                                    </span></p>
+                                                </>
+                                            )}
+                                            {appointmentToDisplay.notesForTherapist && (
+                                                <p><strong>Ghi chú:</strong> {appointmentToDisplay.notesForTherapist}</p>
+                                            )}
+
+                                            {/* Ghi chú nội bộ buổi trước (nếu là buổi liệu trình) */}
+                                            {(appointmentToDisplay as any).TreatmentSession?.previousSessionNotes?.adminNotes && (
+                                                <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mt-3">
+                                                    <p className="font-semibold text-blue-800 text-sm mb-2">📋 Ghi chú nội bộ buổi trước:</p>
+                                                    <div className="mb-2">
+                                                        <p className="text-xs text-gray-800 mt-1">{(appointmentToDisplay as any).TreatmentSession.previousSessionNotes.adminNotes}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 );
                             })()}
@@ -2381,6 +2594,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                 setRescheduleTime(selectedAppointment.time);
                                                 setSelectedAppointment(null);
                                                 setSelectedAppointmentDetail(null);
+                                                setSelectedAppointmentGroup([]);
                                             }}
                                             className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm font-semibold flex items-center gap-2"
                                         >
@@ -2392,6 +2606,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                 setAppointmentToCancel(selectedAppointment);
                                                 setSelectedAppointment(null);
                                                 setSelectedAppointmentDetail(null);
+                                                setSelectedAppointmentGroup([]);
                                             }}
                                             className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 text-sm font-semibold flex items-center gap-2"
                                         >
@@ -2410,6 +2625,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                 setSelectedTherapistId(selectedAppointment.therapistId || '');
                                                 setSelectedAppointment(null);
                                                 setSelectedAppointmentDetail(null);
+                                                setSelectedAppointmentGroup([]);
                                             }}
                                             className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 text-sm font-semibold"
                                         >
@@ -2417,7 +2633,11 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                         </button>
                                     </>
                                 )}
-                                <button onClick={() => { setSelectedAppointment(null); setSelectedAppointmentDetail(null); }} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-semibold">Đóng</button>
+                                <button onClick={() => {
+                                    setSelectedAppointment(null);
+                                    setSelectedAppointmentDetail(null);
+                                    setSelectedAppointmentGroup([]);
+                                }} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-semibold">Đóng</button>
                             </div>
                         </div>
                     </div>
@@ -2453,16 +2673,43 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                             <h3 className="text-xl font-bold text-gray-800 mb-4">Lý do Hủy Lịch</h3>
                             <p className="text-sm text-gray-600 mb-4">
                                 {isCancellingMultiple
-                                    ? `Vui lòng nhập lý do hủy ${cancelMultipleCount} lịch hẹn. Khách hàng sẽ thấy thông báo này.`
-                                    : 'Vui lòng nhập lý do hủy lịch hẹn này. Khách hàng sẽ thấy thông báo này.'
+                                    ? `Vui lòng chọn hoặc nhập lý do hủy ${cancelMultipleCount} lịch hẹn. Khách hàng sẽ thấy thông báo này.`
+                                    : 'Vui lòng chọn hoặc nhập lý do hủy lịch hẹn này. Khách hàng sẽ thấy thông báo này.'
                                 }
                             </p>
+
+                            {/* Quick Reasons */}
+                            <div className="mb-4">
+                                <p className="text-xs text-gray-500 mb-2">Lý do nhanh:</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {cancellationReasons.map((reason, idx) => (
+                                        <button
+                                            key={idx}
+                                            onClick={() => setRejectionReason(reason)}
+                                            className={`px-3 py-1 rounded-full text-sm font-medium transition ${rejectionReason === reason
+                                                ? 'bg-red-500 text-white'
+                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                }`}
+                                        >
+                                            {reason}
+                                        </button>
+                                    ))}
+                                    <button
+                                        onClick={() => setShowAddReasonModal(true)}
+                                        className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition"
+                                        title="Thêm lý do nhanh mới"
+                                    >
+                                        + Thêm
+                                    </button>
+                                </div>
+                            </div>
+
                             <textarea
                                 value={rejectionReason}
                                 onChange={(e) => setRejectionReason(e.target.value)}
                                 rows={4}
                                 className="w-full p-2 border rounded-md focus:ring-brand-primary focus:border-brand-primary"
-                                placeholder="VD: Khách yêu cầu hủy, khung giờ đã có khách đặt, kỹ thuật viên không có lịch làm việc..."
+                                placeholder="Hoặc nhập lý do hủy tùy chỉnh..."
                                 disabled={isCancelLoading}
                             />
                         </div>
@@ -2483,6 +2730,56 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                             </button>
                         </div>
                     </div>
+
+                    {/* Add New Reason Modal */}
+                    {showAddReasonModal && (
+                        <div className="fixed inset-0 bg-black/50 z-60 flex items-center justify-center p-4" onClick={() => setShowAddReasonModal(false)}>
+                            <div className="bg-white rounded-lg shadow-xl max-w-sm w-full" onClick={e => e.stopPropagation()}>
+                                <div className="p-6">
+                                    <h3 className="text-lg font-bold text-gray-800 mb-4">Thêm Lý do Nhanh Mới</h3>
+                                    <input
+                                        type="text"
+                                        value={newReasonText}
+                                        onChange={(e) => setNewReasonText(e.target.value)}
+                                        placeholder="Nhập lý do hủy..."
+                                        className="w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 mb-4"
+                                        onKeyPress={(e) => {
+                                            if (e.key === 'Enter' && newReasonText.trim()) {
+                                                e.preventDefault();
+                                                setCancellationReasons([...cancellationReasons, newReasonText]);
+                                                setNewReasonText('');
+                                                setShowAddReasonModal(false);
+                                            }
+                                        }}
+                                    />
+                                </div>
+                                <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
+                                    <button
+                                        onClick={() => {
+                                            setShowAddReasonModal(false);
+                                            setNewReasonText('');
+                                        }}
+                                        className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 text-sm font-semibold"
+                                    >
+                                        Hủy
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (newReasonText.trim()) {
+                                                setCancellationReasons([...cancellationReasons, newReasonText]);
+                                                setNewReasonText('');
+                                                setShowAddReasonModal(false);
+                                            }
+                                        }}
+                                        className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm font-semibold disabled:opacity-50"
+                                        disabled={!newReasonText.trim()}
+                                    >
+                                        Thêm
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -2744,6 +3041,13 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                 <input
                                                     type="date"
                                                     value={parseDDMMYYYYToYYYYMMDD(newAppointmentForm.date) || ''}
+                                                    min={(() => {
+                                                        const today = new Date();
+                                                        const year = today.getFullYear();
+                                                        const month = String(today.getMonth() + 1).padStart(2, '0');
+                                                        const day = String(today.getDate()).padStart(2, '0');
+                                                        return `${year}-${month}-${day}`;
+                                                    })()}
                                                     onChange={(e) => {
                                                         const yyyymmdd = e.target.value;
                                                         if (yyyymmdd) {
@@ -2987,7 +3291,7 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                 </div>
                             </div>
 
-                            {/* Services Table */}
+                            {/* Services Table with per-service time & therapist editing */}
                             {selectedServices.length > 0 && (
                                 <div className="mt-6 border-t pt-4">
                                     <h4 className="text-sm font-semibold text-gray-700 mb-3">Danh sách dịch vụ</h4>
@@ -2999,55 +3303,175 @@ const AdminAppointmentsPage: React.FC<AdminAppointmentsPageProps> = ({ allUsers,
                                                     <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Dịch vụ</th>
                                                     <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Giá</th>
                                                     <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Số lượng</th>
+                                                    <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Ngày</th>
+                                                    <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Giờ</th>
+                                                    <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Kỹ thuật viên</th>
                                                     <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Thao tác</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {selectedServices.map((item, index) => (
-                                                    <tr key={`service-${item.id}`} className="border-b hover:bg-gray-50">
-                                                        <td className="px-4 py-2 text-sm">{index + 1}</td>
-                                                        <td className="px-4 py-2 text-sm font-medium">{item.name}</td>
-                                                        <td className="px-4 py-2 text-sm">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.price)}</td>
-                                                        <td className="px-4 py-2 text-sm">
-                                                            <div className="flex items-center gap-2">
-                                                                <button
-                                                                    onClick={() => {
-                                                                        if (item.quantity > 1) {
-                                                                            setSelectedServices(prev => prev.map(s =>
-                                                                                s.id === item.id ? { ...s, quantity: s.quantity - 1 } : s
-                                                                            ));
-                                                                        }
-                                                                    }}
-                                                                    className="px-2 py-1 border rounded hover:bg-gray-100"
-                                                                    disabled={item.quantity <= 1}
-                                                                >
-                                                                    -
-                                                                </button>
-                                                                <span>{item.quantity}</span>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setSelectedServices(prev => prev.map(s =>
-                                                                            s.id === item.id ? { ...s, quantity: s.quantity + 1 } : s
-                                                                        ));
-                                                                    }}
-                                                                    className="px-2 py-1 border rounded hover:bg-gray-100"
-                                                                >
-                                                                    +
-                                                                </button>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-2">
-                                                            <button
-                                                                onClick={() => {
-                                                                    setSelectedServices(prev => prev.filter(s => s.id !== item.id));
-                                                                }}
-                                                                className="text-red-500 hover:text-red-700"
-                                                            >
-                                                                <TrashIcon className="w-4 h-4" />
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
+                                                {selectedServices.map((item, index) => {
+                                                    const isEditing = editingServiceIndex === index;
+                                                    const draft = isEditing && serviceEditDraft ? serviceEditDraft : null;
+                                                    const availableSlots = getAvailableSlotsForService(item.id, index);
+
+                                                    const currentTherapist = item.therapistId ? localUsers.find(u => u.id === item.therapistId) : null;
+
+                                                    return (
+                                                        <tr key={`service-${item.id}-${index}`} className="border-b hover:bg-gray-50 align-top">
+                                                            <td className="px-4 py-2 text-sm">{index + 1}</td>
+                                                            <td className="px-4 py-2 text-sm font-medium">
+                                                                {isEditing ? (
+                                                                    <select
+                                                                        className="w-full border rounded px-2 py-1 text-sm"
+                                                                        value={draft?.serviceId || item.id}
+                                                                        onChange={(e) => {
+                                                                            const newId = e.target.value;
+                                                                            setServiceEditDraft(prev => prev ? { ...prev, serviceId: newId } : prev);
+                                                                        }}
+                                                                    >
+                                                                        {localServices.map(svc => (
+                                                                            <option key={svc.id} value={svc.id}>{svc.name}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                ) : (
+                                                                    item.name
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-sm">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.price)}</td>
+                                                            <td className="px-4 py-2 text-sm">
+                                                                {isEditing ? (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <button
+                                                                            onClick={() => setServiceEditDraft(prev => prev && prev.quantity > 1 ? { ...prev, quantity: prev.quantity - 1 } : prev)}
+                                                                            className="px-2 py-1 border rounded hover:bg-gray-100"
+                                                                            disabled={draft?.quantity === 1}
+                                                                        >
+                                                                            -
+                                                                        </button>
+                                                                        <span>{draft?.quantity ?? item.quantity}</span>
+                                                                        <button
+                                                                            onClick={() => setServiceEditDraft(prev => prev ? { ...prev, quantity: prev.quantity + 1 } : prev)}
+                                                                            className="px-2 py-1 border rounded hover:bg-gray-100"
+                                                                        >
+                                                                            +
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                if (item.quantity > 1) {
+                                                                                    setSelectedServices(prev => prev.map((s, idx) => idx === index ? { ...s, quantity: s.quantity - 1 } : s));
+                                                                                }
+                                                                            }}
+                                                                            className="px-2 py-1 border rounded hover:bg-gray-100"
+                                                                            disabled={item.quantity <= 1}
+                                                                        >
+                                                                            -
+                                                                        </button>
+                                                                        <span>{item.quantity}</span>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setSelectedServices(prev => prev.map((s, idx) => idx === index ? { ...s, quantity: s.quantity + 1 } : s));
+                                                                            }}
+                                                                            className="px-2 py-1 border rounded hover:bg-gray-100"
+                                                                        >
+                                                                            +
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-sm">
+                                                                {isEditing ? (
+                                                                    <input
+                                                                        type="date"
+                                                                        className="w-full border rounded px-2 py-1 text-sm"
+                                                                        value={draft?.date ? parseDDMMYYYYToYYYYMMDD(draft.date) || '' : ''}
+                                                                        min={new Date().toISOString().split('T')[0]}
+                                                                        onChange={(e) => {
+                                                                            const val = e.target.value;
+                                                                            if (val) {
+                                                                                const [y, m, d] = val.split('-');
+                                                                                const ddmmyyyy = `${d}-${m}-${y}`;
+                                                                                setServiceEditDraft(prev => prev ? { ...prev, date: ddmmyyyy } : prev);
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                ) : (
+                                                                    item.date
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-sm">
+                                                                {isEditing ? (
+                                                                    <select
+                                                                        className="w-full border rounded px-2 py-1 text-sm"
+                                                                        value={draft?.time || ''}
+                                                                        onChange={(e) => setServiceEditDraft(prev => prev ? { ...prev, time: e.target.value } : prev)}
+                                                                    >
+                                                                        <option value="">Chọn giờ</option>
+                                                                        {availableSlots.map(slot => (
+                                                                            <option key={slot} value={slot}>{slot}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                ) : (
+                                                                    item.time
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-sm">
+                                                                {isEditing ? (
+                                                                    <select
+                                                                        className="w-full border rounded px-2 py-1 text-sm"
+                                                                        value={draft?.therapistId || ''}
+                                                                        onChange={(e) => setServiceEditDraft(prev => prev ? { ...prev, therapistId: e.target.value } : prev)}
+                                                                    >
+                                                                        <option value="">Chọn nhân viên</option>
+                                                                        {availableStaff.map(staff => (
+                                                                            <option key={staff.id} value={staff.id}>{staff.name}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                ) : (
+                                                                    currentTherapist?.name || 'Chưa chọn'
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-sm">
+                                                                {isEditing ? (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <button
+                                                                            onClick={saveEditService}
+                                                                            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs"
+                                                                        >
+                                                                            Lưu
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={cancelEditService}
+                                                                            className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 text-xs"
+                                                                        >
+                                                                            Hủy
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <button
+                                                                            onClick={() => startEditService(index)}
+                                                                            className="text-blue-500 hover:text-blue-700"
+                                                                        >
+                                                                            Sửa
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setSelectedServices(prev => prev.filter((_, idx) => idx !== index));
+                                                                            }}
+                                                                            className="text-red-500 hover:text-red-700"
+                                                                        >
+                                                                            <TrashIcon className="w-4 h-4" />
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>

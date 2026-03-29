@@ -1128,6 +1128,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     const serviceIdFromUrl = searchParams.get('serviceId');
 
     const dateInputRef = useRef<HTMLInputElement>(null);
+    const lastLoadRef = useRef<number>(0);
+    const LOAD_TTL_MS = 60_000; // avoid refetching everything within 60s unless forced
 
     // Format date from YYYY-MM-DD to dd-mm-yyyy
     const formatDateDisplay = (dateString: string): string => {
@@ -1263,7 +1265,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
         // Listen for refresh events (e.g., after payment success)
         const handleRefresh = () => {
             console.log('🔄 [BookingPage] Refreshing data after payment/voucher usage...');
-            loadInitialData();
+            loadInitialData(true);
         };
 
         window.addEventListener('refresh-vouchers', handleRefresh);
@@ -1276,8 +1278,13 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
     }, []);
 
 
-    const loadInitialData = async () => {
+    const loadInitialData = async (force = false) => {
         try {
+            const now = Date.now();
+            if (!force && lastLoadRef.current && now - lastLoadRef.current < LOAD_TTL_MS) {
+                console.log('⏩ [BookingPage] Skip reload (within TTL)');
+                return;
+            }
             // Load critical data first (services and categories)
             // Use Promise.allSettled to prevent one failure from blocking others
             const results = await Promise.allSettled([
@@ -1287,10 +1294,6 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                 }),
                 apiService.getServiceCategories().catch(err => {
                     console.error('Error loading categories:', err);
-                    return [];
-                }),
-                apiService.getUsers().catch(err => {
-                    console.error('Error loading users:', err);
                     return [];
                 }),
                 apiService.getPromotions().catch(err => {
@@ -1314,11 +1317,10 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             // Extract data from results, using empty array as fallback
             const servicesData = results[0].status === 'fulfilled' ? results[0].value : [];
             const categoriesData = results[1].status === 'fulfilled' ? results[1].value : [];
-            const usersData = results[2].status === 'fulfilled' ? results[2].value : [];
-            const promotionsData = results[3].status === 'fulfilled' ? results[3].value : [];
-            const coursesData = results[4].status === 'fulfilled' ? results[4].value : [];
-            const reviewsData = results[5].status === 'fulfilled' ? results[5].value : [];
-            const appointmentsData = results[6].status === 'fulfilled' ? results[6].value : [];
+            const promotionsData = results[2].status === 'fulfilled' ? results[2].value : [];
+            const coursesData = results[3].status === 'fulfilled' ? results[3].value : [];
+            const reviewsData = results[4].status === 'fulfilled' ? results[4].value : [];
+            const appointmentsData = results[5].status === 'fulfilled' ? results[5].value : [];
 
             const activeServices = servicesData.filter(s => s.isActive === true || s.isActive === undefined || s.isActive === null);
 
@@ -1338,6 +1340,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
             setTreatmentCourses(coursesData);
             setReviews(reviewsData);
             setAllAppointments(appointmentsData);
+            lastLoadRef.current = Date.now();
 
             if (currentUser) {
                 setUserAppointments(appointmentsData.filter(a => a.userId === currentUser.id));
@@ -2012,8 +2015,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                     <React.Fragment key={step.num}>
                         <div className={`flex flex-col items-center relative z-10 transition-all duration-500 ${currentStep === step.num ? 'scale-110' : 'scale-100'}`}>
                             <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg border-4 transition-colors duration-500 ${currentStep >= step.num
-                                    ? 'bg-gradient-to-br from-brand-primary to-rose-500 border-rose-100 text-white'
-                                    : 'bg-white border-gray-200 text-gray-300'
+                                ? 'bg-gradient-to-br from-brand-primary to-rose-500 border-rose-100 text-white'
+                                : 'bg-white border-gray-200 text-gray-300'
                                 }`}>
                                 {step.icon}
                             </div>
@@ -2046,8 +2049,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                     <button
                         onClick={() => setSelectedCategory('')}
                         className={`flex-shrink-0 px-6 py-3 rounded-full text-sm font-bold transition-all duration-300 whitespace-nowrap ${selectedCategory === ''
-                                ? 'bg-brand-dark text-white shadow-lg shadow-brand-dark/20 scale-105'
-                                : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-primary hover:text-brand-primary'
+                            ? 'bg-brand-dark text-white shadow-lg shadow-brand-dark/20 scale-105'
+                            : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-primary hover:text-brand-primary'
                             }`}
                     >
                         Tất cả dịch vụ
@@ -2057,8 +2060,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                             key={category.id}
                             onClick={() => setSelectedCategory(category.id)}
                             className={`flex-shrink-0 px-6 py-3 rounded-full text-sm font-bold transition-all duration-300 whitespace-nowrap ${selectedCategory === category.id
-                                    ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/30 scale-105'
-                                    : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-primary hover:text-brand-primary'
+                                ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/30 scale-105'
+                                : 'bg-white text-gray-500 border border-gray-200 hover:border-brand-primary hover:text-brand-primary'
                                 }`}
                         >
                             {category.name}
@@ -2091,8 +2094,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                                     key={service.id}
                                     onClick={() => handleServiceToggle(service)}
                                     className={`group relative p-5 rounded-3xl border-2 transition-all duration-300 cursor-pointer overflow-hidden ${isSelected
-                                            ? 'bg-white border-brand-primary shadow-xl ring-4 ring-brand-primary/10 scale-[1.02]'
-                                            : 'bg-white border-transparent shadow-sm hover:shadow-lg hover:border-brand-secondary hover:-translate-y-1'
+                                        ? 'bg-white border-brand-primary shadow-xl ring-4 ring-brand-primary/10 scale-[1.02]'
+                                        : 'bg-white border-transparent shadow-sm hover:shadow-lg hover:border-brand-secondary hover:-translate-y-1'
                                         }`}
                                 >
                                     <div className="flex items-center gap-5">
@@ -2732,8 +2735,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                         <button
                             onClick={() => setPaymentMethod('VNPay')}
                             className={`w-full p-4 rounded-2xl border-2 flex items-center gap-4 transition-all duration-300 ${paymentMethod === 'VNPay'
-                                    ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
-                                    : 'border-gray-100 hover:border-blue-200 hover:bg-gray-50'
+                                ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                                : 'border-gray-100 hover:border-blue-200 hover:bg-gray-50'
                                 }`}
                         >
                             <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center p-1">
@@ -2749,8 +2752,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ currentUser }) => {
                         <button
                             onClick={() => setPaymentMethod('Cash')}
                             className={`w-full p-4 rounded-2xl border-2 flex items-center gap-4 transition-all duration-300 ${paymentMethod === 'Cash'
-                                    ? 'border-green-500 bg-green-50 ring-1 ring-green-500'
-                                    : 'border-gray-100 hover:border-green-200 hover:bg-gray-50'
+                                ? 'border-green-500 bg-green-50 ring-1 ring-green-500'
+                                : 'border-gray-100 hover:border-green-200 hover:bg-gray-50'
                                 }`}
                         >
                             <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center text-green-600">

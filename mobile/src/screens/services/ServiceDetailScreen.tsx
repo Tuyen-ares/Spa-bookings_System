@@ -94,12 +94,18 @@ export const ServiceDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         {/* Service Info */}
         <View style={styles.content}>
           <Text style={styles.serviceName}>{service.name}</Text>
-          
+
           <View style={styles.metaRow}>
             <View style={styles.ratingContainer}>
               <Ionicons name="star" size={20} color="#FFD700" />
               <Text style={styles.ratingText}>
-                {service.averageRating?.toFixed(1) || '5.0'} ({reviews.length} đánh giá)
+                {(
+                  typeof service.averageRating === 'number'
+                    ? service.averageRating
+                    : typeof service.rating === 'number'
+                      ? service.rating
+                      : 0
+                ).toFixed(1)} ({reviews.length} đánh giá)
               </Text>
             </View>
             <View style={styles.durationContainer}>

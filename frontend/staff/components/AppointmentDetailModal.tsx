@@ -11,24 +11,24 @@ interface AppointmentDetailModalProps {
 
 const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({ appointment, allUsers, onClose }) => {
     const [previousSessionNotes, setPreviousSessionNotes] = useState<{ adminNotes?: string; customerStatusNotes?: string } | null>(null);
-    
+
     // Get treatment session info from appointment (should be included in API response)
     const session = (appointment as any).TreatmentSession;
-    
+
     // Get client info - prioritize from appointment.Client (from API), then from allUsers
     // Merge data to ensure we have phone number
     const appointmentClient = (appointment as any).Client;
     const clientFromUsers = allUsers.find(u => u.id === appointment.userId);
-    
+
     // Merge client data: use appointmentClient as base, fill in missing data from allUsers
-    const client = appointmentClient 
+    const client = appointmentClient
         ? {
             ...appointmentClient,
             // Fill in phone if missing from appointmentClient
             phone: appointmentClient.phone || clientFromUsers?.phone || null
         }
         : clientFromUsers;
-    
+
     // Debug log
     console.log('AppointmentDetailModal - Appointment data:', {
         appointmentId: appointment.id,
@@ -52,24 +52,31 @@ const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({ appoint
 
     const fetchPreviousSessionNotes = async () => {
         try {
-            // Get treatment course to find previous session
-            // We need to find the course that contains this session
-            // For now, we'll try to get it from the appointment's bookingGroupId or find by serviceId and userId
+            const courseFromAppointment = (appointment as any).TreatmentSession?.TreatmentCourse;
             const bookingGroupId = (appointment as any).bookingGroupId;
-            if (bookingGroupId && bookingGroupId.startsWith('group-')) {
-                const courseId = bookingGroupId.replace('group-', '');
-                const course = await apiService.getTreatmentCourseById(courseId);
-                if (course && course.sessions) {
-                    // Find previous session (sessionNumber - 1)
-                    const previousSession = (course.sessions as any[]).find(
-                        (s: any) => s.sessionNumber === session.sessionNumber - 1
-                    );
-                    if (previousSession) {
-                        setPreviousSessionNotes({
-                            adminNotes: previousSession.adminNotes,
-                            customerStatusNotes: previousSession.customerStatusNotes
-                        });
-                    }
+
+            // Prefer explicit course id on session, then bookingGroup, then embedded course
+            const courseIdFromSession = session?.treatmentCourseId || courseFromAppointment?.id || null;
+            const courseIdFromBookingGroup = bookingGroupId
+                ? (bookingGroupId.startsWith('group-') ? bookingGroupId.replace('group-', '') : bookingGroupId)
+                : null;
+
+            let course = courseFromAppointment;
+            if (!course && (courseIdFromSession || courseIdFromBookingGroup)) {
+                const idToFetch = courseIdFromSession || courseIdFromBookingGroup;
+                course = await apiService.getTreatmentCourseById(idToFetch as string);
+            }
+
+            if (course && Array.isArray((course as any).sessions)) {
+                const previousSession = (course as any).sessions.find(
+                    (s: any) => s.sessionNumber === session.sessionNumber - 1
+                );
+
+                if (previousSession) {
+                    setPreviousSessionNotes({
+                        adminNotes: previousSession.adminNotes,
+                        customerStatusNotes: previousSession.customerStatusNotes
+                    });
                 }
             }
         } catch (error) {
@@ -186,37 +193,19 @@ const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({ appoint
                                 Ghi chú
                             </h3>
                             <div className="space-y-3">
-                                {/* Ghi chú cho KTV */}
-                                {appointment.notesForTherapist && (
-                                    <div>
-                                        <p className="text-sm text-gray-600 mb-1">Ghi chú cho KTV</p>
-                                        <p className="text-gray-800 bg-white p-3 rounded border">{appointment.notesForTherapist}</p>
-                                    </div>
-                                )}
-                                
-                                {/* Ghi chú từ buổi trước (nếu có) */}
-                                {previousSessionNotes && (previousSessionNotes.adminNotes || previousSessionNotes.customerStatusNotes) && (
+                                {/* Ghi chú nội bộ từ buổi trước (ẩn ghi chú khách hàng) */}
+                                {previousSessionNotes && previousSessionNotes.adminNotes && (
                                     <div className="bg-blue-50 p-3 rounded border border-blue-200">
                                         <p className="text-sm font-semibold text-blue-800 mb-2">📝 Ghi chú từ buổi trước (Buổi {session?.sessionNumber ? session.sessionNumber - 1 : 'N/A'})</p>
-                                        {previousSessionNotes.adminNotes && (
-                                            <div className="mb-2">
-                                                <p className="text-xs text-gray-600 mb-1">
-                                                    <span className="text-blue-600 font-medium">[Nội bộ]</span> Ghi chú nội bộ từ admin
-                                                </p>
-                                                <p className="text-gray-800 bg-white p-2 rounded text-sm whitespace-pre-wrap">{previousSessionNotes.adminNotes}</p>
-                                            </div>
-                                        )}
-                                        {previousSessionNotes.customerStatusNotes && (
-                                            <div>
-                                                <p className="text-xs text-gray-600 mb-1">
-                                                    <span className="text-gray-600">[Khách hàng]</span> Ghi chú tình trạng khách hàng
-                                                </p>
-                                                <p className="text-gray-800 bg-white p-2 rounded text-sm whitespace-pre-wrap">{previousSessionNotes.customerStatusNotes}</p>
-                                            </div>
-                                        )}
+                                        <div className="mb-2">
+                                            <p className="text-xs text-gray-600 mb-1">
+                                                <span className="text-blue-600 font-medium">[Nội bộ]</span> Ghi chú nội bộ từ admin
+                                            </p>
+                                            <p className="text-gray-800 bg-white p-2 rounded text-sm whitespace-pre-wrap">{previousSessionNotes.adminNotes}</p>
+                                        </div>
                                     </div>
                                 )}
-                                
+
                                 {/* Ghi chú nội bộ của buổi hiện tại (adminNotes) */}
                                 {session && session.adminNotes && (
                                     <div className="bg-red-50 p-3 rounded border border-red-200">
@@ -226,23 +215,12 @@ const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({ appoint
                                         <p className="text-gray-800 bg-white p-3 rounded border whitespace-pre-wrap">{session.adminNotes}</p>
                                     </div>
                                 )}
-                                
-                                {/* Ghi chú tình trạng khách hàng của buổi hiện tại */}
-                                {session && session.customerStatusNotes && (
-                                    <div>
-                                        <p className="text-sm text-gray-600 mb-1">
-                                            <span className="text-gray-600">[Khách hàng]</span> Ghi chú tình trạng khách hàng (buổi này)
-                                        </p>
-                                        <p className="text-gray-800 bg-white p-3 rounded border whitespace-pre-wrap">{session.customerStatusNotes}</p>
-                                    </div>
-                                )}
-                                
+
                                 {/* Hiển thị thông báo nếu không có ghi chú nào */}
-                                {!appointment.notesForTherapist && 
-                                 (!previousSessionNotes || (!previousSessionNotes.adminNotes && !previousSessionNotes.customerStatusNotes)) &&
-                                 (!session || (!session.adminNotes && !session.customerStatusNotes)) && (
-                                    <p className="text-gray-500 italic">Không có ghi chú</p>
-                                )}
+                                {(!previousSessionNotes || !previousSessionNotes.adminNotes) &&
+                                    (!session || !session.adminNotes) && (
+                                        <p className="text-gray-500 italic">Không có ghi chú</p>
+                                    )}
                             </div>
                         </div>
 
@@ -252,11 +230,11 @@ const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({ appoint
                                 <p className="text-sm text-gray-600">Trạng thái</p>
                                 <p className="font-semibold text-gray-800">
                                     {appointment.status === 'upcoming' ? 'Sắp tới' :
-                                     appointment.status === 'in-progress' ? 'Đang thực hiện' :
-                                     appointment.status === 'completed' ? 'Đã hoàn thành' :
-                                     appointment.status === 'cancelled' ? 'Đã hủy' :
-                                     appointment.status === 'pending' ? 'Chờ xác nhận' :
-                                     appointment.status}
+                                        appointment.status === 'in-progress' ? 'Đang thực hiện' :
+                                            appointment.status === 'completed' ? 'Đã hoàn thành' :
+                                                appointment.status === 'cancelled' ? 'Đã hủy' :
+                                                    appointment.status === 'pending' ? 'Chờ xác nhận' :
+                                                        appointment.status}
                                 </p>
                             </div>
                             <div>
