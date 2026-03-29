@@ -65,6 +65,7 @@ Hệ thống quản lý Spa đa nền tảng gồm **Web (Admin/Staff/Client)** 
 ## 2. Công nghệ sử dụng
 
 ### Backend
+
 - Node.js, Express.js
 - Sequelize ORM, MySQL
 - JWT, bcrypt/bcryptjs
@@ -72,12 +73,14 @@ Hệ thống quản lý Spa đa nền tảng gồm **Web (Admin/Staff/Client)** 
 - VNPay SDK, Google GenAI SDK
 
 ### Frontend Web
+
 - React + TypeScript + Vite
 - React Router DOM
 - TailwindCSS/PostCSS
 - Recharts
 
 ### Mobile
+
 - React Native + Expo
 - React Navigation
 - AsyncStorage, Axios
@@ -135,12 +138,14 @@ Hệ thống quản lý Spa đa nền tảng gồm **Web (Admin/Staff/Client)** 
 ## 4. Yêu cầu môi trường
 
 ### Bắt buộc
+
 - Node.js: **>= 20 LTS** (khuyến nghị)
 - npm: đi kèm Node.js
 - MySQL: **8.x**
 - Git
 
 ### Khuyến nghị công cụ hỗ trợ
+
 - MySQL Workbench hoặc DBeaver
 - Postman
 - VS Code
@@ -151,6 +156,7 @@ Hệ thống quản lý Spa đa nền tảng gồm **Web (Admin/Staff/Client)** 
 ## 5. Phiên bản package chính
 
 ### backend/package.json
+
 - express `^4.19.2`
 - sequelize `^6.37.7`
 - mysql2 `^3.15.3`
@@ -160,6 +166,7 @@ Hệ thống quản lý Spa đa nền tảng gồm **Web (Admin/Staff/Client)** 
 - vnpay `^1.6.1`
 
 ### frontend/package.json
+
 - react `^19.2.0`
 - react-dom `^19.2.0`
 - vite `^6.2.0`
@@ -167,6 +174,7 @@ Hệ thống quản lý Spa đa nền tảng gồm **Web (Admin/Staff/Client)** 
 - tailwindcss `^3.4.19`
 
 ### mobile/package.json
+
 - expo `~54.0.25`
 - react `19.1.0`
 - react-native `0.81.5`
@@ -376,28 +384,33 @@ flowchart TD
 > Base URL: `http://localhost:3001/api`
 
 ### Authentication
+
 - `POST /auth/register`
 - `POST /auth/login`
 - `GET /auth/verify-email/:token`
 - `POST /auth/forgot-password`
 
 ### Services / Appointments
+
 - `GET /services`
 - `GET /services/:id`
 - `POST /appointments`
 - `GET /appointments/user/:userId`
 
 ### Payments / Promotions
+
 - `POST /payments/process`
 - `GET /payments/user/:userId`
 - `GET /promotions`
 - `POST /promotions/:id/redeem`
 
 ### Treatment
+
 - `GET /treatment-courses`
 - `GET /treatment-sessions`
 
 ### Notifications / Chatbot
+
 - `GET /notifications/user/:userId`
 - `POST /chatbot/chat`
 
@@ -406,6 +419,7 @@ flowchart TD
 ## 11. Scripts quan trọng
 
 ### Backend
+
 - `npm run dev` — chạy backend với nodemon
 - `npm run start` — chạy production
 - `npm run db:migrate` — apply migrations
@@ -414,11 +428,13 @@ flowchart TD
 - `npm run db:migrate:status` — kiểm tra trạng thái migration
 
 ### Frontend
+
 - `npm run dev` — chạy Vite dev server
 - `npm run build` — build production
 - `npm run preview` — preview build
 
 ### Mobile
+
 - `npm start` — expo start offline
 - `npm run start:online` — expo start online
 - `npm run start:clear` — clear cache và start
@@ -430,21 +446,25 @@ flowchart TD
 ## 12. Troubleshooting
 
 ### Lỗi không kết nối DB
+
 - Kiểm tra MySQL service đang chạy
 - Kiểm tra `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
 - Chạy lại `npm run db:migrate`
 
 ### Frontend không gọi được API
+
 - Kiểm tra `frontend/.env` (`VITE_API_URL`)
 - Kiểm tra backend có chạy ở `3001`
 - Kiểm tra CORS backend
 
 ### Mobile không gọi được API
+
 - Android emulator dùng `10.0.2.2`
 - Thiết bị thật cần LAN IP của máy host
 - Đồng bộ đúng cổng backend đang chạy
 
 ### Lỗi VNPay callback
+
 - Kiểm tra `VNPAY_RETURN_URL`, `VNPAY_IPN_URL`
 - Kiểm tra `FRONTEND_URL`
 
@@ -461,27 +481,3 @@ flowchart TD
   3. Cập nhật lại env local + secrets trên các môi trường liên quan
 
 ---
-
-## 14. Hướng dẫn phát triển
-
-### Quy trình branch đề xuất
-
-```text
-main
- ├─ feature/<feature-name>
- ├─ fix/<bug-name>
- └─ hotfix/<urgent-fix>
-```
-
-### Pull Request checklist
-- [ ] Code chạy được local
-- [ ] Không có file `.env` hoặc secret trong commit
-- [ ] Migration/database change được mô tả rõ
-- [ ] Đã test flow chính liên quan
-- [ ] README được cập nhật nếu thay đổi setup/flow
-
----
-
-## License
-
-Dự án phục vụ mục đích học tập/đồ án. Có thể bổ sung license chính thức tùy nhu cầu triển khai.
