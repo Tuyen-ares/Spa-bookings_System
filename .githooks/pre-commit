@@ -1,0 +1,40 @@
+#!/bin/sh
+
+set -eu
+
+staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
+
+if [ -z "$staged_files" ]; then
+  exit 0
+fi
+
+blocked_name_pattern='(^|/)(\.env($|\.)|.*\.pem$|.*\.key$|.*\.p12$|.*\.pfx$|id_rsa|id_dsa|id_ed25519|.*\.kdbx$|.*\.jks$)'
+
+for file in $staged_files; do
+  if echo "$file" | grep -Eiq "$blocked_name_pattern"; then
+    echo "❌ Blocked commit: sensitive filename detected: $file"
+    echo "Please remove it from staging (git restore --staged <file>)"
+    exit 1
+  fi
+done
+
+sensitive_content_pattern='(api[_-]?key|secret[_-]?key|private[_-]?key|access[_-]?token|refresh[_-]?token|jwt[_-]?secret|password\s*=|x-api-key|AKIA[0-9A-Z]{16}|-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----)'
+
+for file in $staged_files; do
+  if [ "$file" = ".githooks/pre-commit" ]; then
+    continue
+  fi
+
+  if [ ! -f "$file" ]; then
+    continue
+  fi
+
+  if git show ":$file" | grep -Eiq "$sensitive_content_pattern"; then
+    echo "❌ Blocked commit: possible secret detected in staged content: $file"
+    echo "Please remove secrets before committing."
+    exit 1
+  fi
+done
+
+echo "✅ Secret pre-check passed"
+exit 0
