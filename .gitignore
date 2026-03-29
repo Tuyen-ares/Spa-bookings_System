@@ -1,7 +1,8 @@
 *.*
 *.*
 !README.md
-!**/README.md
+/README.md
+frontend/node_modules/
 
 # Environment files (never commit secrets)
 .env
