@@ -962,21 +962,6 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
         .service-table tr:last-child td {
             border-bottom: none;
         }
-        .status-badge {
-            display: inline-block;
-            padding: 3px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .status-paid {
-            background: #dcfce7;
-            color: #166534;
-        }
-        .status-unpaid {
-            background: #fee2e2;
-            color: #991b1b;
-        }
         .total-section {
             margin-top: 30px;
             padding-top: 20px;
@@ -1059,7 +1044,6 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
                     <th style="text-align: center;">Số buổi</th>
                     <th style="text-align: right;">Đơn giá</th>
                     <th style="text-align: right;">Thành tiền</th>
-                    <th style="text-align: center;">Trạng thái</th>
                 </tr>
             </thead>
             <tbody>
@@ -1069,10 +1053,6 @@ const PaymentsPage: React.FC<PaymentsPageProps> = ({ allUsers, allAppointments }
                         <td style="text-align: center;">${svc.sessions} buổi</td>
                         <td style="text-align: right;">${formatPrice(svc.price)}</td>
                         <td style="text-align: right;">${formatPrice(svc.totalPrice)}</td>
-                        <td style="text-align: center;">
-                            ${svc.paidSessions > 0 ? `<span class="status-badge status-paid">✓ Đã TT: ${svc.paidSessions}</span>` : ''}
-                            ${svc.unpaidSessions > 0 ? `<span class="status-badge status-unpaid">○ Chưa TT: ${svc.unpaidSessions}</span>` : ''}
-                        </td>
                     </tr>
                 `).join('')}
             </tbody>
